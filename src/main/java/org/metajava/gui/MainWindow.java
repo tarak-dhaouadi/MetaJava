@@ -44,6 +44,8 @@ public class MainWindow extends JFrame {
     final JPanel mapPanel = new JPanel(new GridBagLayout()); final Map<String, JComboBox<String>> maps = new LinkedHashMap<>();
     JComboBox<String> studlabBox = Ui.combo(), subgroupBox = Ui.combo(), orderBox = Ui.combo(), sheetBox = Ui.combo();
     JList<String> covList = new JList<>(), facList = new JList<>();
+    // reference category of each categorical factor (factor -> level); the combo boxes only show the factor being configured
+    final JComboBox<String> cfgFactorBox = Ui.combo(), refBox = Ui.combo(); final Map<String, String> refChoice = new HashMap<>(); JPanel refPanel; JLabel refNote;
     final JLabel fileLabel = Ui.muted("No file loaded");
     final JTable preview = new JTable(); final JPanel results = new JPanel(); final JScrollPane resScroll;
     // settings
@@ -146,7 +148,7 @@ public class MainWindow extends JFrame {
         f.row(null, forestChk); f.row("Sort by", sortBox); f.row("Order", sortDir); f.row(null, fOverallTest); f.row(null, fHet); f.row(null, fCiI2); f.row(null, fCiTau); f.row(null, fDetails); f.row("X-axis left label", xLeft); f.row("X-axis right label", xRight); f.row("Digits", digitsSp); f.row("Row spacing", spacingSp);
         p.add(f); p.add(Box.createVerticalStrut(8));
         Ui.Section sg = new Ui.Section("5. Subgroup analysis", false); sg.row("Subgroup variable", subgroupBox); sg.row(null, sgChk); sg.row(null, tauCommon); sg.row(null, sgPred); sg.row(null, sgTestEffect); sg.row(null, sgDetails); sg.row(null, orchardChk); sg.row(null, caterChk); p.add(sg); p.add(Box.createVerticalStrut(8));
-        Ui.Section rg = new Ui.Section("6. Meta-regression", false); rg.row(null, regChk); rg.row("Covariates (numeric)", new JScrollPane(covList)); rg.row("Factors (categorical)", new JScrollPane(facList)); rg.row(null, regIntercept); rg.row(null, bubbleChk); rg.row(null, regLine);
+        Ui.Section rg = new Ui.Section("6. Meta-regression", false); rg.row(null, regChk); rg.row("Covariates (numeric)", new JScrollPane(covList)); rg.row("Factors (categorical)", new JScrollPane(facList)); rg.row(null, buildRefPanel()); rg.row(null, regIntercept); regIntercept.addActionListener(e -> updateRefPanel()); rg.row(null, bubbleChk); rg.row(null, regLine);
         permChk.setToolTipText("Permutation test for the moderators (metafor::permutest): the rows of the model matrix are permuted and the model is refitted each time. Applies to the model of this section.");
         permIterSp.setToolTipText("Number of random permutations (ignored by the exact test). Precision of the p-value is about 1/iterations."); permSeedF.setToolTipText("Seed of the random number generator: the same seed gives the same p-values");
         cmpChk.setToolTipText("Fits every subset of the selected covariates / factors on the same studies and compares AIC, AICc, BIC (maximum likelihood), tau\u00B2, I\u00B2 and R\u00B2");
@@ -223,11 +225,63 @@ public class MainWindow extends JFrame {
         studlabBox.setSelectedItem(guessAny(cols, "study", "studlab", "label", "author", "id")); subgroupBox.setSelectedItem(guessAny(cols, "subgroup", "ethnic", "group", "region"));
         DefaultListModel<String> m1 = new DefaultListModel<>(), m2 = new DefaultListModel<>(); m1.addElement(NONE); m2.addElement(NONE);
         if (table != null) for (int j = 0; j < table.names.size(); j++) { (table.isNumeric(j) ? m1 : m2).addElement(table.names.get(j)); if (table.isNumeric(j)) m2.addElement(table.names.get(j)); }
-        covList.setModel(m1); facList.setModel(m2); covList.setSelectedIndex(0); facList.setSelectedIndex(0); suppress = old; schedule();
+        covList.setModel(m1); facList.setModel(m2); covList.setSelectedIndex(0); facList.setSelectedIndex(0); suppress = old; updateRefPanel(); schedule();
     }
 
     static final String NONE = "none";
     /** Selected entries of a covariate/factor list, ignoring the "none" entry. */
+
+    /** Small settings panel below the factor list: choose the reference category of each categorical factor. */
+    JPanel buildRefPanel() {
+        refPanel = new JPanel(new GridBagLayout()); refPanel.setBackground(new Color(0xF8F9FC)); refPanel.setBorder(BorderFactory.createCompoundBorder(new javax.swing.border.LineBorder(Ui.BORDER, 1, true), new javax.swing.border.EmptyBorder(8, 10, 8, 10)));
+        JLabel t = new JLabel("Categorical factor settings"); t.setFont(Ui.BOLD.deriveFont(12f)); t.setForeground(Ui.TEXT);
+        refNote = Ui.muted("The selected category is used as the reference for this factor.");
+        GridBagConstraints g = new GridBagConstraints(); g.gridx = 0; g.weightx = 1; g.fill = GridBagConstraints.HORIZONTAL; g.anchor = GridBagConstraints.WEST; g.insets = new Insets(2, 0, 2, 0);
+        g.gridy = 0; refPanel.add(t, g); g.gridy = 1; refPanel.add(Ui.muted("Configure factor"), g); g.gridy = 2; refPanel.add(cfgFactorBox, g);
+        g.gridy = 3; refPanel.add(Ui.muted("Reference category"), g); g.gridy = 4; refPanel.add(refBox, g); g.gridy = 5; refPanel.add(refNote, g);
+        cfgFactorBox.addActionListener(e -> { if (!suppress) fillRefBox(); });
+        refBox.addActionListener(e -> { if (suppress || refFilling) return; String f = (String) cfgFactorBox.getSelectedItem(), l = (String) refBox.getSelectedItem(); if (f != null && l != null) refChoice.put(f, l); });
+        facList.addListSelectionListener(e -> { if (!e.getValueIsAdjusting()) updateRefPanel(); });
+        updateRefPanel(); return refPanel;
+    }
+    boolean refFilling = false;
+
+    /** Levels (sorted) of a factor column in the loaded data. */
+    List<String> levelsOf(String f) {
+        TreeSet<String> lv = new TreeSet<>();
+        if (table != null && f != null) try { for (String x : table.strings(f)) if (x != null && !x.isBlank()) lv.add(x.trim()); } catch (RuntimeException ex) { /* column vanished */ }
+        return new ArrayList<>(lv);
+    }
+
+    /** Enables / disables the panel and keeps the factor dropdown in line with the selected factors. */
+    void updateRefPanel() {
+        if (refPanel == null) return;
+        List<String> facs = chosen(facList); boolean on = !facs.isEmpty();
+        boolean old = suppress; suppress = true;
+        try {
+            Object cur = cfgFactorBox.getSelectedItem(); cfgFactorBox.removeAllItems(); for (String f : facs) cfgFactorBox.addItem(f);
+            if (cur != null && facs.contains(cur)) cfgFactorBox.setSelectedItem(cur);
+            fillRefBox();
+        } finally { suppress = old; }
+        for (Component c : refPanel.getComponents()) c.setEnabled(on); cfgFactorBox.setEnabled(on); refBox.setEnabled(on);
+        refNote.setText(on ? (regIntercept.isSelected() ? "The selected category is used as the reference for this factor." : "Without an intercept every category gets its own coefficient (no reference).") : "Select a categorical factor above to choose its reference category.");
+    }
+
+    void fillRefBox() {
+        refFilling = true;
+        try {
+            refBox.removeAllItems(); String f = (String) cfgFactorBox.getSelectedItem(); if (f == null) return;
+            List<String> lv = levelsOf(f); for (String l : lv) refBox.addItem(l);
+            String keep = refChoice.get(f); if (keep == null || !lv.contains(keep)) { keep = lv.isEmpty() ? null : lv.get(0); if (keep != null) refChoice.put(f, keep); else refChoice.remove(f); }
+            if (keep != null) refBox.setSelectedItem(keep);
+        } finally { refFilling = false; }
+    }
+
+    /** Reference categories of the selected factors (a level that no longer exists in the data is dropped). */
+    Map<String, String> chosenRefs(List<String> facs) {
+        Map<String, String> m = new HashMap<>(); for (String f : facs) { String l = refChoice.get(f); if (l != null && levelsOf(f).contains(l)) m.put(f, l); } return m;
+    }
+
     static List<String> chosen(JList<String> l) { List<String> o = new ArrayList<>(l.getSelectedValuesList()); o.remove(NONE); return o; }
     /** "none" is exclusive: choosing it clears the other entries, choosing another entry clears "none". */
     void noneBehaviour(JList<String> l) {
@@ -342,7 +396,7 @@ public class MainWindow extends JFrame {
     static final class Out { final List<Item> items = new ArrayList<>(); Exception error; }
     /** Everything the background code needs, captured on the UI thread (Swing components are never read from worker threads). */
     static final class Snap {
-        MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; String biasMethod, tfSide, tfEst, selDir; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
+        MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; Map<String, String> refs = new HashMap<>(); String biasMethod, tfSide, tfEst, selDir; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
         boolean perm, permExact, cmp, orchard, cater, gosh, goshHl, goshCl, goshReg; int permIter, goshSub; long permSeed, goshSeed;
         boolean doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, loo, looForest, cum, cumForest, funnel, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
     }
@@ -367,7 +421,7 @@ public class MainWindow extends JFrame {
             n.tbl = table; n.s = buildSpec(); n.d = buildData(n.s, false); n.dataWarn = validateData(n.s); n.o = forestOpts();
             n.forest = forestChk.isSelected(); n.sg = sel(subgroupBox) != null && sgChk.isSelected(); n.sgTestEffect = sgTestEffect.isSelected(); n.sgDetails = sgDetails.isSelected();
             if (n.sg) { n.sSub = n.s.clone(); n.dSub = buildData(n.sSub, true); }
-            n.reg = regChk.isSelected(); n.nums = chosen(covList); n.facs = chosen(facList); n.regIntercept = regIntercept.isSelected(); n.bubble = bubbleChk.isSelected(); n.regLine = regLine.isSelected();
+            n.reg = regChk.isSelected(); n.nums = chosen(covList); n.facs = chosen(facList); n.refs = chosenRefs(n.facs); n.regIntercept = regIntercept.isSelected(); n.bubble = bubbleChk.isSelected(); n.regLine = regLine.isSelected();
             n.loo = looChk.isSelected(); n.looForest = looForest.isSelected(); n.cum = cumChk.isSelected(); n.cumForest = cumForest.isSelected();
             n.funnel = funnelChk.isSelected(); n.contour = contourChk.isSelected(); n.labels = labChk.isSelected(); n.bias = biasChk.isSelected(); n.biasPlot = biasPlotChk.isSelected(); n.biasMethod = (String) biasMethod.getSelectedItem();
             n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
@@ -473,7 +527,7 @@ public class MainWindow extends JFrame {
     void regression(MetaResult r, Snap n) {
         List<String> nums = n.nums, facs = n.facs; if (nums.isEmpty() && facs.isEmpty()) { addText("Meta-Regression", "Select at least one covariate or factor."); return; }
         Map<String, double[]> nd = new HashMap<>(); for (String c : nums) nd.put(c, n.tbl.num(c)); Map<String, String[]> fd = new HashMap<>(); for (String f : facs) fd.put(f, n.tbl.strings(f));
-        Reg g = Reg.run(r, nums, nd, facs, fd, n.regIntercept); List<String> terms = new ArrayList<>(nums); terms.addAll(facs);
+        Reg g = Reg.run(r, nums, nd, facs, fd, n.regIntercept, n.refs); List<String> terms = new ArrayList<>(nums); terms.addAll(facs);
         addText("Meta-Regression - Model 1: ~ " + String.join(" + ", terms), Report.regText(g, r, 1, ""));
         if (n.perm) { try { Perm t = Perm.run(g, n.permIter, n.permExact, n.permSeed); addText("Permutation Test (permutest) - Model 1", RegReport.permText(g, t, r)); }
             catch (IllegalArgumentException ex) { addText("Permutation Test (permutest) - Model 1", ex.getMessage()); } }
@@ -489,7 +543,7 @@ public class MainWindow extends JFrame {
         Map<String, double[]> nd = new HashMap<>(); for (String c : nums) nd.put(c, n.tbl.num(c)); Map<String, String[]> fd = new HashMap<>(); for (String f : facs) fd.put(f, n.tbl.strings(f));
         List<String> terms = new ArrayList<>(nums); terms.addAll(facs);
         final GoshReg gr;
-        try { Reg.Design D = Reg.design(r, nums, nd, facs, fd, n.regIntercept, null); gr = GoshReg.run(r, D, n.regIntercept, n.goshSub, n.goshSeed); }
+        try { Reg.Design D = Reg.design(r, nums, nd, facs, fd, n.regIntercept, null, n.refs); gr = GoshReg.run(r, D, n.regIntercept, n.goshSub, n.goshSeed); }
         catch (IllegalArgumentException ex) { addText(title + ": ~ " + String.join(" + ", terms), "GOSH for meta-regression: " + ex.getMessage()); return; }
         if (n.goshCl) gr.detectClusters();
         addText(title + ": ~ " + String.join(" + ", terms), RegReport.goshRegText(gr, r));
@@ -503,7 +557,7 @@ public class MainWindow extends JFrame {
         int k = ok.size(); double[] y = new double[k], v = new double[k]; String[] lab = new String[k]; for (int j = 0; j < k; j++) { int i = ok.get(j); y[j] = r.TE[i]; v[j] = r.seTE[i] * r.seTE[i]; lab[j] = r.studlab[i]; }
         double[][] X = null; String[] names = null;
         if (n.reg && !(nums.isEmpty() && facs.isEmpty())) { Map<String, double[]> nd = new HashMap<>(); for (String c : nums) nd.put(c, n.tbl.num(c)); Map<String, String[]> fd = new HashMap<>(); for (String f : facs) fd.put(f, n.tbl.strings(f));
-            Reg g = Reg.run(r, nums, nd, facs, fd, n.regIntercept); if (g.k == k) { X = g.fit.X; names = g.coefNames; } }
+            Reg g = Reg.run(r, nums, nd, facs, fd, n.regIntercept, n.refs); if (g.k == k) { X = g.fit.X; names = g.coefNames; } }
         boolean hk = X != null && s.methodRandomCi.equals("HK");   // regression model with test="knha" (adhoc when the se-floor is on)
         Influence in = Influence.run(y, v, X, s.methodTau, lab, names == null ? new String[]{"intrcpt"} : names, hk, hk && s.adhocHakn.equals("se"));
         addText("Outlier and Influence Diagnostics", Report.influenceText(in));

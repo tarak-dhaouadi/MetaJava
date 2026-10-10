@@ -282,7 +282,7 @@ public final class Report {
         List<String> head = new ArrayList<>(List.of("", "estimate", "se", g.knha ? "tval" : "zval", "pval", "ci.lb", "ci.ub", ""));
         List<String[]> rows = new ArrayList<>();
         for (int a = 0; a < g.p; a++) rows.add(new String[]{g.coefNames[a], Fmt.num(g.est[a], 4), Fmt.num(g.se[a], 4), Fmt.num(g.zval[a], 4), Fmt.num(g.pval[a], 4), Fmt.num(g.lb[a], 4), Fmt.num(g.ub[a], 4), stars(g.pval[a])});
-        b.append(table(head, rows, new boolean[]{false, true, true, true, true, true, true, false})).append(NL);
+        b.append(table(head, g.withReferenceRows(head, rows), new boolean[]{false, true, true, true, true, true, true, false})).append(NL);
         b.append("---").append(NL).append("Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1").append(NL).append(NL);
         b.append("Note: Estimates and confidence intervals are on the ").append(r.spec.isRatioSm() ? "Log " + capital(longSm(r.spec.sm)) : r.spec.sm).append(" scale.").append(NL);
         return b.toString();
@@ -375,14 +375,22 @@ public final class Report {
     }
 
     /** Right/left aligned text table with a rule under the header, like R's print.data.frame/prmatrix. */
+    /** Cell text that is drawn as a dash centred in its column (reference-category rows). */
+    public static final String DASH = "\u0001";
+
     public static String table(List<String> head, List<String[]> rows, boolean[] right) {
         int n = head.size(); int[] w = new int[n];
-        for (int j = 0; j < n; j++) { w[j] = head.get(j).length(); for (String[] r : rows) w[j] = Math.max(w[j], j < r.length ? r[j].length() : 0); }
+        for (int j = 0; j < n; j++) { w[j] = head.get(j).length(); for (String[] r : rows) w[j] = Math.max(w[j], j < r.length ? (DASH.equals(r[j]) ? 1 : r[j].length()) : 0); }
         StringBuilder b = new StringBuilder(); StringBuilder line = new StringBuilder();
         for (int j = 0; j < n; j++) { line.append(right[j] ? Fmt.pad(head.get(j), w[j]) : Fmt.padR(head.get(j), w[j])); if (j < n - 1) line.append(' '); }
         b.append(line).append(NL);
-        for (String[] r : rows) { line.setLength(0); for (int j = 0; j < n; j++) { String c = j < r.length ? r[j] : ""; line.append(right[j] ? Fmt.pad(c, w[j]) : Fmt.padR(c, w[j])); if (j < n - 1) line.append(' '); } b.append(line).append(NL); }
-        record(b.toString(), head, rows, right);
+        List<String[]> shown = new ArrayList<>();
+        for (String[] r : rows) { line.setLength(0); String[] sr = r.clone();
+            for (int j = 0; j < n; j++) { String c = j < r.length ? r[j] : "";
+                if (DASH.equals(c)) { int left = (w[j] - 1) / 2; c = " ".repeat(left) + "-" + " ".repeat(w[j] - 1 - left); line.append(c); if (j < n - 1) line.append(' '); if (j < sr.length) sr[j] = "\u2014"; continue; }
+                line.append(right[j] ? Fmt.pad(c, w[j]) : Fmt.padR(c, w[j])); if (j < n - 1) line.append(' '); }
+            b.append(line).append(NL); shown.add(sr); }
+        record(b.toString(), head, shown, right);
         return b.toString();
     }
 }

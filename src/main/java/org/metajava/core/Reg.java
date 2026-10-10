@@ -11,9 +11,12 @@ public final class Reg {
     public double[] x1, y1, size; public String xName; // for bubble plot (single numeric covariate)
     public double[] fitted; public int[] used; public boolean intercept;
     public double tau2RE;
+    public int[] refPos = new int[0]; public String[] refLabel = new String[0];   // reference-category rows of the coefficient tables
 
     /** Design matrix of a meta-regression: rows of the studies used, response, sampling variances and coefficient names. */
-    public static final class Design { public double[][] X; public double[] y, v; public String[] names; public int[] rows; public int k, p; }
+    public static final class Design { public double[][] X; public double[] y, v; public String[] names; public int[] rows; public int k, p;
+        /** Reference categories of the factors: refPos[i] = index of the first coefficient of that factor (the row is shown just before it), refLabel[i] = "Factor: Level". */
+        public int[] refPos = new int[0]; public String[] refLabel = new String[0]; }
 
     /** Complete cases of the given terms (studies with a usable effect and non-missing covariates / factors). */
     public static int[] completeCases(MetaResult r, List<String> numCovs, Map<String, double[]> numData, List<String> factors, Map<String, String[]> facData) {
@@ -27,19 +30,28 @@ public final class Reg {
         return ok.stream().mapToInt(Integer::intValue).toArray();
     }
 
-    /** Builds the design matrix on the given rows (null: the complete cases of the terms). Factors are dummy coded against their first level (alphabetical) when an intercept is present. */
+    /** Builds the design matrix on the given rows (null: the complete cases of the terms). Factors are dummy coded against their first level (alphabetical unless a reference level is chosen) when an intercept is present. */
     public static Design design(MetaResult r, List<String> numCovs, Map<String, double[]> numData, List<String> factors, Map<String, String[]> facData, boolean intercept, int[] rows) {
+        return design(r, numCovs, numData, factors, facData, intercept, rows, null);
+    }
+
+    /** As above; refs maps a factor to the level used as its reference category (default, or when the level is absent from the studies used: the first level alphabetically). */
+    public static Design design(MetaResult r, List<String> numCovs, Map<String, double[]> numData, List<String> factors, Map<String, String[]> facData, boolean intercept, int[] rows, Map<String, String> refs) {
         if (rows == null) rows = completeCases(r, numCovs, numData, factors, facData);
         final int[] ok = rows; int k = ok.length;
         List<String> names = new ArrayList<>(); List<double[]> cols = new ArrayList<>();
         if (intercept) { names.add("intercept"); double[] o = new double[k]; Arrays.fill(o, 1); cols.add(o); }
         for (String c : numCovs) { names.add(c); double[] x = new double[k]; for (int j = 0; j < k; j++) x[j] = numData.get(c)[ok[j]]; cols.add(x); }
+        List<Integer> rp = new ArrayList<>(); List<String> rl = new ArrayList<>();
         for (String f : factors) {
             TreeSet<String> lv = new TreeSet<>(); for (int i : ok) lv.add(facData.get(f)[i].trim());
             List<String> L = new ArrayList<>(lv);
-            for (int a = intercept ? 1 : 0; a < L.size(); a++) { names.add(f + L.get(a)); double[] x = new double[k]; for (int j = 0; j < k; j++) x[j] = facData.get(f)[ok[j]].trim().equals(L.get(a)) ? 1 : 0; cols.add(x); }
+            String want = refs == null ? null : refs.get(f); if (want != null && L.remove(want.trim())) L.add(0, want.trim());
+            if (intercept && !L.isEmpty()) { rp.add(names.size()); rl.add(f + ": " + L.get(0)); }
+            for (int a = intercept ? 1 : 0; a < L.size(); a++) { names.add(f + ": " + L.get(a)); double[] x = new double[k]; for (int j = 0; j < k; j++) x[j] = facData.get(f)[ok[j]].trim().equals(L.get(a)) ? 1 : 0; cols.add(x); }
         }
         Design d = new Design(); d.k = k; d.p = cols.size(); d.rows = ok; d.names = names.toArray(new String[0]);
+        d.refPos = rp.stream().mapToInt(Integer::intValue).toArray(); d.refLabel = rl.toArray(new String[0]);
         d.X = new double[k][d.p]; for (int j = 0; j < k; j++) for (int a = 0; a < d.p; a++) d.X[j][a] = cols.get(a)[j];
         d.y = new double[k]; d.v = new double[k]; for (int j = 0; j < k; j++) { d.y[j] = r.TE[ok[j]]; d.v[j] = r.seTE[ok[j]] * r.seTE[ok[j]]; }
         return d;
@@ -86,13 +98,17 @@ public final class Reg {
     public double[][] X; public double[] yv, vv;   // design matrix, effects and variances as fitted (for permutation tests)
 
     public static Reg run(MetaResult r, List<String> numCovs, Map<String, double[]> numData, List<String> factors, Map<String, String[]> facData, boolean intercept) {
+        return run(r, numCovs, numData, factors, facData, intercept, null);
+    }
+
+    public static Reg run(MetaResult r, List<String> numCovs, Map<String, double[]> numData, List<String> factors, Map<String, String[]> facData, boolean intercept, Map<String, String> refs) {
         MetaSpec s = r.spec;
-        Design D = design(r, numCovs, numData, factors, facData, intercept, null);
+        Design D = design(r, numCovs, numData, factors, facData, intercept, null, refs);
         List<Integer> ok = new ArrayList<>(); for (int i : D.rows) ok.add(i);
         int k = D.k, p = D.p; double[][] X = D.X; double[] y = D.y, v = D.v;
         Reg g = new Reg(); g.k = k; g.p = p; g.intercept = intercept; g.method = s.methodTau; g.X = X; g.yv = y; g.vv = v;
         if (k <= p) throw new IllegalArgumentException("Number of studies (" + k + ") must exceed number of coefficients (" + p + ").");
-        g.fit = Rma.fit(y, v, X, s.methodTau); g.coefNames = D.names;
+        g.fit = Rma.fit(y, v, X, s.methodTau); g.coefNames = D.names; g.refPos = D.refPos; g.refLabel = D.refLabel;
         g.tau2 = g.fit.tau2; g.tau = Math.sqrt(g.tau2);
         // intercept-only model for R2
         double[][] X0 = new double[k][1]; for (double[] q : X0) q[0] = 1;
@@ -126,6 +142,21 @@ public final class Reg {
         if (numCovs.size() == 1 && factors.isEmpty()) { g.xName = numCovs.get(0); g.x1 = new double[k]; g.y1 = y; g.size = new double[k]; for (int j = 0; j < k; j++) { g.x1[j] = numData.get(numCovs.get(0))[ok.get(j)]; g.size[j] = w[j]; } }
         g.formula = (intercept ? "" : "0 + ") ;
         return g;
+    }
+
+
+    /** Inserts the reference-category rows into the rows of a coefficient table (row a = coefficient a). Columns whose header is empty (significance stars) stay blank, all other columns get a dash. */
+    public List<String[]> withReferenceRows(List<String> head, List<String[]> rows) {
+        List<String[]> out = new ArrayList<>();
+        for (int a = 0; a < rows.size(); a++) {
+            for (int q = 0; q < refPos.length; q++) if (refPos[q] == a) {
+                String[] r = new String[head.size()]; r[0] = refLabel[q] + " (reference)";
+                for (int c = 1; c < r.length; c++) r[c] = head.get(c).isEmpty() ? "" : Report.DASH;
+                out.add(r);
+            }
+            out.add(rows.get(a));
+        }
+        return out;
     }
 
     static double seTau2(Rma m, String method, double[][] X, double[] v) {

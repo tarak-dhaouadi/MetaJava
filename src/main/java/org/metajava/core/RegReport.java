@@ -26,7 +26,7 @@ public final class RegReport {
         List<String> head = List.of("", "estimate", "se", t.knha ? "tval" : "zval", "pval*", "ci.lb", "ci.ub", "", "pval (asympt.)");
         List<String[]> rows = new ArrayList<>();
         for (int a = 0; a < t.p; a++) rows.add(new String[]{t.coefNames[a], Fmt.num(g.est[a], 4), Fmt.num(g.se[a], 4), Fmt.num(g.zval[a], 4), pv(t.pval[a]), Fmt.num(g.lb[a], 4), Fmt.num(g.ub[a], 4), stars(t.pval[a]), pv(g.pval[a])});
-        b.append(Report.table(head, rows, new boolean[]{false, true, true, true, true, true, true, false, true})).append(NL);
+        b.append(Report.table(head, g.withReferenceRows(head, rows), new boolean[]{false, true, true, true, true, true, true, false, true})).append(NL);
         b.append("---").append(NL).append("Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1").append(NL).append(NL);
         b.append("* p-values based on permutation; standard errors and confidence limits are the ordinary (model-based) ones.").append(NL);
         b.append("Note: Estimates and confidence intervals are on the ").append(r.spec.isRatioSm() ? "log " + r.spec.sm : r.spec.sm).append(" scale.").append(NL);

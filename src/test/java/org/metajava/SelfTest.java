@@ -380,6 +380,16 @@ public class SelfTest {
             java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("ablat", ablat); nd.put("year", year); java.util.Map<String, String[]> fd = new java.util.HashMap<>(); fd.put("alloc", alloc);
             MetaSpec bs = new MetaSpec(); bs.type = "gen"; bs.sm = "RR"; bs.methodTau = "REML"; MetaData bd = new MetaData(); bd.put("TE", by); bd.put("seTE", bse); bd.n = K; MetaResult br = Meta.run(bs, bd);
             Reg g = Reg.run(br, java.util.List.of("ablat"), nd, java.util.List.of(), fd, true);
+            { Reg gf = Reg.run(br, java.util.List.of("ablat"), nd, java.util.List.of("alloc"), fd, true);
+              String t1 = Report.regText(gf, br, 1, ""); Perm pf = Perm.run(gf, 200, false, 1); String t2 = RegReport.permText(gf, pf, br);
+              for (String t : new String[]{t1, t2}) { check(t.contains("alloc: alt (reference)") && t.contains("alloc: random") && t.contains("alloc: sys") && !t.contains("allocrandom"), "factor rows read \"Name: Level\" with a reference-category row"); check(t.indexOf("alloc: alt (reference)") < t.indexOf("alloc: random"), "reference row precedes the other levels of its factor"); }
+              { java.util.Map<String, String> rf = new java.util.HashMap<>(); rf.put("alloc", "sys"); Reg gs = Reg.run(br, java.util.List.of("ablat"), nd, java.util.List.of("alloc"), fd, true, rf);
+                String t3 = Report.regText(gs, br, 1, ""); check(t3.contains("alloc: sys (reference)") && t3.contains("alloc: alt") && t3.contains("alloc: random") && t3.indexOf("alloc: sys (reference)") < t3.indexOf("alloc: alt"), "chosen reference category is the reference row");
+                near(gs.QM, gf.QM, 1e-8, "omnibus test and fit do not depend on the reference category"); near(gs.tau2, gf.tau2, 1e-8, "tau^2 does not depend on the reference category");
+                int ia = java.util.Arrays.asList(gf.coefNames).indexOf("alloc: random"), is = java.util.Arrays.asList(gs.coefNames).indexOf("alloc: random");
+                near(gs.est[is], gf.est[ia] - gf.est[java.util.Arrays.asList(gf.coefNames).indexOf("alloc: sys")], 1e-6, "random-vs-sys contrast equals the difference of the two coefficients against alt");
+                rf.put("alloc", "nonexistent"); check(Reg.run(br, java.util.List.of("ablat"), nd, java.util.List.of("alloc"), fd, true, rf).refLabel[0].equals("alloc: alt"), "unknown reference falls back to the first level"); }
+              Reg gn = Reg.run(br, java.util.List.of("ablat"), nd, java.util.List.of("alloc"), fd, false); check(!Report.regText(gn, br, 1, "").contains("(reference)"), "no reference row without intercept"); }
             near(g.tau2, 0.0763479640, 1e-8, "meta-regression (REML, ablat): tau^2"); near(g.QE, 30.73309001, 1e-6, "meta-regression: QE"); near(g.I2, 68.391225, 1e-4, "meta-regression: I^2"); near(g.R2, 75.626622, 1e-4, "meta-regression: R^2");
             near(g.logLik, -8.08732006, 1e-6, "REML fit statistics: restricted logLik (as metafor)"); near(g.aic, 22.17464012, 1e-6, "REML fit statistics: AIC"); near(g.bic, 23.36832593, 1e-6, "REML fit statistics: BIC (uses k - p)"); near(g.aicc, 25.60321155, 1e-6, "REML fit statistics: AICc");
             MetaSpec ms = bs.clone(); ms.methodTau = "ML"; Reg gm = Reg.run(Meta.run(ms, bd), java.util.List.of("ablat"), nd, java.util.List.of(), fd, true);
