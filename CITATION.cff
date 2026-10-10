@@ -1,0 +1,95 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below (and cite the R packages meta and metafor, whose methods it re-implements)."
+type: software
+title: "MetaJava: meta-analysis in Java following the R packages meta and metafor"
+version: 0.1.0
+license: GPL-2.0-or-later
+repository-code: "https://github.com/tarak-dhaouadi/metajava"
+url: "https://github.com/tarak-dhaouadi/metajava"
+abstract: >-
+  A stand-alone desktop application (Java Swing, no R needed) for meta-analysis:
+  binary, continuous, correlation, generic, incidence-rate, single-mean,
+  single-proportion and single-rate data; common-effect and random-effects
+  models with the tau-squared estimators, confidence-interval and prediction-interval
+  methods of the R package meta; subgroup analysis, meta-regression, leave-one-out
+  and cumulative analyses, publication-bias tests and trim-and-fill, forest, funnel,
+  bubble, Baujat and radial plots, and the outlier and influence diagnostics of metafor.
+keywords:
+  - meta-analysis
+  - forest plot
+  - prediction interval
+  - heterogeneity
+  - meta-regression
+  - influence diagnostics
+  - Java
+authors:
+  - family-names: Dhaouadi
+    given-names: Tarak
+    alias: tarak-dhaouadi
+references:
+  - type: software
+    title: "meta: General Package for Meta-Analysis"
+    authors:
+      - family-names: Schwarzer
+        given-names: Guido
+    url: "https://cran.r-project.org/package=meta"
+  - type: software
+    title: "metafor: Meta-Analysis Package for R"
+    authors:
+      - family-names: Viechtbauer
+        given-names: Wolfgang
+    url: "https://cran.r-project.org/package=metafor"
+  - type: article
+    title: "Conducting meta-analyses in R with the metafor package"
+    authors:
+      - family-names: Viechtbauer
+        given-names: Wolfgang
+    journal: "Journal of Statistical Software"
+    volume: 36
+    issue: 3
+    start: 1
+    end: 48
+    year: 2010
+  - type: article
+    title: "Outlier and influence diagnostics for meta-analysis"
+    authors:
+      - family-names: Viechtbauer
+        given-names: Wolfgang
+      - family-names: Cheung
+        given-names: Mike W.-L.
+    journal: "Research Synthesis Methods"
+    volume: 1
+    issue: 2
+    start: 112
+    end: 125
+    year: 2010
+  - type: article
+    title: "How to perform a meta-analysis with R: a practical tutorial"
+    authors:
+      - family-names: Balduzzi
+        given-names: Sara
+      - family-names: Rücker
+        given-names: Gerta
+      - family-names: Schwarzer
+        given-names: Guido
+    journal: "Evidence-Based Mental Health"
+    volume: 22
+    issue: 4
+    start: 153
+    end: 160
+    year: 2019
+  - type: article
+    title: "Prediction intervals for random-effects meta-analysis: a confidence distribution approach"
+    authors:
+      - family-names: Nagashima
+        given-names: Kengo
+      - family-names: Noma
+        given-names: Hisashi
+      - family-names: Furukawa
+        given-names: Toshi A.
+    journal: "Statistical Methods in Medical Research"
+    volume: 28
+    issue: 6
+    start: 1689
+    end: 1702
+    year: 2019
