@@ -321,6 +321,103 @@ public class SelfTest {
                 check(wf && tbls == nt + (loo == null ? 0 : 1) && drawings == 1 && png && dx.indexOf("Meta-Analysis") < dx.indexOf("Leave-One-Out Analysis") && dx.indexOf("Leave-One-Out Analysis") < dx.indexOf("<w:drawing>"), "Word export: valid package, " + tbls + " tables, 1 figure, sections in the order of the output"); }
         } catch (Exception e) { e.printStackTrace(); check(false, "export tests threw " + e); }
 
+        // ---- publication-bias extras: reference values from an independent implementation (numpy/scipy) on a simulated, selectively published data set (k = 40)
+        try {
+            final double[] BT = {0.15619, 0.29910, 0.01761, -0.20216, 0.05837, 0.35535, 0.67845, 0.26147, -0.12771, 0.50847, 0.07148, 0.30391, 0.34216, 0.20934, 0.17643, -0.25949, -0.10307, 0.37826, 0.04549, 0.31993, 0.71792, 0.21288, -0.02555, 0.18620, 0.32047, 0.29902, 0.34393, 0.87863, 0.08648, 0.24543, -0.05728, 0.19867, 0.11262, 0.21947, 0.28166, 0.37987, 0.75569, 0.39152, 0.08332, 0.20562};
+            final double[] BS = {0.26878, 0.32897, 0.12536, 0.27023, 0.05413, 0.17934, 0.34650, 0.10257, 0.28676, 0.19087, 0.36637, 0.24167, 0.23168, 0.09787, 0.05499, 0.22955, 0.35737, 0.20050, 0.39005, 0.06775, 0.34406, 0.21304, 0.35719, 0.06060, 0.13700, 0.05738, 0.11694, 0.33058, 0.06775, 0.08369, 0.35355, 0.08538, 0.07854, 0.07714, 0.09662, 0.18138, 0.36381, 0.06167, 0.34072, 0.09086};
+            MetaSpec sb = new MetaSpec(); sb.type = "gen"; sb.sm = "MD"; MetaResult rb = Meta.run(sb, gen(BT, BS, false));
+            PubBias.PetPeese pp = PubBias.petPeese(rb);
+            near(pp.pet.b0, 0.198451, 2e-6, "PET intercept"); near(pp.pet.se0, 0.037680, 2e-6, "PET intercept SE"); near(pp.peese.b0, 0.212147, 2e-6, "PEESE intercept"); near(pp.peese.se0, 0.023573, 2e-6, "PEESE intercept SE");
+            check(pp.usePeese && Math.abs(pp.estimate - pp.peese.b0) < 1e-12, "PET-PEESE: significant PET intercept selects PEESE");
+            PubBias.Selection sl = PubBias.selection(rb, "Auto");
+            near(sl.mu, 0.175014, 5e-5, "selection model: adjusted effect"); near(sl.delta, 0.316320, 5e-4, "selection model: delta"); near(sl.tau2, 0.006014, 5e-5, "selection model: tau^2");
+            near(sl.ll, 13.127976, 1e-4, "selection model: log-likelihood"); near(sl.lrt, 4.96899, 2e-3, "selection model: likelihood ratio test"); near(sl.muLo, 0.088362, 1e-3, "selection model: profile CI lower"); near(sl.muUp, 0.239641, 1e-3, "selection model: profile CI upper");
+            PubBias.FailSafe fs = PubBias.failSafe(rb);
+            near(fs.nRosenthal, 1776, 0.5, "fail-safe N (Rosenthal)"); near(fs.nRosenberg, 2387, 0.5, "fail-safe N (Rosenberg)");
+            // exact linear relations are recovered
+            double[] sx = {0.05, 0.1, 0.15, 0.2, 0.25, 0.3}, ya = new double[6], yb = new double[6]; for (int i = 0; i < 6; i++) { ya[i] = 0.2 + 1.5 * sx[i] + (i % 2 == 0 ? 1e-4 : -1e-4); yb[i] = 0.3 + 2 * sx[i] * sx[i] + (i % 2 == 0 ? 1e-4 : -1e-4); }
+            near(PubBias.petPeese(Meta.run(sb, gen(ya, sx, false))).pet.b0, 0.2, 1e-3, "PET recovers the intercept of an exact linear relation"); near(PubBias.petPeese(Meta.run(sb, gen(yb, sx, false))).peese.b0, 0.3, 1e-3, "PEESE recovers the intercept of an exact quadratic relation");
+            // a negative favoured direction is the mirror image of the positive one
+            double[] neg = new double[BT.length]; for (int i = 0; i < neg.length; i++) neg[i] = -BT[i];
+            PubBias.Selection sn = PubBias.selection(Meta.run(sb, gen(neg, BS, false)), "Auto");
+            check(sn.flipped && Math.abs(sn.mu + sl.mu) < 1e-4 && Math.abs(sn.delta - sl.delta) < 1e-3 && Math.abs(sn.muLo + sl.muUp) < 1e-3, "selection model: mirrored data give the mirrored result (direction Auto)");
+            check(PubBias.petPeese(Meta.run(sb, gen(new double[]{0.1, 0.2}, new double[]{0.1, 0.2}, false))).error != null && PubBias.selection(Meta.run(sb, gen(new double[]{0.1, 0.2, 0.3}, new double[]{0.1, 0.2, 0.3}, false)), "Auto").error != null, "too few studies give an explanatory message, not an exception");
+            String btxt = BiasReport.petPeeseText(pp, rb) + BiasReport.selectionText(sl, rb) + BiasReport.failSafeText(fs, rb);
+            check(btxt.contains("PEESE is used") && btxt.contains("Likelihood ratio test of selection") && btxt.contains("Rosenthal"), "publication-bias reports are produced");
+            BufferedImage pim = Plots.petPeese(pp, rb, new Plots.Opts()); check(pim.getWidth() > 100 && countColour(pim, 0x1F4E8C) > 50 && countColour(pim, 0xD9822B) > 50, "PET-PEESE plot draws the PET line and the PEESE curve");
+        } catch (Exception e) { e.printStackTrace(); check(false, "publication-bias tests threw " + e); }
+
+        // ---- data validation
+        try {
+            DataTable tb = new DataTable(); tb.nrow = 6;
+            tb.add("Study", new String[]{"Smith 2010", "Lee 2011", "Smith 2010", "Kim 2012", "Wu 2013", "Ng 2014"});
+            tb.add("Ev1", new String[]{"5", "30", "abc", "4", "6", "7"}); tb.add("N1", new String[]{"20", "25", "40", "50", "60", "70"});
+            tb.add("Ev2", new String[]{"8", "9", "10", "", "12", "-1"}); tb.add("N2", new String[]{"20", "25", "40", "50", "60", "70"});
+            java.util.Map<String, String> cols = new java.util.LinkedHashMap<>(), nm = new java.util.HashMap<>();
+            cols.put("event.e", "Ev1"); cols.put("n.e", "N1"); cols.put("event.c", "Ev2"); cols.put("n.c", "N2"); nm.put("event.e", "Events (experimental)"); nm.put("n.e", "Total (experimental)"); nm.put("event.c", "Events (control)"); nm.put("n.c", "Total (control)");
+            try { Validate.check(tb, "bin", cols, nm, "Study", null, false, "RR"); check(false, "validation: bad data are rejected"); }
+            catch (Validate.Failed f) { String all = f.getMessage();
+                check(all.contains("row 3 (Smith 2010) has \"abc\"") && all.contains("Column 'Ev1' (Events (experimental)) contains text where a number is expected"), "validation: non-numeric cell named with row, study and column");
+                check(all.contains("Events (experimental) is greater than Total (experimental): row 2 (Lee 2011): 30 > 25"), "validation: events greater than the total");
+                check(all.contains("Events (control) cannot be negative: row 6 (Ng 2014): -1"), "validation: negative events");
+                check(all.contains("Duplicate study labels: \"Smith 2010\" in rows 1 and 3"), "validation: duplicate study labels");
+                check(all.contains("Column 'Ev2' (Events (control)) has no value: row 4 (Kim 2012)"), "validation: missing value reported"); }
+            tb.cols.set(1, new String[]{"5", "7", "8", "4", "6", "7"}); tb.cols.set(3, new String[]{"8", "9", "10", "11", "12", "13"}); tb.cols.set(0, new String[]{"A", "B", "C", "D", "E", "E"});
+            java.util.List<String> w = Validate.check(tb, "bin", cols, nm, "Study", null, false, "RR");
+            check(w.size() == 1 && w.get(0).contains("Duplicate study labels"), "validation: valid numbers pass and only the duplicate label is a warning (" + w.size() + ")");
+            DataTable tg = new DataTable(); tg.nrow = 3; tg.add("te", new String[]{"0.1", "0.2", "0.3"}); tg.add("se", new String[]{"0.1", "0", "-0.2"});
+            java.util.Map<String, String> gc = new java.util.LinkedHashMap<>(); gc.put("TE", "te"); gc.put("seTE", "se");
+            try { Validate.check(tg, "gen", gc, new java.util.HashMap<>(), null, null, false, "MD"); check(false, "validation: non-positive SE rejected"); } catch (Validate.Failed f) { check(f.getMessage().contains("Standard errors must be positive"), "validation: non-positive standard errors"); }
+        } catch (Exception e) { e.printStackTrace(); check(false, "validation tests threw " + e); }
+
+
+        // ---- permutest, model comparison and GOSH (BCG vaccine trials, log risk ratios; reference values from an independent numpy / scipy implementation, ablat = absolute latitude)
+        try {
+            double[] ta = {4, 6, 3, 62, 33, 180, 8, 505, 29, 17, 186, 5, 27}, n1 = {123, 306, 231, 13598, 5069, 1541, 2545, 88391, 7499, 1716, 50634, 2498, 16913}, tc = {11, 29, 11, 248, 47, 372, 10, 499, 45, 65, 141, 3, 29}, n2 = {139, 303, 220, 12867, 5808, 1451, 629, 88391, 7277, 1665, 27338, 2341, 17854};
+            double[] ablat = {44, 55, 42, 52, 13, 44, 19, 13, 27, 42, 18, 33, 33}, year = {48, 49, 60, 77, 73, 53, 73, 80, 68, 61, 74, 69, 76}; String[] alloc = {"random", "random", "random", "random", "alt", "alt", "sys", "random", "random", "sys", "sys", "alt", "random"};
+            int K = 13; double[] by = new double[K], bse = new double[K];
+            for (int i = 0; i < K; i++) { by[i] = Math.log((ta[i] / n1[i]) / (tc[i] / n2[i])); bse[i] = Math.sqrt(1 / ta[i] - 1 / n1[i] + 1 / tc[i] - 1 / n2[i]); }
+            java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("ablat", ablat); nd.put("year", year); java.util.Map<String, String[]> fd = new java.util.HashMap<>(); fd.put("alloc", alloc);
+            MetaSpec bs = new MetaSpec(); bs.type = "gen"; bs.sm = "RR"; bs.methodTau = "REML"; MetaData bd = new MetaData(); bd.put("TE", by); bd.put("seTE", bse); bd.n = K; MetaResult br = Meta.run(bs, bd);
+            Reg g = Reg.run(br, java.util.List.of("ablat"), nd, java.util.List.of(), fd, true);
+            near(g.tau2, 0.0763479640, 1e-8, "meta-regression (REML, ablat): tau^2"); near(g.QE, 30.73309001, 1e-6, "meta-regression: QE"); near(g.I2, 68.391225, 1e-4, "meta-regression: I^2"); near(g.R2, 75.626622, 1e-4, "meta-regression: R^2");
+            near(g.logLik, -8.08732006, 1e-6, "REML fit statistics: restricted logLik (as metafor)"); near(g.aic, 22.17464012, 1e-6, "REML fit statistics: AIC"); near(g.bic, 23.36832593, 1e-6, "REML fit statistics: BIC (uses k - p)"); near(g.aicc, 25.60321155, 1e-6, "REML fit statistics: AICc");
+            MetaSpec ms = bs.clone(); ms.methodTau = "ML"; Reg gm = Reg.run(Meta.run(ms, bd), java.util.List.of("ablat"), nd, java.util.List.of(), fd, true);
+            near(gm.logLik, -7.68566553, 1e-6, "ML fit statistics: logLik"); near(gm.aic, 21.37133106, 1e-6, "ML fit statistics: AIC"); near(gm.bic, 23.06617913, 1e-6, "ML fit statistics: BIC"); near(gm.aicc, 24.03799772, 1e-6, "ML fit statistics: AICc");
+            // model comparison: all subsets of ablat, year, alloc
+            ModelCompare mc = ModelCompare.run(br, java.util.List.of("ablat", "year"), nd, java.util.List.of("alloc"), fd, true);
+            check(mc.rows.size() == 8, "model comparison: 2^3 models"); ModelCompare.Row top = mc.rows.get(0), nullRow = null; for (ModelCompare.Row w : mc.rows) if (w.mask == 0) nullRow = w;
+            check(top.label.equals("~ ablat") && top.best, "model comparison: best model by AICc is ~ ablat"); near(top.aicc, 24.03799772, 1e-6, "model comparison: AICc of ~ ablat"); near(top.weight, 0.67176891, 1e-6, "model comparison: Akaike weight of ~ ablat");
+            near(top.R2, 75.626622, 1e-4, "model comparison: R^2 of ~ ablat (REML tau^2)"); near(top.lrt, 9.95882164, 1e-6, "model comparison: LRT of ~ ablat against the null model"); near(top.lrtP, 0.00160080, 1e-7, "model comparison: LRT p-value");
+            near(nullRow.aic, 29.33015270, 1e-6, "model comparison: AIC of the intercept-only model"); double sw = 0; for (ModelCompare.Row w : mc.rows) sw += w.weight; near(sw, 1.0, 1e-12, "model comparison: Akaike weights sum to 1");
+            ModelCompare.Row ab = null; for (ModelCompare.Row w : mc.rows) if (w.label.equals("~ ablat + alloc")) ab = w; near(ab.bic, 20.76888636, 1e-6, "model comparison: BIC of ~ ablat + alloc"); near(ab.R2, 72.803033, 1e-4, "model comparison: R^2 of ~ ablat + alloc");
+            check(mc.drops.size() == 3 && mc.drops.get(2).df == 2, "model comparison: drop-one tests (df of the factor)"); near(mc.drops.get(0).lrt, 11.84776639, 1e-6, "model comparison: drop-one LRT for ablat"); near(mc.drops.get(2).p, 0.01935750, 1e-7, "model comparison: drop-one p-value for alloc");
+            // exact permutation test (first 7 trials, ablat + year; all 5040 permutations)
+            for (int hk = 0; hk < 2; hk++) {
+                MetaSpec ps = bs.clone(); if (hk == 1) ps.methodRandomCi = "HK"; MetaData pd = new MetaData(); pd.put("TE", java.util.Arrays.copyOf(by, 7)); pd.put("seTE", java.util.Arrays.copyOf(bse, 7)); pd.n = 7;
+                java.util.Map<String, double[]> pn = new java.util.HashMap<>(); pn.put("ablat", java.util.Arrays.copyOf(ablat, 7)); pn.put("year", java.util.Arrays.copyOf(year, 7));
+                Reg pg = Reg.run(Meta.run(ps, pd), java.util.List.of("ablat", "year"), pn, java.util.List.of(), new java.util.HashMap<>(), true); Perm pt = Perm.run(pg, 1000, true, 1);
+                double[] want = hk == 0 ? new double[]{0.5795634920634921, 0.1880952380952381, 0.48928571428571427} : new double[]{0.582936507936508, 0.20456349206349206, 0.49563492063492065}; double wq = hk == 0 ? 0.37043650793650795 : 0.37956349206349205;
+                check(pt.exact && pt.nPerm == 5040, "permutest" + (hk == 1 ? " (Knapp-Hartung)" : "") + ": exact test enumerates 7! permutations");
+                for (int a = 0; a < 3; a++) near(pt.pval[a], want[a], 1e-12, "permutest" + (hk == 1 ? " (KH)" : "") + ": exact p-value of coefficient " + a); near(pt.pQM, wq, 1e-12, "permutest" + (hk == 1 ? " (KH)" : "") + ": exact p-value of the omnibus test");
+            }
+            Perm r1 = Perm.run(g, 5000, false, 1), r2 = Perm.run(g, 5000, false, 1), r3 = Perm.run(g, 5000, false, 2);
+            check(!r1.exact && r1.pval[1] == r2.pval[1] && r1.pQM == r2.pQM, "permutest: random test is reproducible for a given seed"); near(r1.pval[1], 0.00575, 0.0035, "permutest: random p-value (k = 13) close to the reference 0.0057 from 20000 permutations"); check(r3.pval[1] > 0 && r1.pval[1] >= 1.0 / 5001, "permutest: random p-value is never 0");
+            check(Perm.unrank(4, 0)[0] == 0 && Perm.unrank(4, 23)[0] == 3 && Perm.unrank(4, 23)[3] == 0, "permutest: lexicographic unranking");
+            // GOSH: all 247 subsets (>= 2 studies) of the first 8 trials
+            MetaData gd = new MetaData(); gd.put("TE", java.util.Arrays.copyOf(by, 8)); gd.put("seTE", java.util.Arrays.copyOf(bse, 8)); gd.n = 8; Gosh gs = Gosh.run(Meta.run(bs, gd), 20000, 1);
+            check(gs.exhaustive && gs.nSub == 247, "GOSH: 2^8 - 1 - 8 subsets"); double me = 0, mi = 0; for (int b = 0; b < gs.nSub; b++) { me += gs.est[b]; mi += gs.i2[b]; }
+            near(me / gs.nSub, -0.9131121626, 1e-9, "GOSH: mean estimate over the subsets"); near(mi / gs.nSub, 74.64465273, 1e-6, "GOSH: mean I^2 over the subsets"); near(gs.fullEst, -0.8990140584, 1e-9, "GOSH: estimate with all studies"); near(gs.estIn[0], -0.9060221181, 1e-9, "GOSH: mean estimate of the subsets with study 1"); near(gs.i2Out[0], 78.53012553, 1e-6, "GOSH: mean I^2 of the subsets without study 1");
+            MetaData gd2 = new MetaData(); gd2.put("TE", by); gd2.put("seTE", bse); gd2.n = K; Gosh a1 = Gosh.run(Meta.run(bs, gd2), 3000, 7), a2 = Gosh.run(Meta.run(bs, gd2), 3000, 7);
+            check(a1.exhaustive == false && a1.nSub == 3000 && java.util.Arrays.equals(a1.est, a2.est), "GOSH: random subsets are reproducible for a given seed");
+            // plots
+            Plots.Opts po = new Plots.Opts(); po.scale = 1; MetaSpec ss = bs.clone(); ss.prediction = true; ss.predictionSubgroup = true; MetaData sd = new MetaData(); sd.put("TE", by); sd.put("seTE", bse); sd.n = K; sd.subgroup = alloc; MetaResult sr = Meta.run(ss, sd);
+            java.awt.image.BufferedImage[] imgs = {org.metajava.plot.ExtraPlots.gosh(gs, br, po, false), org.metajava.plot.ExtraPlots.gosh(a1, br, po, true), org.metajava.plot.ExtraPlots.orchard(sr, po), org.metajava.plot.ExtraPlots.caterpillar(sr, po)}; String[] nm2 = {"GOSH plot", "GOSH plot (highlight)", "orchard plot", "caterpillar plot"};
+            for (int i = 0; i < imgs.length; i++) { int dark = 0; for (int yy = 0; yy < imgs[i].getHeight(); yy += 2) for (int xx = 0; xx < imgs[i].getWidth(); xx += 2) if ((imgs[i].getRGB(xx, yy) & 0xFFFFFF) != 0xFFFFFF) dark++; check(dark > 400, nm2[i] + " is drawn (" + dark + " non-white samples)"); }
+            org.metajava.plot.VectorGraphics vg = org.metajava.plot.Canvas.record(sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return org.metajava.plot.ExtraPlots.orchard(sr, q); }, 1.0); check(vg != null, "orchard plot can be recorded as vector graphics (SVG / PDF)");
+            check(RegReport.goshText(gs, br).contains("247 subsets") && RegReport.compareText(mc, br).contains("* ~ ablat") && RegReport.permText(g, r1, br).contains("p-val*"), "report texts for GOSH, model comparison and permutest");
+        } catch (Exception e) { e.printStackTrace(); check(false, "permutest / model comparison / GOSH tests threw " + e); }
+
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);
     }

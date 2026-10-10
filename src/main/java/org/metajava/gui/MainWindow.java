@@ -3,6 +3,7 @@ package org.metajava.gui;
 import org.metajava.core.*;
 import org.metajava.io.TableReader;
 import org.metajava.plot.Plots;
+import org.metajava.plot.ExtraPlots;
 import org.metajava.plot.Canvas;
 import org.metajava.plot.VectorExport;
 import org.metajava.export.ResultsDoc;
@@ -63,6 +64,13 @@ public class MainWindow extends JFrame {
         funnelChk = Ui.check("Funnel plot", true), contourChk = Ui.check("Contour-enhanced", false), labChk = Ui.check("Study labels", true), biasChk = Ui.check("Test for funnel plot asymmetry", true), biasPlotChk = Ui.check("Plot", true),
         tfChk = Ui.check("Trim and fill", false), infChk = Ui.check("Outlier & influence diagnostics (metafor)", false), baujatChk = Ui.check("Baujat plot", false), radialChk = Ui.check("Radial (Galbraith) plot", false),
         doiChk = Ui.check("Doi plot and LFK index", false), doiApexChk = Ui.check("Mark the apex (dashed line)", false), labbeChk = Ui.check("L\u2019Abb\u00E9 plot (binary outcomes)", false);
+    JCheckBox petChk = Ui.check("PET-PEESE (small-study effects)", false), petPlotChk = Ui.check("PET-PEESE plot", true), selChk = Ui.check("Selection model (3-parameter)", false), failChk = Ui.check("Fail-safe N", false);
+    JComboBox<String> selDir = Ui.combo("Auto", "Positive", "Negative");
+    // meta-regression extras, subgroup plots, GOSH
+    JCheckBox permChk = Ui.check("Permutation test (permutest)", false), permExactChk = Ui.check("Exact test when k \u2264 9 (all k! permutations)", false), cmpChk = Ui.check("Model comparison table (AIC / BIC / R\u00B2)", false),
+        orchardChk = Ui.check("Orchard plot (subgroups)", false), caterChk = Ui.check("Caterpillar plot (subgroups)", false), goshChk = Ui.check("GOSH plot (heterogeneity diagnostics)", false), goshHlChk = Ui.check("Colour subsets by the most influential study", false);
+    JSpinner permIterSp = new JSpinner(new SpinnerNumberModel(5000, 100, 100000, 1000)), goshSubSp = new JSpinner(new SpinnerNumberModel(20000, 1000, 500000, 5000));
+    JTextField permSeedF = new JTextField("1", 6), goshSeedF = new JTextField("1", 6);
     JComboBox<String> biasMethod = Ui.combo("Default", "Egger", "Begg", "Thompson", "Harbord", "Peters", "Macaskill", "Deeks", "Pustejovsky", "Schwarzer");
     JComboBox<String> tfSide = Ui.combo("Auto", "Left", "Right"), tfEst = Ui.combo("L0", "R0");
     JSpinner dpiSp = new JSpinner(new SpinnerNumberModel(300, 72, 1200, 100)); JComboBox<String> fmtBox = Ui.combo("PNG", "TIFF", "JPG", "SVG", "PDF");
@@ -71,6 +79,7 @@ public class MainWindow extends JFrame {
     final ProgressStrip strip = new ProgressStrip();
     final List<Item> shown = new ArrayList<>(); String shownTitle = "", shownSource = "";   // the output as displayed (for the Excel / Word export)
     String lastText = "";
+    final List<JTextArea> textAreas = new ArrayList<>(); int wrapCols = -1;   // text blocks of the results panel (their unwrapped text is kept in the "raw" client property)
     boolean suppress = false; final javax.swing.Timer autoTimer = new javax.swing.Timer(350, e -> runImpl(true));
 
     public MainWindow() {
@@ -81,6 +90,7 @@ public class MainWindow extends JFrame {
         JPanel left = leftPanel(); JScrollPane ls = new JScrollPane(left); ls.setBorder(null); ls.getVerticalScrollBar().setUnitIncrement(16); ls.setPreferredSize(new Dimension(470, 800));
         results.setLayout(new BoxLayout(results, BoxLayout.Y_AXIS)); results.setBackground(Color.WHITE); results.setBorder(new EmptyBorder(14, 18, 14, 18));
         resScroll = new JScrollPane(results); resScroll.getVerticalScrollBar().setUnitIncrement(24); resScroll.setBorder(new LineBorder(Ui.BORDER));
+        resScroll.getViewport().addComponentListener(new java.awt.event.ComponentAdapter() { public void componentResized(java.awt.event.ComponentEvent e) { rewrap(); } });   // long lines are re-wrapped to the window width, so no sideways scrolling is needed
         JSplitPane sp = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, ls, resScroll); sp.setDividerLocation(470); sp.setBorder(new EmptyBorder(8, 8, 0, 8)); sp.setOpaque(false);
         add(sp, BorderLayout.CENTER);
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 5)); bar.setBackground(Ui.BG); bar.add(status); busy.setPreferredSize(new Dimension(160, 12)); busy.setVisible(false); bar.add(busy); add(bar, BorderLayout.SOUTH);
@@ -135,13 +145,25 @@ public class MainWindow extends JFrame {
         Ui.Section f = new Ui.Section("4. Forest plot", false);
         f.row(null, forestChk); f.row("Sort by", sortBox); f.row("Order", sortDir); f.row(null, fOverallTest); f.row(null, fHet); f.row(null, fCiI2); f.row(null, fCiTau); f.row(null, fDetails); f.row("X-axis left label", xLeft); f.row("X-axis right label", xRight); f.row("Digits", digitsSp); f.row("Row spacing", spacingSp);
         p.add(f); p.add(Box.createVerticalStrut(8));
-        Ui.Section sg = new Ui.Section("5. Subgroup analysis", false); sg.row("Subgroup variable", subgroupBox); sg.row(null, sgChk); sg.row(null, tauCommon); sg.row(null, sgPred); sg.row(null, sgTestEffect); sg.row(null, sgDetails); p.add(sg); p.add(Box.createVerticalStrut(8));
-        Ui.Section rg = new Ui.Section("6. Meta-regression", false); rg.row(null, regChk); rg.row("Covariates (numeric)", new JScrollPane(covList)); rg.row("Factors (categorical)", new JScrollPane(facList)); rg.row(null, regIntercept); rg.row(null, bubbleChk); rg.row(null, regLine); p.add(rg); p.add(Box.createVerticalStrut(8));
+        Ui.Section sg = new Ui.Section("5. Subgroup analysis", false); sg.row("Subgroup variable", subgroupBox); sg.row(null, sgChk); sg.row(null, tauCommon); sg.row(null, sgPred); sg.row(null, sgTestEffect); sg.row(null, sgDetails); sg.row(null, orchardChk); sg.row(null, caterChk); p.add(sg); p.add(Box.createVerticalStrut(8));
+        Ui.Section rg = new Ui.Section("6. Meta-regression", false); rg.row(null, regChk); rg.row("Covariates (numeric)", new JScrollPane(covList)); rg.row("Factors (categorical)", new JScrollPane(facList)); rg.row(null, regIntercept); rg.row(null, bubbleChk); rg.row(null, regLine);
+        permChk.setToolTipText("Permutation test for the moderators (metafor::permutest): the rows of the model matrix are permuted and the model is refitted each time. Applies to the model of this section.");
+        permIterSp.setToolTipText("Number of random permutations (ignored by the exact test). Precision of the p-value is about 1/iterations."); permSeedF.setToolTipText("Seed of the random number generator: the same seed gives the same p-values");
+        cmpChk.setToolTipText("Fits every subset of the selected covariates / factors on the same studies and compares AIC, AICc, BIC (maximum likelihood), tau\u00B2, I\u00B2 and R\u00B2");
+        rg.row(null, permChk); rg.row("Permutations", permIterSp); rg.row("Random seed (permutations)", permSeedF); rg.row(null, permExactChk); rg.row(null, cmpChk); p.add(rg); p.add(Box.createVerticalStrut(8));
         Ui.Section lo = new Ui.Section("7. Leave-one-out analysis", false); lo.row(null, looChk); lo.row(null, looForest); p.add(lo); p.add(Box.createVerticalStrut(8));
         Ui.Section cu = new Ui.Section("8. Cumulative meta-analysis", false); cu.row(null, cumChk); cu.row(null, cumForest); p.add(cu); p.add(Box.createVerticalStrut(8));
         Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
-        pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row(null, doiChk); pb.row(null, doiApexChk); p.add(pb); p.add(Box.createVerticalStrut(8));
-        Ui.Section dg = new Ui.Section("10. Diagnostics", false); dg.row(null, infChk); dg.row(null, baujatChk); dg.row(null, radialChk); dg.row(null, labbeChk); p.add(dg); p.add(Box.createVerticalStrut(8));
+        pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row(null, doiChk); pb.row(null, doiApexChk);
+        petChk.setToolTipText("Precision-effect test (PET) and precision-effect estimate with standard error (PEESE): regression-based effect corrected for small-study effects (Stanley & Doucouliagos, 2014)");
+        selChk.setToolTipText("Vevea-Hedges three-parameter selection model: adjusted effect when non-significant results are less likely to be published (works best with 20-30 or more studies)");
+        selDir.setToolTipText("Direction in which significant results are favoured for publication. Auto: the direction of the pooled effect");
+        failChk.setToolTipText("Number of unpublished null studies needed to make the combined result non-significant (Rosenthal, Rosenberg)");
+        pb.row(null, petChk); pb.row(null, petPlotChk); pb.row(null, selChk); pb.row("Selection direction", selDir); pb.row(null, failChk); p.add(pb); p.add(Box.createVerticalStrut(8));
+        Ui.Section dg = new Ui.Section("10. Diagnostics", false); dg.row(null, infChk); dg.row(null, baujatChk); dg.row(null, radialChk); dg.row(null, labbeChk);
+        goshChk.setToolTipText("Graphical display of study heterogeneity (Olkin et al., 2012; metafor::gosh): the random-effects model is fitted to all (or many random) subsets of the studies; pooled estimate against I\u00B2");
+        goshSubSp.setToolTipText("All subsets are used when there are fewer than this many (at most 18 studies); otherwise this many random subsets"); goshSeedF.setToolTipText("Seed for the random subsets");
+        dg.row(null, goshChk); dg.row("GOSH subsets", goshSubSp); dg.row("Random seed (GOSH)", goshSeedF); dg.row(null, goshHlChk); p.add(dg); p.add(Box.createVerticalStrut(8));
         Ui.Section ou = new Ui.Section("11. Export", false); JButton sa = Ui.button("Save all plots\u2026", false), st = Ui.button("Save results (.txt)\u2026", false), sx = Ui.button("Save tables (.xlsx)\u2026", false), sw = Ui.button("Save full report (.docx)\u2026", false); sa.addActionListener(e -> savePlots()); st.addActionListener(e -> saveText()); sx.addActionListener(e -> saveExcel()); sw.addActionListener(e -> saveWord());
         sx.setToolTipText("Excel workbook with the results tables: one sheet per analysis section"); sw.setToolTipText("Word document with the whole output (paragraphs, tables and figures) in the order of the results panel");
         dpiSp.setToolTipText("Resolution of PNG, TIFF and JPG files. SVG and PDF are resolution independent and ignore it."); fmtBox.addActionListener(e -> dpiSp.setEnabled(RasterWriter.isRaster((String) fmtBox.getSelectedItem()))); dpiSp.setEnabled(RasterWriter.isRaster((String) fmtBox.getSelectedItem()));
@@ -254,6 +276,7 @@ public class MainWindow extends JFrame {
     void error(Exception ex) { ex.printStackTrace(); JOptionPane.showMessageDialog(this, String.valueOf(ex.getMessage() == null ? ex : ex.getMessage()), "Error", JOptionPane.ERROR_MESSAGE); status.setText("Error: " + ex.getMessage()); }
 
     String sel(JComboBox<String> c) { Object o = c.getSelectedItem(); return o == null || o.equals("(none)") ? null : o.toString(); }
+    long lng(JTextField f, long def) { try { return Long.parseLong(f.getText().trim()); } catch (Exception e) { return def; } }
     double dbl(JTextField f, double def) { try { String s = f.getText().trim(); return s.isEmpty() ? def : Double.parseDouble(s.replace(',', '.')); } catch (Exception e) { return def; } }
 
     static String noneToEmpty(String x) { return x == null || x.equals("none") ? "" : x; }
@@ -287,12 +310,36 @@ public class MainWindow extends JFrame {
 
     void run() { runImpl(false); }
 
+    /** Checks the table for the current column assignment: throws {@link Validate.Failed} when the data cannot be analysed, otherwise returns the warnings. */
+    List<String> validateData(MetaSpec s) {
+        Map<String, String> cols = new LinkedHashMap<>(), names = new HashMap<>();
+        for (String[] pr : PARAMS.get(s.type)) { names.put(pr[0], pr[1]); JComboBox<String> cb = maps.get(pr[0]); String c = cb == null ? null : sel(cb); if (c != null) cols.put(pr[0], c); }
+        return Validate.check(table, s.type, cols, names, sel(studlabBox), regChk.isSelected() ? chosen(covList) : new ArrayList<>(), s.type.equals("gen") && genMode.getSelectedIndex() == 1, s.sm);
+    }
+
+    /** Shows every data problem in the results panel (instead of a pop-up) so the list can be read while the columns are corrected. */
+    void showValidation(Validate.Failed ex) {
+        ++generation; if (current != null) current.cancel(true); runFinished();
+        results.removeAll(); int ne = 0, nw = 0; StringBuilder h = new StringBuilder("<html><div style='width:560px'>");
+        for (Validate.Issue i : ex.issues) if (i.error) ne++; else nw++;
+        h.append("<h2 style='color:#B42318'>The data need correcting before the analysis can run</h2><p style='color:#667085'>Row numbers count the data rows below the header line.</p>");
+        h.append("<p><b>").append(ne).append(ne == 1 ? " error" : " errors").append("</b> (must be fixed):</p><ul>");
+        for (Validate.Issue i : ex.issues) if (i.error) h.append("<li style='margin-bottom:6px'>").append(esc(i.text)).append("</li>");
+        h.append("</ul>");
+        if (nw > 0) { h.append("<p><b>").append(nw).append(nw == 1 ? " warning" : " warnings").append("</b> (worth checking):</p><ul>"); for (Validate.Issue i : ex.issues) if (!i.error) h.append("<li style='margin-bottom:6px;color:#8A5A00'>").append(esc(i.text)).append("</li>"); h.append("</ul>"); }
+        h.append("</div></html>");
+        JLabel l = new JLabel(h.toString()); l.setBorder(new EmptyBorder(14, 10, 10, 10)); l.setAlignmentX(LEFT_ALIGNMENT); results.add(l);
+        status.setText("Data check: " + ne + (ne == 1 ? " error" : " errors") + " found"); results.add(Box.createVerticalGlue()); results.revalidate(); results.repaint();
+    }
+    static String esc(String x) { return x.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
+
     // ===== analysis pipeline: computed off the UI thread; independent sections run concurrently =====
     static final class Item { final String title, text; final DoubleFunction<BufferedImage> render; BufferedImage img; List<Report.Tbl> tables = new ArrayList<>(); Item(String t, String x, DoubleFunction<BufferedImage> r) { title = t; text = x; render = r; } }
     static final class Out { final List<Item> items = new ArrayList<>(); Exception error; }
     /** Everything the background code needs, captured on the UI thread (Swing components are never read from worker threads). */
     static final class Snap {
-        MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; String biasMethod, tfSide, tfEst;
+        MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; String biasMethod, tfSide, tfEst, selDir; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
+        boolean perm, permExact, cmp, orchard, cater, gosh, goshHl; int permIter, goshSub; long permSeed, goshSeed;
         boolean doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, loo, looForest, cum, cumForest, funnel, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
     }
     private final ThreadLocal<List<Item>> sink = new ThreadLocal<>();
@@ -313,7 +360,7 @@ public class MainWindow extends JFrame {
         if (table == null) { if (auto) return; JOptionPane.showMessageDialog(this, "Please load a data file first.", "No data", JOptionPane.WARNING_MESSAGE); return; }
         final Snap n = new Snap();
         try {
-            n.tbl = table; n.s = buildSpec(); n.d = buildData(n.s, false); n.o = forestOpts();
+            n.tbl = table; n.s = buildSpec(); n.d = buildData(n.s, false); n.dataWarn = validateData(n.s); n.o = forestOpts();
             n.forest = forestChk.isSelected(); n.sg = sel(subgroupBox) != null && sgChk.isSelected(); n.sgTestEffect = sgTestEffect.isSelected(); n.sgDetails = sgDetails.isSelected();
             if (n.sg) { n.sSub = n.s.clone(); n.dSub = buildData(n.sSub, true); }
             n.reg = regChk.isSelected(); n.nums = chosen(covList); n.facs = chosen(facList); n.regIntercept = regIntercept.isSelected(); n.bubble = bubbleChk.isSelected(); n.regLine = regLine.isSelected();
@@ -321,6 +368,10 @@ public class MainWindow extends JFrame {
             n.funnel = funnelChk.isSelected(); n.contour = contourChk.isSelected(); n.labels = labChk.isSelected(); n.bias = biasChk.isSelected(); n.biasPlot = biasPlotChk.isSelected(); n.biasMethod = (String) biasMethod.getSelectedItem();
             n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
             n.o.contour = n.funnel && n.contour; n.o.studyLabels = n.labels;
+            n.perm = permChk.isSelected(); n.permExact = permExactChk.isSelected(); n.cmp = cmpChk.isSelected(); n.permIter = (Integer) permIterSp.getValue(); n.permSeed = lng(permSeedF, 1);
+            n.orchard = orchardChk.isSelected(); n.cater = caterChk.isSelected(); n.gosh = goshChk.isSelected(); n.goshHl = goshHlChk.isSelected(); n.goshSub = (Integer) goshSubSp.getValue(); n.goshSeed = lng(goshSeedF, 1);
+            n.pet = petChk.isSelected(); n.petPlot = petPlotChk.isSelected(); n.sel = selChk.isSelected(); n.selDir = (String) selDir.getSelectedItem(); n.fail = failChk.isSelected();
+        } catch (Validate.Failed ex) { showValidation(ex); return;
         } catch (Exception ex) { if (auto) softError(ex); else error(ex); return; }
         final int gen = ++generation; lastPct.set(0); heavyFrac = 0; if (current != null) current.cancel(true);
         status.setText("Running\u2026"); busy.setValue(0); busy.setIndeterminate(true); busy.setVisible(true); strip.start();   // the small bar is indeterminate until the first step reports: a long first section (e.g. a GLMM leave-one-out) must not look frozen
@@ -341,7 +392,9 @@ public class MainWindow extends JFrame {
                 if (n.forest) addPlot("Meta-Analysis Forest Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.forest(r, q); }); }, false});
             if (n.sg) secs.add(new Object[]{(Runnable) () -> { MetaSpec s2 = n.sSub; MetaResult rs = Meta.run(s2, n.dSub);
                 addText("Subgroup Analysis: " + s2.subgroupName, "Subgroup Analysis Summary\n\n" + Report.subgroupText(rs) + Report.details(rs));
-                if (n.forest) addPlot("Subgroup Analysis Forest Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; q.testEffectSubgroup = n.sgTestEffect; q.analysisDetails = n.sgDetails; return Plots.forest(rs, q); }); }, true});
+                if (n.forest) addPlot("Subgroup Analysis Forest Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; q.testEffectSubgroup = n.sgTestEffect; q.analysisDetails = n.sgDetails; return Plots.forest(rs, q); });
+                if (n.orchard) addPlot("Orchard Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.orchard(rs, q); });
+                if (n.cater) addPlot("Caterpillar Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.caterpillar(rs, q); }); }, true});
             if (n.reg) secs.add(new Object[]{(Runnable) () -> regression(r, n), false});
             if (n.loo) secs.add(new Object[]{(Runnable) () -> { Meta.leaveOneOut(r); addText("Leave-One-Out Analysis", Report.looText(r));
                 if (n.looForest) addPlot("Leave-One-Out Analysis Forest Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.forestSeries(r, r.loo, r.looLabels, q, "loo"); }); }, true});
@@ -352,14 +405,20 @@ public class MainWindow extends JFrame {
                 if (n.biasPlot && b.error == null && b.plotX != null) addPlot("Plot (Test for Funnel Plot Asymmetry)", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.biasPlot(b, r, q); }); }, false});
             if (n.tf) secs.add(new Object[]{(Runnable) () -> { TrimFill tf = TrimFill.run(r, n.tfSide.equals("Auto") ? null : n.tfSide.equals("Left"), true, n.tfEst, s.common, s.random);
                 if (tf == null) addText("Trim and Fill", "Too few studies for trim-and-fill."); else { addText("Trim and Fill", Report.trimfillText(tf, r)); addPlot("Trim-and-Fill Funnel Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.funnel(r, q, tf); }); } }, false});
-            if (n.inf) secs.add(new Object[]{(Runnable) () -> influence(r, s, n), true});
-            if (n.baujat) secs.add(new Object[]{(Runnable) () -> addPlot("Baujat Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.baujat(r, q); }), false});
             if (n.doi) secs.add(new Object[]{(Runnable) () -> { Lfk l = Lfk.compute(r.TE, r.seTE, r.studlab); addText("Doi Plot and LFK Index", Report.lfkText(l, r));
                 if (l.lfk == l.lfk) addPlot("Doi Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; q.apexLine = n.doiApex; return Plots.doi(l, r, q); }); }, false});
+            if (n.pet) secs.add(new Object[]{(Runnable) () -> { PubBias.PetPeese pp = PubBias.petPeese(r); addText("PET-PEESE", BiasReport.petPeeseText(pp, r));
+                if (n.petPlot && pp.error == null) addPlot("PET-PEESE Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.petPeese(pp, r, q); }); }, false});
+            if (n.sel) secs.add(new Object[]{(Runnable) () -> addText("Selection Model", BiasReport.selectionText(PubBias.selection(r, n.selDir), r)), false});
+            if (n.fail) secs.add(new Object[]{(Runnable) () -> addText("Fail-Safe N", BiasReport.failSafeText(PubBias.failSafe(r), r)), false});
+            if (n.inf) secs.add(new Object[]{(Runnable) () -> influence(r, s, n), true});
+            if (n.baujat) secs.add(new Object[]{(Runnable) () -> addPlot("Baujat Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.baujat(r, q); }), false});
+            if (n.radial) secs.add(new Object[]{(Runnable) () -> addPlot("Radial Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.radial(r, q); }), false});
             if (n.labbe) secs.add(new Object[]{(Runnable) () -> { if (!s.type.equals("bin")) { addText("L\u2019Abb\u00E9 Plot", "The L\u2019Abb\u00E9 plot requires binary outcome data (analysis type: metabin)."); return; }
                 if (!java.util.Arrays.asList("RR", "OR", "RD", "ASD").contains(s.sm)) addText("L\u2019Abb\u00E9 Plot", "Note: the line of the pooled effect is only drawn for RR, OR, RD and ASD;\nthe study event rates are shown without it.");
                 addPlot("L\u2019Abb\u00E9 Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.labbe(r, q); }); }, false});
-            if (n.radial) secs.add(new Object[]{(Runnable) () -> addPlot("Radial Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.radial(r, q); }), false});
+            if (n.gosh) secs.add(new Object[]{(Runnable) () -> { Gosh gs = Gosh.run(r, n.goshSub, n.goshSeed); addText("GOSH Analysis", RegReport.goshText(gs, r));
+                addPlot("GOSH Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.gosh(gs, r, q, n.goshHl); }); }, true});
             final int total = secs.size();
             for (Object[] sc : secs) {
                 final Out out = new Out(); outs.add(out); final Runnable body = (Runnable) sc[0];
@@ -388,7 +447,8 @@ public class MainWindow extends JFrame {
     /** UI thread: builds the Swing components from the finished sections (images are already rendered). */
     void display(Snap n, List<Out> outs, MetaResult r, int gen, boolean auto, int scrollPos) {
         if (gen != generation) return;
-        results.removeAll(); plots.clear(); shown.clear(); shownTitle = n.s.title; shownSource = fileLabel.getText(); lastText = ""; Exception first = null;
+        results.removeAll(); textAreas.clear(); plots.clear(); shown.clear(); shownTitle = n.s.title; shownSource = fileLabel.getText(); lastText = ""; Exception first = null;
+        if (!n.dataWarn.isEmpty()) { StringBuilder dw = new StringBuilder("The analysis was run, but please check these points in the data (row numbers count the data rows below the header line):\n"); for (String w : n.dataWarn) dw.append("\n- ").append(w); Item it = new Item("Data Check", BiasReport.wrapLines(dw.toString(), 100), null); shown.add(it); showText(it.title, it.text); }
         for (Out o : outs) { for (Item it : o.items) { shown.add(it); if (it.render == null) showText(it.title, it.text); else showPlot(it.title, it.render, it.img); } if (o.error != null && first == null) first = o.error; }
         for (String w : r.warnings) { shown.add(new Item("Warning", w, null)); showText("Warning", w); }
         strip.setProgress(100); runFinished();
@@ -410,6 +470,10 @@ public class MainWindow extends JFrame {
         Map<String, double[]> nd = new HashMap<>(); for (String c : nums) nd.put(c, n.tbl.num(c)); Map<String, String[]> fd = new HashMap<>(); for (String f : facs) fd.put(f, n.tbl.strings(f));
         Reg g = Reg.run(r, nums, nd, facs, fd, n.regIntercept); List<String> terms = new ArrayList<>(nums); terms.addAll(facs);
         addText("Meta-Regression - Model 1: ~ " + String.join(" + ", terms), Report.regText(g, r, 1, ""));
+        if (n.perm) { try { Perm t = Perm.run(g, n.permIter, n.permExact, n.permSeed); addText("Permutation Test (permutest) - Model 1", RegReport.permText(g, t, r)); }
+            catch (IllegalArgumentException ex) { addText("Permutation Test (permutest) - Model 1", ex.getMessage()); } }
+        if (n.cmp) { try { ModelCompare mc = ModelCompare.run(r, nums, nd, facs, fd, n.regIntercept); addText("Model Comparison", RegReport.compareText(mc, r)); }
+            catch (IllegalArgumentException ex) { addText("Model Comparison", ex.getMessage()); } }
         if (n.bubble && g.x1 != null) addPlot("Bubble Plot", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.studyLabels = n.labels; q.regLine = n.regLine; return Plots.bubble(g, q, r); });
     }
 
@@ -434,7 +498,21 @@ public class MainWindow extends JFrame {
     void showText(String title, String text) {
         lastText += "== " + title + " ==\n" + text + "\n\n";
         JLabel t = new JLabel(title); t.setFont(new Font("SansSerif", Font.BOLD, 18)); t.setForeground(Ui.PRIMARY); t.setAlignmentX(LEFT_ALIGNMENT); t.setBorder(new EmptyBorder(14, 0, 6, 0)); results.add(t);
-        JTextArea a = new JTextArea(text); a.setEditable(false); a.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12)); a.setBackground(Color.WHITE); a.setAlignmentX(LEFT_ALIGNMENT); a.setBorder(new EmptyBorder(0, 0, 0, 0)); results.add(a);
+        JTextArea a = new JTextArea(text); a.setEditable(false); a.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12)); a.setBackground(Color.WHITE); a.setAlignmentX(LEFT_ALIGNMENT); a.setBorder(new EmptyBorder(0, 0, 0, 0)); a.putClientProperty("raw", text); textAreas.add(a); a.setText(wrapped(a, text)); results.add(a);
+    }
+    /** Number of monospaced characters that fit in the visible width of the results panel. */
+    int fitCols(JTextArea a) {
+        int vw = resScroll.getViewport().getWidth(); if (vw <= 0) return 100;
+        Insets in = results.getBorder() == null ? new Insets(0, 0, 0, 0) : results.getBorder().getBorderInsets(results);
+        int cw = Math.max(1, a.getFontMetrics(a.getFont()).charWidth('m'));
+        return Math.max(40, (vw - in.left - in.right - 24) / cw);
+    }
+    String wrapped(JTextArea a, String text) { return org.metajava.core.BiasReport.wrapLines(text, fitCols(a)); }
+    /** Re-wraps the prose of every text block when the panel width changes (tables with aligned columns are left alone). */
+    void rewrap() {
+        if (textAreas.isEmpty()) return; int c = fitCols(textAreas.get(0)); if (c == wrapCols) return; wrapCols = c;
+        for (JTextArea a : textAreas) { String raw = (String) a.getClientProperty("raw"); if (raw != null) a.setText(org.metajava.core.BiasReport.wrapLines(raw, c)); }
+        results.revalidate(); results.repaint();
     }
     void showPlot(String title, DoubleFunction<BufferedImage> render, BufferedImage img) {
         plots.add(new Object[]{title, render});

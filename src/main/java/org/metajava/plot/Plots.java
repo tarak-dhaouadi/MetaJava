@@ -382,6 +382,32 @@ public final class Plots {
         return c.img;
     }
 
+    /** Funnel plot with the PET line (effect = b0 + b1 * SE) and the PEESE curve (effect = b0 + b1 * SE^2); both start at their intercept = the corrected effect. */
+    public static BufferedImage petPeese(PubBias.PetPeese pp, MetaResult r, Opts o) {
+        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); Canvas c = new Canvas(620, 520, o.scale);
+        if (pp.error != null) { c.text(pp.error, 310, 260, 12, 1, false); return c.img; }
+        double center = s.random ? r.overall.teRandom : r.overall.teCommon, maxse = pp.maxSe * 1.05, mn = center, mx = center;
+        for (double t : pp.te) { mn = Math.min(mn, t); mx = Math.max(mx, t); }
+        double[] ends = {pp.pet.b0, pp.peese.b0, pp.pet.b0 + pp.pet.b1 * maxse, pp.peese.b0 + pp.peese.b1 * maxse * maxse};
+        for (double e : ends) { mn = Math.min(mn, e); mx = Math.max(mx, e); }
+        double pad = (mx - mn) * 0.06 + 1e-9; double xl = mn - pad, xh = mx + pad;
+        Axes a = axes(c, xl, xh, 0, maxse, true, xlabFor(s), "Standard Error", log, ""); Graphics2D g = c.g;
+        Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
+        g.setColor(Color.GRAY); c.dashed(a.X(center), a.Y(0), a.X(center), a.Y(maxse));
+        Color petCol = new Color(0x1F4E8C), peeseCol = new Color(0xD9822B); g.setStroke(new BasicStroke(1.8f));
+        g.setColor(petCol); c.line(a.X(pp.pet.b0), a.Y(0), a.X(pp.pet.b0 + pp.pet.b1 * maxse), a.Y(maxse));
+        g.setColor(peeseCol); double px = a.X(pp.peese.b0), py = a.Y(0);
+        for (int i = 1; i <= 60; i++) { double se = maxse * i / 60.0, ex = pp.peese.b0 + pp.peese.b1 * se * se; double nx = a.X(ex), ny = a.Y(se); c.line(px, py, nx, ny); px = nx; py = ny; }
+        g.setStroke(new BasicStroke(1f)); g.setClip(clip);
+        for (int i = 0; i < pp.te.length; i++) { double xx = a.X(pp.te[i]), yy = a.Y(pp.se[i]); g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) c.text(pp.label[i], xx + 4, yy - 3, 8, 0, false); }
+        for (int q = 0; q < 2; q++) { double ex = q == 0 ? pp.pet.b0 : pp.peese.b0; g.setColor(q == 0 ? petCol : peeseCol); g.fill(new Rectangle2D.Double(a.X(ex) - 4, a.Y(0) - 4, 8, 8)); }
+        double lx = a.x0 + 4; g.setStroke(new BasicStroke(1.8f));
+        g.setColor(petCol); c.line(lx, 22, lx + 22, 22); g.setColor(Color.BLACK); c.text("PET", lx + 26, 26, 10, 0, false);
+        g.setColor(peeseCol); c.line(lx + 70, 22, lx + 92, 22); g.setColor(Color.BLACK); c.text("PEESE", lx + 96, 26, 10, 0, false);
+        g.setStroke(new BasicStroke(1f)); g.setColor(Color.GRAY); c.dashed(lx + 160, 22, lx + 182, 22); g.setColor(Color.BLACK); c.text("pooled effect", lx + 186, 26, 10, 0, false);
+        return c.img;
+    }
+
     public static BufferedImage bubble(Reg g0, Opts o, MetaResult r) {
         MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); Canvas c = new Canvas(620, 520, o.scale);
         if (g0.x1 == null) { c.text("Bubble plot requires exactly one numeric covariate", 310, 260, 12, 1, false); return c.img; }

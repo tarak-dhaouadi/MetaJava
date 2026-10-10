@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+### Fixed - order of the diagnostics in the output
+- The output now follows the order of section 10 (outlier & influence diagnostics, Baujat, radial, L’Abbé, GOSH): the GOSH analysis and plot are no longer shown first.
+
+### Fixed - no sideways scrolling in the text output
+- Long lines of the verbose output sections (method details, notes, references, warnings) are now wrapped, with a hanging indent for list items, to the current width of the results panel and re-wrapped when the window is resized. Tables with aligned columns are left untouched, and the saved .txt / Excel / Word exports still use the original text.
+
+### New - permutation test for meta-regression (`permutest`)
+- Section 6 **Permutation test (permutest)**: as `metafor::permutest.rma.uni`, the rows of the model matrix are permuted, the model is refitted (tau^2 re-estimated every time) and the permutation p-values of the coefficients (`pval*`) and of the omnibus test of the moderators are printed next to the model-based ones. With the Hartung-Knapp option the t and F statistics are permuted, as in metafor.
+- Random permutations (default 5000, spinner; seed field; permutations are drawn sequentially from one seeded generator, so results do not depend on the number of threads) with p = (r + 1) / (B + 1) (Phipson and Smyth, 2010), or the **exact** test over all k! permutations when k <= 9 (also used automatically when k! does not exceed the number of permutations requested).
+- Checked against an independent numpy / scipy implementation: the exact p-values agree to 12 digits (REML and DL, with and without Knapp-Hartung); the random p-value agrees with 20000 independent permutations.
+
+### New - model comparison table (AIC / BIC / R^2)
+- Section 6 **Model comparison table**: all subsets of the selected covariates / factors (up to 6 terms; with more terms only null, single terms, full and drop-one models) are fitted to the same studies (complete cases of all terms) and ranked by AICc: p, tau^2, I^2, R^2, logLik, AIC, AICc, BIC, dAICc, dBIC, Akaike weights and the likelihood-ratio test against the intercept-only model. A second table gives the likelihood-ratio test for dropping each term from the full model (df = number of dummy variables of a factor).
+- logLik / AIC / AICc / BIC come from maximum-likelihood fits, because the restricted likelihood of REML cannot be compared between models with different fixed effects; tau^2, I^2 and R^2 use the selected tau^2 estimator, R^2 as in metafor (truncated at 0).
+
+### Fix - fit statistics of the meta-regression output follow metafor
+- logLik, deviance, AIC, BIC and AICc of the single meta-regression model were the ordinary (ML-type) likelihood evaluated at the REML tau^2. They are now defined as in `metafor::rma.uni`: the restricted likelihood for method REML (deviance = -2 logLik, BIC and AICc with k - p), the ordinary likelihood for all other estimators (deviance relative to the saturated model), AICc with max(k, npar + 2). For the BCG data with `~ ablat` (REML) the output is logLik -8.0873, deviance 16.1746, AIC 22.1746, BIC 23.3683, AICc 25.6032. Estimates, tests, tau^2, I^2 and R^2 are unchanged.
+
+### New - GOSH plot (heterogeneity diagnostics)
+- Section 10 **GOSH plot** (Olkin, Dahabreh and Trikalinos, 2012; `metafor::gosh`): random-effects model (inverse variance, selected tau^2 estimator) on all subsets of at least 2 studies (when there are at most 18 studies and fewer subsets than the chosen number) or on random subsets (spinner, seed field). Pooled estimate (back-transformed, log axis for ratios) against I^2 (Q-based or tau^2-based as chosen for the main analysis), with marginal densities and dashed lines for all studies.
+- Large clouds are drawn as a density map (square bins, sequential blue ramp) so SVG / PDF exports stay small; the option **Colour subsets by the most influential study** switches to points coloured by inclusion of the study whose inclusion changes the mean I^2 most.
+- Text output: quantiles of the estimate, I^2, tau^2 and number of studies over the subsets, the share of subsets with I^2 >= 50%, and per study the mean estimate and I^2 of the subsets that include / exclude it.
+
+### New - orchard and caterpillar plots for subgroups
+- Section 5 **Orchard plot** (Nakagawa et al., 2021): per subgroup the study estimates as semi-transparent dots (area proportional to precision), the pooled estimate (circle), its confidence interval (thick bar) and its prediction interval (thin line); k per subgroup.
+- **Caterpillar plot**: per subgroup the studies ordered by effect with their confidence intervals and precision-sized squares, the pooled diamond and the prediction interval, with the numbers on the right.
+- Both use the random-effects results (common-effect when only that model is chosen), the back-transformation and null line of the forest plot, and export as PNG / TIFF / JPG / SVG / PDF.
+
+### New - clear data validation messages
+- Before every run the table is checked for the current column assignment (`core/Validate.java`). Problems that would make the analysis impossible or wrong are listed **all at once** in the results panel, with the column, the row and the study label: text in a numeric column (`row 3 (Smith 2010) has "abc"`), events greater than the total, negative events, totals or person-time that are zero or negative, negative SDs, correlations outside [-1, 1] (or n <= 3 for Fisher's z), non-positive standard errors, lower limit above upper limit, and ratio limits that are not positive. The analysis is not run until they are fixed.
+- Warnings do not stop the analysis; they appear in a "Data Check" section above the results: duplicate study labels (a repeated study would be counted twice), identical data in several rows, one column assigned to several parameters, missing values (those studies are left out), SD of zero, estimate outside its own confidence interval, a comma read as a decimal separator in values like `1,234`, non-numeric covariates.
+- Row numbers count the data rows below the header line. Unused optional columns (CI limits when the standard error is given) are not checked.
+
+### New - publication bias: PET-PEESE, selection model, fail-safe N (section 9)
+- **PET-PEESE** (Stanley & Doucouliagos, 2014): weighted regression of the effect on SE (PET) and SE^2 (PEESE), intercept = bias-corrected effect with t-based CI, the conditional estimate (PEESE if the PET intercept differs from the null at alpha = 0.05, otherwise PET), the PET slope test, and a funnel plot with the PET line and the PEESE curve.
+- **Selection model**: Vevea-Hedges three-parameter model (one cut at one-sided p = .025, relative publication probability delta for the other results; as `metafor::selmodel(type = "stepfun")`), maximum likelihood, adjusted effect with profile-likelihood CI, tau^2, delta, and the likelihood ratio test of selection. The favoured direction is Auto (sign of the pooled effect), Positive or Negative.
+- **Fail-safe N**: Rosenthal (1979) with the 5k + 10 tolerance level, and Rosenberg (2005).
+- All three appear in the results panel, the .xlsx and the .docx exports, and are saved with the project. Values were checked against an independent numpy/scipy implementation (27 new self-test checks).
+
 ### Fix - L'Abbe symbol sizes follow metafor::labbe for every pooling method
 - The circle sizes no longer depend on the pooling method. For Inverse, MH, Peto, SSW, GLMM and LRP alike, `psize = sqrt(1/vi)` with `vi` the sum of the two arm-level sampling variances (`escalc` measures PLN for RR, PLO for OR, PR for RD, PAS for ASD, with the continuity correction of the analysis), rescaled linearly to `plim = c(0.5, 3.5)`; all 1 when every value is equal. On screen the diameter is 4 x psize (largest circle 14 px, smallest 2 px). The weight-based sizes (and the note about GLMM/LRP) are gone. Covered by new self-tests that measure the drawn circles.
 

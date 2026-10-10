@@ -145,7 +145,19 @@ as in `meta::forest`; for single means, proportions and rates, which have no nat
 Several numeric **covariates** and/or categorical **factors** (choose *none* to leave a list empty; *none* is
 exclusive), intercept on/off, bubble plot with regression line (one numeric covariate), Hartung-Knapp
 (*knha*) tests when the HK CI method is selected. Output follows `metafor::rma.uni`: logLik, deviance, AIC, BIC,
-AICc, tau², I², H², R², QE, QM and the coefficient table.
+AICc, tau², I², H², R², QE, QM and the coefficient table. The fit statistics are defined as in metafor: the
+restricted likelihood for REML (BIC and AICc then use k - p), the ordinary likelihood for every other estimator.
+
+* **Permutation test (`permutest`)**: permutes the rows of the model matrix, refits the model (tau² is re-estimated each
+  time) and reports permutation p-values for every coefficient and for the omnibus test of the moderators next to the
+  asymptotic ones (`metafor::permutest.rma.uni`; with Knapp-Hartung the t / F statistics are permuted). Random permutations
+  (default 5000, seed settable, p = (r + 1) / (B + 1)) or, for k <= 9, the **exact** test over all k! permutations. Confidence
+  intervals by permutation (`permci`) are not included.
+* **Model comparison**: all subsets of the selected covariates / factors (up to 6 terms; otherwise null, single terms, full
+  model and drop-one models) are fitted to the same studies and ranked by AICc: logLik, AIC, AICc, BIC (maximum likelihood,
+  which is what makes models with different fixed effects comparable), differences and Akaike weights, tau², I², R²
+  (of the selected tau² estimator), the likelihood-ratio test against the intercept-only model, and a table of
+  likelihood-ratio tests for dropping each term from the full model.
 
 ### Other analyses
 
@@ -153,15 +165,27 @@ AICc, tau², I², H², R², QE, QM and the coefficient table.
 * **Publication bias:** funnel plot (contour-enhanced option, study labels), tests for funnel plot asymmetry
   (Egger, Begg, Thompson, Harbord, Peters, Macaskill, Deeks, Pustejovsky, Schwarzer; the default depends on the
   data type) with plot, Duval-Tweedie **trim-and-fill** (side auto/left/right; estimator L0 or R0).
+  Also **PET-PEESE** (with plot), a three-parameter **selection model** (Vevea-Hedges, adjusted effect with profile-likelihood CI and likelihood ratio test) and **fail-safe N** (Rosenthal, Rosenberg).
+  Before each run the data are checked and every problem (non-numeric cells, events > n, duplicate study labels, ...) is explained with its row number.
 * **Diagnostics:** outlier and influence diagnostics (rstudent, dffits, Cook's distance, cov.r, tau2.del, QE.del,
   hat, weight, dfbetas); studies flagged as influential/outliers are drawn as **red points** in the eight-panel
   plot, as in metafor. Baujat plot, radial (Galbraith) plot, L'Abbé plot (binary outcomes). Publication bias also offers the Doi plot with the LFK index.
+* **GOSH plot** (graphical display of study heterogeneity; Olkin et al., 2012; `metafor::gosh`): the random-effects model is fitted to
+  all subsets of at least two studies (up to 18 studies) or to many random subsets (number and seed settable); pooled estimate
+  against I² (as selected for the main analysis) with marginal densities and dashed lines for the analysis of all studies. Dense
+  clouds are drawn as a density map (so SVG / PDF stay small); optionally the subsets are coloured by whether they contain the most
+  influential study. The text output gives quantiles over the subsets and, per study, the mean estimate and I² of the subsets with
+  and without it.
+* **Orchard and caterpillar plots for subgroups** (section 5): the orchard plot shows the studies of each subgroup as dots (area
+  proportional to precision) with the pooled estimate, its confidence interval (thick) and its prediction interval (thin) (Nakagawa
+  et al., 2021); the caterpillar plot lists the studies of each subgroup ordered by effect with their confidence intervals, the pooled
+  diamond and the prediction interval.
 * **Export:** every plot as PNG, TIFF, JPG, SVG or PDF (resolution 72–1200 dpi for PNG/TIFF/JPG and recorded in the file; SVG and PDF are resolution independent and written at the plot's natural size), all results as a `.txt` file.
 
 ## Not implemented
 
-Drapery, L'Abbé, Doi and LFK plots; a multi-model meta-regression builder; SVG/PDF export; `metacr`, `metabind`
-and cumulative analysis by cluster; three-level models.
+Drapery plots; `permutest` confidence intervals (`permci`); GOSH for meta-regression models (the GOSH plot uses the
+intercept-only model) and cluster detection in the GOSH output; `metacr`, `metabind` and cumulative analysis by cluster; three-level models.
 
 ## Validation
 
