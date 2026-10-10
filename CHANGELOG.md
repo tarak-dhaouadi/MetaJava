@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+### Fix - L'Abbe plot symbol sizes with GLMM and LRP
+- With `method = "GLMM"` or `"LRP"` the circle sizes now follow `metafor::labbe`: `psize` is `sqrt(1/vi)` with `vi` the sum of the two arm-level sampling variances (`escalc` measures PLN for RR, PLO for OR, PR for RD, PAS for ASD, with the continuity correction of the analysis), rescaled linearly to the range 0.5-3.5 (all equal when every `wi` is equal). Previously the inverse variance of the study estimate was used and scaled to the largest study. The other methods still follow the study weights. Covered by two new self-tests.
+
+### Fix - L'Abbe plot with GLMM and LRP
+- With `method = "GLMM"` or `"LRP"` the study circles were missing (only the diagonal and the pooled lines were drawn) and the axes were fitted to nothing. These methods have no study weights, and the plot skipped every study without a weight. The symbol area now follows the inverse variance of the study estimate when the method gives no weights, and a note says so. The other methods are unchanged. Covered by a self-test for IV, Peto, MH, SSW, GLMM and LRP.
+
+### Export - TIFF and JPG
+- **Plot format** now offers PNG, **TIFF**, **JPG**, SVG and PDF, both for *Save all plots* and in the type list of *Save this plot* (`.tif` / `.jpg`; typed `.tiff` / `.jpeg` are accepted).
+- **Plot resolution (dpi)** applies to PNG, TIFF and JPG (greyed out for SVG/PDF). The pixel size follows the dpi (96 dpi = 1x) and the resolution is recorded in the file (PNG pHYs, TIFF XResolution, JPEG JFIF density), so journals and Word/Photoshop read the right dpi.
+- TIFF is lossless (LZW compression, ~3x larger than PNG at most); JPG uses quality 0.95 (lossy, not advised for line art). TIFF needs Java 9 or later (the build targets Java 11).
+
+### Export - SVG and PDF next to PNG, at the chosen resolution
+- New **Plot format** selector (PNG / SVG / PDF) in the Export section; it applies to *Save all plots* and is the default of *Save this plot* (the save dialog also offers the three types, and the file extension wins).
+- SVG and PDF are produced by the very same drawing code as the PNG (the plots draw into a recording `Graphics2D`, `VectorGraphics`), so layout, line widths, dashes, grey levels and text positions are identical, for every plot including the forest plots.
+- **Resolution.** *Plot resolution (dpi)* applies to PNG only (the spinner is disabled for SVG/PDF). Vector files are resolution independent and are written at the plot's natural size (scale 1: e.g. 620 x 520 px for the Doi plot; PDF 1 px = 0.75 pt, i.e. 465 x 390 pt), so a high dpi setting no longer produces huge pages (Acrobat refuses pages above 14 400 pt).
+- SVG keeps live text (`<text>`, with `textLength` so the layout survives font substitution); PDF writes text as glyph outlines (no font embedding, same look everywhere, not selectable). Pages are white, as in the PNG.
+- Both carry the plot title: `<title>` in the SVG, document information (Title, Creator, Producer) in the PDF.
+- Checked by rasterising the PDFs and rendering the SVGs in Chromium, then comparing with the PNG (L'Abbe, Doi, Baujat for RR, OR, RD, ASD: mean grey difference below 1 of 255).
+
+### Publication bias - Doi plot and LFK index
+- New option **Doi plot and LFK index**: |Z-score| (reversed axis) against the effect size, studies joined in order of effect, LFK index printed in the plot, optional dashed line through the apex (smallest |Z|; checkbox **Mark the apex**, off by default because `metasens::doiplot` does not draw it), plus a table (effect, SE, Z, |Z|) and the interpretation (|LFK| <= 1 no, <= 2 minor, > 2 major asymmetry).
+- The index follows `metasens::lfkindex` exactly (precision-weighted mid-ranks, N = 100 max(var) / var, percentile = (MidRank - 0.5) / sum(N), index = 5 / (2k) * sum(Z + (maxZ - minZ) / (max - min of TE - TE.apex) * (TE - TE.apex))). Ratio measures are on the log scale with back-transformed axis labels. Fewer than 5 studies: a caution is printed.
+
+### Diagnostics - L'Abbe plot
+- New option **L'Abbe plot (binary outcomes)** (metabin): event rate in the experimental group against the control group, symbol area proportional to the weight (common-effect weights if shown, otherwise random-effects), grey no-effect diagonal, dashed lines for the pooled common-effect and random-effects estimates (RR, OR, RD, ASD), study labels optional. Both axes use the same limits, fitted to the data.
+
+### Fix - "Save this plot" type and extension
+- Choosing PNG / SVG / PDF in the save dialog now switches the extension of the file name, and the chosen type is what gets written.
+- **Bug:** with *Plot format* = PNG, choosing PDF (or SVG) in the dialog could leave the name as `.png`, and the file was then written as PNG. `JFileChooser.setFileFilter` clears the selected file, and some look-and-feels / platforms (seen on Windows with Nimbus) refresh the name field only after the filter event, overwriting the new name.
+- **Fix:** new `PlotChooser`. The name is refreshed after the dialog's own update (`invokeLater`), and, independently of what the field shows, the extension is fixed when *Save* is pressed: the selected type decides, unless the user typed another known extension (`fig.svg`). The dialog also asks before replacing an existing file. Covered by self-tests.
+
+### Fix - x-axis labels on log-scale plots with a narrow effect range
+- When the 1-2-5 log ticks left fewer than two labels inside the axis (e.g. risk ratios between 0.5 and 0.7), the axis showed none; it now falls back to evenly spaced labels. Affects funnel, Doi and any other plot using the shared axes.
+
 ### Forest plots - "Experimental" / "Control" group headings (metabin, metacont, metainc)
 - The column headings of two-group outcomes now carry the group labels above them, centred over each group's columns (Events/Total, Total/Mean/SD, Events/Time), as in meta::forest. Applies to the main and subgroup forest plots; the labels are `labelE` / `labelC` of the settings.
 

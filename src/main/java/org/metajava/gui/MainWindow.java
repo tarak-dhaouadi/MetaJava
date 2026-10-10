@@ -3,6 +3,8 @@ package org.metajava.gui;
 import org.metajava.core.*;
 import org.metajava.io.TableReader;
 import org.metajava.plot.Plots;
+import org.metajava.plot.Canvas;
+import org.metajava.plot.VectorExport;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -56,10 +58,11 @@ public class MainWindow extends JFrame {
     JCheckBox sgChk = Ui.check("Subgroup analysis (uses the subgroup column)", true), sgPred = Ui.check("Subgroup prediction interval", false), sgTestEffect = Ui.check("Test for effect in subgroup", false), sgDetails = Ui.check("Details of meta-analysis methods", false), regChk = Ui.check("Meta-regression", false), bubbleChk = Ui.check("Bubble plot", true), regLine = Ui.check("Regression line", true), regIntercept = Ui.check("Intercept", true),
         looChk = Ui.check("Leave-one-out analysis", false), looForest = Ui.check("Forest plot", true), cumChk = Ui.check("Cumulative meta-analysis", false), cumForest = Ui.check("Forest plot", true),
         funnelChk = Ui.check("Funnel plot", true), contourChk = Ui.check("Contour-enhanced", false), labChk = Ui.check("Study labels", true), biasChk = Ui.check("Test for funnel plot asymmetry", true), biasPlotChk = Ui.check("Plot", true),
-        tfChk = Ui.check("Trim and fill", false), infChk = Ui.check("Outlier & influence diagnostics (metafor)", false), baujatChk = Ui.check("Baujat plot", false), radialChk = Ui.check("Radial (Galbraith) plot", false);
+        tfChk = Ui.check("Trim and fill", false), infChk = Ui.check("Outlier & influence diagnostics (metafor)", false), baujatChk = Ui.check("Baujat plot", false), radialChk = Ui.check("Radial (Galbraith) plot", false),
+        doiChk = Ui.check("Doi plot and LFK index", false), doiApexChk = Ui.check("Mark the apex (dashed line)", false), labbeChk = Ui.check("L\u2019Abb\u00E9 plot (binary outcomes)", false);
     JComboBox<String> biasMethod = Ui.combo("Default", "Egger", "Begg", "Thompson", "Harbord", "Peters", "Macaskill", "Deeks", "Pustejovsky", "Schwarzer");
     JComboBox<String> tfSide = Ui.combo("Auto", "Left", "Right"), tfEst = Ui.combo("L0", "R0");
-    JSpinner dpiSp = new JSpinner(new SpinnerNumberModel(300, 72, 1200, 100));
+    JSpinner dpiSp = new JSpinner(new SpinnerNumberModel(300, 72, 1200, 100)); JComboBox<String> fmtBox = Ui.combo("PNG", "TIFF", "JPG", "SVG", "PDF");
     final List<Object[]> plots = new ArrayList<>(); // {title, DoubleFunction<BufferedImage>}
     final JLabel status = Ui.muted("Ready");
     String lastText = "";
@@ -124,10 +127,11 @@ public class MainWindow extends JFrame {
         Ui.Section lo = new Ui.Section("7. Leave-one-out analysis", false); lo.row(null, looChk); lo.row(null, looForest); p.add(lo); p.add(Box.createVerticalStrut(8));
         Ui.Section cu = new Ui.Section("8. Cumulative meta-analysis", false); cu.row(null, cumChk); cu.row(null, cumForest); p.add(cu); p.add(Box.createVerticalStrut(8));
         Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
-        pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); p.add(pb); p.add(Box.createVerticalStrut(8));
-        Ui.Section dg = new Ui.Section("10. Diagnostics", false); dg.row(null, infChk); dg.row(null, baujatChk); dg.row(null, radialChk); p.add(dg); p.add(Box.createVerticalStrut(8));
+        pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row(null, doiChk); pb.row(null, doiApexChk); p.add(pb); p.add(Box.createVerticalStrut(8));
+        Ui.Section dg = new Ui.Section("10. Diagnostics", false); dg.row(null, infChk); dg.row(null, baujatChk); dg.row(null, radialChk); dg.row(null, labbeChk); p.add(dg); p.add(Box.createVerticalStrut(8));
         Ui.Section ou = new Ui.Section("11. Export", false); JButton sa = Ui.button("Save all plots\u2026", false), st = Ui.button("Save results (.txt)\u2026", false); sa.addActionListener(e -> savePlots()); st.addActionListener(e -> saveText());
-        ou.row("Plot resolution (dpi)", dpiSp); ou.row(null, sa); ou.row(null, st); p.add(ou);
+        dpiSp.setToolTipText("Resolution of PNG, TIFF and JPG files. SVG and PDF are resolution independent and ignore it."); fmtBox.addActionListener(e -> dpiSp.setEnabled(RasterWriter.isRaster((String) fmtBox.getSelectedItem()))); dpiSp.setEnabled(RasterWriter.isRaster((String) fmtBox.getSelectedItem()));
+        ou.row("Plot format", fmtBox); ou.row("Plot resolution (dpi)", dpiSp); ou.row(null, sa); ou.row(null, st); p.add(ou);
         p.add(Box.createVerticalGlue());
         modelBox.setSelectedIndex(0); return p;
     }
@@ -135,7 +139,7 @@ public class MainWindow extends JFrame {
     boolean loading = false;
     void schedule() { if (!suppress && table != null) autoTimer.restart(); }
     void hook(Component c) {
-        if (c == dpiSp || (c instanceof JComponent && c.getParent() == dpiSp)) return;
+        if (c == dpiSp || c == fmtBox || (c instanceof JComponent && c.getParent() == dpiSp)) return;
         if (c instanceof JCheckBox) ((JCheckBox) c).addActionListener(e -> schedule());
         else if (c instanceof JComboBox) ((JComboBox<?>) c).addActionListener(e -> schedule());
         else if (c instanceof JTextField && !(c.getParent() instanceof JSpinner.DefaultEditor)) ((JTextField) c).getDocument().addDocumentListener(new javax.swing.event.DocumentListener() { public void insertUpdate(javax.swing.event.DocumentEvent e) { schedule(); } public void removeUpdate(javax.swing.event.DocumentEvent e) { schedule(); } public void changedUpdate(javax.swing.event.DocumentEvent e) { schedule(); } });
@@ -271,7 +275,7 @@ public class MainWindow extends JFrame {
     /** Everything the background code needs, captured on the UI thread (Swing components are never read from worker threads). */
     static final class Snap {
         MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; String biasMethod, tfSide, tfEst;
-        boolean sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, loo, looForest, cum, cumForest, funnel, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
+        boolean doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, loo, looForest, cum, cumForest, funnel, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
     }
     private final ThreadLocal<List<Item>> sink = new ThreadLocal<>();
     private volatile int generation = 0; private java.util.concurrent.Future<?> current;
@@ -288,7 +292,7 @@ public class MainWindow extends JFrame {
             n.reg = regChk.isSelected(); n.nums = chosen(covList); n.facs = chosen(facList); n.regIntercept = regIntercept.isSelected(); n.bubble = bubbleChk.isSelected(); n.regLine = regLine.isSelected();
             n.loo = looChk.isSelected(); n.looForest = looForest.isSelected(); n.cum = cumChk.isSelected(); n.cumForest = cumForest.isSelected();
             n.funnel = funnelChk.isSelected(); n.contour = contourChk.isSelected(); n.labels = labChk.isSelected(); n.bias = biasChk.isSelected(); n.biasPlot = biasPlotChk.isSelected(); n.biasMethod = (String) biasMethod.getSelectedItem();
-            n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected();
+            n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
             n.o.contour = n.funnel && n.contour; n.o.studyLabels = n.labels;
         } catch (Exception ex) { if (auto) softError(ex); else error(ex); return; }
         final int gen = ++generation; if (current != null) current.cancel(true);
@@ -323,6 +327,12 @@ public class MainWindow extends JFrame {
                 if (tf == null) addText("Trim and Fill", "Too few studies for trim-and-fill."); else { addText("Trim and Fill", Report.trimfillText(tf, r)); addPlot("Trim-and-Fill Funnel Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.funnel(r, q, tf); }); } }, false});
             if (n.inf) secs.add(new Object[]{(Runnable) () -> influence(r, s, n), true});
             if (n.baujat) secs.add(new Object[]{(Runnable) () -> addPlot("Baujat Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.baujat(r, q); }), false});
+            if (n.doi) secs.add(new Object[]{(Runnable) () -> { Lfk l = Lfk.compute(r.TE, r.seTE, r.studlab); addText("Doi Plot and LFK Index", Report.lfkText(l, r));
+                if (l.lfk == l.lfk) addPlot("Doi Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; q.apexLine = n.doiApex; return Plots.doi(l, r, q); }); }, false});
+            if (n.labbe) secs.add(new Object[]{(Runnable) () -> { if (!s.type.equals("bin")) { addText("L\u2019Abb\u00E9 Plot", "The L\u2019Abb\u00E9 plot requires binary outcome data (analysis type: metabin)."); return; }
+                if (!java.util.Arrays.asList("RR", "OR", "RD", "ASD").contains(s.sm)) addText("L\u2019Abb\u00E9 Plot", "Note: the line of the pooled effect is only drawn for RR, OR, RD and ASD;\nthe study event rates are shown without it.");
+                if (s.noWeights()) addText("L\u2019Abb\u00E9 Plot", "Note: " + s.method + " gives no study weights; the symbol sizes follow\nmetafor::labbe (inverse standard error of the arm-level event rates,\nrescaled between 0.5 and 3.5).");
+                addPlot("L\u2019Abb\u00E9 Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.labbe(r, q); }); }, false});
             if (n.radial) secs.add(new Object[]{(Runnable) () -> addPlot("Radial Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.radial(r, q); }), false});
             final int total = secs.size();
             for (Object[] sc : secs) {
@@ -408,11 +418,19 @@ public class MainWindow extends JFrame {
     }
 
     double scaleDpi() { return ((Integer) dpiSp.getValue()) / 96.0; }
+    /** Writes one plot as PNG, TIFF, JPG, SVG or PDF. The raster formats are rendered at the chosen resolution (scale = dpi / 96) and carry it as metadata. SVG and PDF are resolution independent: they run the same drawing code at scale 1 (page = the plot's natural size, 1 px = 0.75 pt in the PDF), so the dpi setting does not enlarge the page. */
+    public static void writePlot(DoubleFunction<BufferedImage> render, File f, String fmt, double sc, String title) throws IOException {
+        if (RasterWriter.isRaster(fmt)) { RasterWriter.write(render.apply(sc), f, fmt, sc * 96.0); return; }
+        org.metajava.plot.VectorGraphics vg = Canvas.record(render, 1.0);
+        try (OutputStream o = new BufferedOutputStream(new FileOutputStream(f))) { if (fmt.equals("SVG")) VectorExport.svg(vg, o, title); else VectorExport.pdf(vg, o, title); }
+    }
     void savePlot(String title, DoubleFunction<BufferedImage> render) {
-        JFileChooser fc = new JFileChooser(); fc.setSelectedFile(new File(title.replaceAll("[^A-Za-z0-9]+", "_") + ".png")); if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
-        final File f = fc.getSelectedFile(); final double sc = scaleDpi(); status.setText("Saving\u2026"); busy.setIndeterminate(true); busy.setVisible(true);
+        PlotChooser fc = new PlotChooser(title, (String) fmtBox.getSelectedItem());
+        if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION || fc.target() == null) return;
+        final File f = fc.target(); final String fmt = fc.targetFormat();   // extension and type both follow the type chosen in the dialog
+        final double sc = scaleDpi(); status.setText("Saving\u2026"); busy.setIndeterminate(true); busy.setVisible(true);
         new Thread(() -> {   // high-dpi rendering happens off the UI thread
-            try { ImageIO.write(render.apply(sc), "png", f); SwingUtilities.invokeLater(() -> { busy.setIndeterminate(false); busy.setVisible(false); status.setText("Saved " + f.getName()); }); }
+            try { writePlot(render, f, fmt, sc, title); SwingUtilities.invokeLater(() -> { busy.setIndeterminate(false); busy.setVisible(false); status.setText("Saved " + f.getName()); }); }
             catch (Exception ex) { SwingUtilities.invokeLater(() -> { busy.setIndeterminate(false); busy.setVisible(false); error(ex); }); }
         }, "metajava-save").start();
     }
@@ -420,10 +438,10 @@ public class MainWindow extends JFrame {
     void savePlots() {
         if (plots.isEmpty()) { JOptionPane.showMessageDialog(this, "Run an analysis first."); return; }
         JFileChooser fc = new JFileChooser(); fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY); if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
-        final File dir = fc.getSelectedFile(); final List<Object[]> ps = new ArrayList<>(plots); final double sc = scaleDpi(); status.setText("Saving plots\u2026"); busy.setIndeterminate(true); busy.setVisible(true);
+        final File dir = fc.getSelectedFile(); final List<Object[]> ps = new ArrayList<>(plots); final double sc = scaleDpi(); final String fmt = (String) fmtBox.getSelectedItem(); status.setText("Saving plots\u2026"); busy.setIndeterminate(true); busy.setVisible(true);
         new Thread(() -> {
-            try { Par.forRange(ps.size(), i -> { try { ImageIO.write(((DoubleFunction<BufferedImage>) ps.get(i)[1]).apply(sc), "png", new File(dir, String.format("%02d_%s.png", i + 1, ((String) ps.get(i)[0]).replaceAll("[^A-Za-z0-9]+", "_")))); } catch (IOException e) { throw new UncheckedIOException(e); } });
-                SwingUtilities.invokeLater(() -> { busy.setIndeterminate(false); busy.setVisible(false); status.setText("Saved " + ps.size() + " plots"); }); }
+            try { Par.forRange(ps.size(), i -> { try { writePlot((DoubleFunction<BufferedImage>) ps.get(i)[1], new File(dir, String.format("%02d_%s.%s", i + 1, ((String) ps.get(i)[0]).replaceAll("[^A-Za-z0-9]+", "_"), RasterWriter.ext(fmt))), fmt, sc, (String) ps.get(i)[0]); } catch (IOException e) { throw new UncheckedIOException(e); } });
+                SwingUtilities.invokeLater(() -> { busy.setIndeterminate(false); busy.setVisible(false); status.setText("Saved " + ps.size() + " plots (" + fmt + ")"); }); }
             catch (Exception ex) { SwingUtilities.invokeLater(() -> { busy.setIndeterminate(false); busy.setVisible(false); error(ex); }); }
         }, "metajava-save").start();
     }

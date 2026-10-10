@@ -208,6 +208,24 @@ public final class Report {
         return sb.toString();
     }
 
+    /** Text output for the Doi plot / LFK index. */
+    public static String lfkText(Lfk l, MetaResult r) {
+        StringBuilder sb = new StringBuilder();
+        if (l.lfk != l.lfk) return (l.note.isEmpty() ? "LFK index could not be computed (all study effects identical?)." : l.note) + NL;
+        boolean ratio = r.spec.isRatioSm(); int d = 4;
+        sb.append("LFK index test (Furuya-Kanamori et al., 2018; as implemented in metasens::lfkindex)").append(NL).append(NL);
+        sb.append("LFK index: ").append(Fmt.num(l.lfk, 2)).append(" (").append(l.interpretation).append(")").append(NL);
+        sb.append("Number of studies: ").append(l.k).append(NL);
+        sb.append("Apex of the Doi plot (smallest |Z-score|): ").append(l.label[l.apex]).append(NL);
+        sb.append("Interpretation: |LFK| <= 1 no asymmetry; 1 < |LFK| <= 2 minor asymmetry; |LFK| > 2 major asymmetry.").append(NL);
+        sb.append("Negative values indicate asymmetry towards smaller effects (left limb), positive values towards larger effects.").append(NL);
+        if (!l.note.isEmpty()) sb.append("Note: ").append(l.note).append(NL);
+        sb.append(NL); int w = 5; for (String x : l.label) w = Math.max(w, x.length());
+        sb.append(Fmt.padR("Study", w)).append("  ").append(Fmt.pad(ratio ? "log " + smLabel(r.spec) : smLabel(r.spec), 12)).append(Fmt.pad("SE", 10)).append(Fmt.pad("Z-score", 10)).append(Fmt.pad("|Z-score|", 11)).append(NL);
+        for (int j = 0; j < l.k; j++) sb.append(Fmt.padR(l.label[j], w)).append("  ").append(Fmt.pad(Fmt.num(l.te[j], d), 12)).append(Fmt.pad(Fmt.num(l.se[j], d), 10)).append(Fmt.pad(Fmt.num(l.zscore[j], 3), 10)).append(Fmt.pad(Fmt.num(l.absZ[j], 3), 11)).append(j == l.apex ? "  <- apex" : "").append(NL);
+        return sb.toString();
+    }
+
     static String longSm(String sm) {
         switch (sm) { case "HR": return "hazard ratio"; case "OR": return "odds ratio"; case "RR": return "risk ratio"; case "MD": return "mean difference"; case "SMD": return "standardised mean difference"; case "IRR": return "incidence rate ratio"; default: return sm; }
     }

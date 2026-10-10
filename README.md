@@ -13,7 +13,7 @@ meta 8.5-0); outlier and influence diagnostics follow [metafor](https://cran.r-p
 * Eight analysis types (`metabin`, `metacont`, `metacor`, `metagen`, `metainc`, `metamean`, `metaprop`, `metarate`).
 * Reads `.xlsx`, `.csv`, `.tsv` and `.txt` files; the results update automatically when a setting changes.
 * Forest plots (main and subgroup), leave-one-out, cumulative, funnel (optionally contour-enhanced), bubble, Baujat,
-  radial (Galbraith) and influence-diagnostics plots, drawn in the style of R; PNG export at any resolution.
+  radial (Galbraith), L'Abbé, Doi (with LFK index) and influence-diagnostics plots, drawn in the style of R; PNG, TIFF, JPG, SVG and PDF export (resolution in dpi for the raster formats).
 
 ![MetaJava: forest plot with prediction interval, subgroup results and settings](docs/screenshot.png)
 
@@ -153,8 +153,8 @@ AICc, tau², I², H², R², QE, QM and the coefficient table.
   data type) with plot, Duval-Tweedie **trim-and-fill** (side auto/left/right; estimator L0 or R0).
 * **Diagnostics:** outlier and influence diagnostics (rstudent, dffits, Cook's distance, cov.r, tau2.del, QE.del,
   hat, weight, dfbetas); studies flagged as influential/outliers are drawn as **red points** in the eight-panel
-  plot, as in metafor. Baujat plot, radial (Galbraith) plot.
-* **Export:** every plot as PNG (resolution in dpi, 96–1200), all results as a `.txt` file.
+  plot, as in metafor. Baujat plot, radial (Galbraith) plot, L'Abbé plot (binary outcomes). Publication bias also offers the Doi plot with the LFK index.
+* **Export:** every plot as PNG, TIFF, JPG, SVG or PDF (resolution 72–1200 dpi for PNG/TIFF/JPG and recorded in the file; SVG and PDF are resolution independent and written at the plot's natural size), all results as a `.txt` file.
 
 ## Not implemented
 

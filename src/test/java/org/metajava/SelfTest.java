@@ -211,6 +211,71 @@ public class SelfTest {
             check(Double.isNaN(nw.qWald) && nw.est == re.est, "GLMM UM.RS: wald = false skips the Wald-type Q only");
         }
 
+        // ---- 4. Doi plot / LFK index (metasens::lfkindex algorithm) and vector export
+        { double[] te = {-4.270, -1.710, -0.580, -0.190, 0.000}, vr = {0.158, 0.076, 0.018, 0.022, 0.040}, se = new double[5]; for (int i = 0; i < 5; i++) se[i] = Math.sqrt(vr[i]);
+            Lfk lf = Lfk.compute(te, se, null); check(lf.apex == 3 && lf.interpretation.equals("major asymmetry") && lf.lfk < -2, "LFK index: pain example (Furuya-Kanamori 2018) is flagged as major left asymmetry (" + lf.lfk + ")");
+            Lfk sy = Lfk.compute(new double[]{-1, -0.5, 0, 0.5, 1}, new double[]{.3, .2, .1, .2, .3}, null); near(sy.lfk, 0, 0.05, "LFK index: symmetric Doi plot gives an index close to 0");
+            double[] perm = {0.5, -1, 1, 0, -0.5}, pse = {.2, .3, .3, .1, .2}; near(Lfk.compute(perm, pse, null).lfk, sy.lfk, 1e-12, "LFK index does not depend on the input order");
+            near(Lfk.compute(new double[]{1, 2, 3, 4, 5}, new double[]{1, 1, 1, 1, 1}, null).lfk, 0, 0.05, "LFK index: equally precise, evenly spaced studies are symmetric");
+            MetaData bd = new MetaData(); bd.put("event.e", new double[]{12, 8, 20, 5, 30, 9}); bd.put("n.e", new double[]{100, 60, 150, 40, 220, 80}); bd.put("event.c", new double[]{20, 15, 31, 9, 41, 14}); bd.put("n.c", new double[]{100, 62, 148, 42, 215, 79}); bd.n = 6;
+            MetaSpec bs = new MetaSpec(); bs.type = "bin"; bs.sm = "RR"; bs.method = "Inverse"; bs.common = true; bs.random = true; MetaResult br = Meta.run(bs, bd); Lfk bl = Lfk.compute(br.TE, br.seTE, br.studlab);
+            java.util.function.DoubleFunction<BufferedImage> labF = sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return Plots.labbe(br, q); }, doiF = sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return Plots.doi(bl, br, q); };
+            check(Report.lfkText(bl, br).contains("LFK index: ") && labF.apply(1.0).getWidth() == 520 && doiF.apply(1.0).getWidth() == 620, "Doi plot and L'Abbe plot render and the LFK report is produced");
+            try { for (java.util.function.DoubleFunction<BufferedImage> f : java.util.List.of(labF, doiF)) {
+                org.metajava.plot.VectorGraphics vg = org.metajava.plot.Canvas.record(f, 300 / 96.0); java.io.ByteArrayOutputStream sv = new java.io.ByteArrayOutputStream(), pf = new java.io.ByteArrayOutputStream();
+                org.metajava.plot.VectorExport.svg(vg, sv); org.metajava.plot.VectorExport.pdf(vg, pf); String x = sv.toString("UTF-8"); int w = f.apply(300 / 96.0).getWidth();
+                check(x.startsWith("<?xml") && x.contains("width=\"" + w + "\"") && x.contains("<text ") && x.trim().endsWith("</svg>"), "SVG export keeps the PNG pixel size at 300 dpi (" + w + " px) and holds live text");
+                String ph = new String(pf.toByteArray(), 0, 8, "ISO-8859-1"); String pt = new String(pf.toByteArray(), "ISO-8859-1");
+                check(ph.startsWith("%PDF-1.4") && pt.trim().endsWith("%%EOF") && pt.contains("/MediaBox [0 0 " + (w * 0.75 == Math.rint(w * 0.75) ? String.valueOf((long) (w * 0.75)) : String.format(java.util.Locale.ROOT, "%.2f", w * 0.75).replaceAll("0+$", "").replaceAll("\\.$", "")) + " "), "PDF export has a valid header/trailer and the page size of the 300 dpi PNG (1 px = 0.75 pt)"); }
+            } catch (Exception e) { check(false, "vector export threw " + e); }
+        }
+
+        // ---- 5. "Save this plot": the type chosen in the dialog decides the extension (bug: PDF chosen, name stayed .png)
+        { java.util.Set<String> pr = new java.util.HashSet<>(java.util.List.of("L_Abb_Plot.png")); java.io.File sd = new java.io.File("some", "dir");
+            check(org.metajava.gui.PlotChooser.withExtension(new java.io.File(sd, "L_Abb_Plot.png"), "PDF", pr).equals(new java.io.File(sd, "L_Abb_Plot.pdf")), "save dialog: proposed .png name with PDF chosen is written as .pdf");
+            check(org.metajava.gui.PlotChooser.withExtension(new java.io.File(sd, "L_Abb_Plot.png"), "SVG", pr).getName().equals("L_Abb_Plot.svg"), "save dialog: proposed .png name with SVG chosen is written as .svg");
+            check(org.metajava.gui.PlotChooser.withExtension(new java.io.File(sd, "fig.svg"), "PNG", pr).getName().equals("fig.svg"), "save dialog: an extension typed by the user is respected");
+            check(org.metajava.gui.PlotChooser.withExtension(new java.io.File(sd, "fig"), "PDF", pr).getName().equals("fig.pdf") && org.metajava.gui.PlotChooser.withExtension(new java.io.File(sd, "fig.v2"), "PNG", pr).getName().equals("fig.v2.png"), "save dialog: a name without known extension gets the extension of the chosen type");
+            check(org.metajava.gui.PlotChooser.withExtension(new java.io.File("plot.PNG"), "PDF", new java.util.HashSet<>(java.util.List.of("plot.PNG"))).getName().equals("plot.pdf"), "save dialog: upper-case extension and relative name"); }
+
+        // ---- 6. PDF/SVG: page independent of dpi, document title; Doi apex line optional
+        { MetaData bd2 = new MetaData(); bd2.put("event.e", new double[]{12, 8, 20, 5, 30, 9}); bd2.put("n.e", new double[]{100, 60, 150, 40, 220, 80}); bd2.put("event.c", new double[]{20, 15, 31, 9, 41, 14}); bd2.put("n.c", new double[]{100, 62, 148, 42, 215, 79}); bd2.n = 6;
+            MetaSpec s2 = new MetaSpec(); s2.type = "bin"; s2.sm = "RR"; s2.method = "Inverse"; s2.common = true; s2.random = true; MetaResult r2 = Meta.run(s2, bd2); Lfk l2 = Lfk.compute(r2.TE, r2.seTE, r2.studlab);
+            java.util.function.DoubleFunction<BufferedImage> doi0 = sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return Plots.doi(l2, r2, q); }, doi1 = sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; q.apexLine = true; return Plots.doi(l2, r2, q); };
+            try { java.io.File t1 = java.io.File.createTempFile("mjt", ".pdf"), t2 = java.io.File.createTempFile("mjt", ".pdf"), t3 = java.io.File.createTempFile("mjt", ".svg"); t1.deleteOnExit(); t2.deleteOnExit(); t3.deleteOnExit();
+                org.metajava.gui.MainWindow.writePlot(doi0, t1, "PDF", 300 / 96.0, "Doi Plot"); org.metajava.gui.MainWindow.writePlot(doi0, t2, "PDF", 1200 / 96.0, "Doi Plot"); org.metajava.gui.MainWindow.writePlot(doi0, t3, "SVG", 1200 / 96.0, "Doi & Plot");
+                String p1 = new String(java.nio.file.Files.readAllBytes(t1.toPath()), "ISO-8859-1"), p2 = new String(java.nio.file.Files.readAllBytes(t2.toPath()), "ISO-8859-1"), sv = new String(java.nio.file.Files.readAllBytes(t3.toPath()), "UTF-8");
+                check(p1.contains("/MediaBox [0 0 465 390]") && p2.contains("/MediaBox [0 0 465 390]"), "PDF page is the natural size of the plot whatever the dpi setting");
+                check(p1.contains("/Title <FEFF") && p1.contains("/Info 5 0 R") && p1.contains("/Size 6"), "PDF carries a document information dictionary with the plot title");
+                check(sv.contains("viewBox=\"0 0 620 520\"") && sv.contains("<title>Doi &amp; Plot</title>"), "SVG is the natural size whatever the dpi setting and has a title"); } catch (Exception e) { check(false, "vector export of the title/size test threw " + e); }
+            int dashed = 0; { org.metajava.plot.VectorGraphics a0 = org.metajava.plot.Canvas.record(doi0, 1.0), a1 = org.metajava.plot.Canvas.record(doi1, 1.0); try { java.io.ByteArrayOutputStream b0 = new java.io.ByteArrayOutputStream(), b1 = new java.io.ByteArrayOutputStream(); org.metajava.plot.VectorExport.svg(a0, b0); org.metajava.plot.VectorExport.svg(a1, b1);
+                check(!b0.toString("UTF-8").contains("stroke-dasharray") && b1.toString("UTF-8").contains("stroke-dasharray"), "Doi plot: the dashed apex line is drawn only when requested"); } catch (Exception e) { check(false, "apex test threw " + e); } } }
+
+        // ---- 7. TIFF and JPG export
+        { java.util.Set<String> pr = new java.util.HashSet<>(java.util.List.of("Doi_Plot.png")); java.io.File sd = new java.io.File("some", "dir");
+            check(org.metajava.gui.PlotChooser.withExtension(new java.io.File(sd, "Doi_Plot.png"), "TIFF", pr).getName().equals("Doi_Plot.tif") && org.metajava.gui.PlotChooser.withExtension(new java.io.File(sd, "Doi_Plot.png"), "JPG", pr).getName().equals("Doi_Plot.jpg"), "save dialog: TIFF and JPG types give .tif and .jpg");
+            check(org.metajava.gui.PlotChooser.withExtension(new java.io.File(sd, "a.tiff"), "PNG", pr).getName().equals("a.tiff") && org.metajava.gui.PlotChooser.withExtension(new java.io.File(sd, "a.JPEG"), "PDF", pr).getName().equals("a.JPEG") && org.metajava.gui.PlotChooser.knownFormat("a.jpeg").equals("JPG"), "save dialog: typed .tiff / .jpeg are respected");
+            MetaData bd3 = new MetaData(); bd3.put("event.e", new double[]{12, 8, 20, 5, 30, 9}); bd3.put("n.e", new double[]{100, 60, 150, 40, 220, 80}); bd3.put("event.c", new double[]{20, 15, 31, 9, 41, 14}); bd3.put("n.c", new double[]{100, 62, 148, 42, 215, 79}); bd3.n = 6;
+            MetaSpec s3 = new MetaSpec(); s3.type = "bin"; s3.sm = "RR"; s3.method = "Inverse"; s3.common = true; s3.random = true; MetaResult r3 = Meta.run(s3, bd3);
+            java.util.function.DoubleFunction<BufferedImage> labR = sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return Plots.labbe(r3, q); };
+            try { for (String fm : new String[]{"PNG", "TIFF", "JPG"}) { java.io.File tf = java.io.File.createTempFile("mjr", "." + org.metajava.gui.RasterWriter.ext(fm)); tf.deleteOnExit();
+                org.metajava.gui.MainWindow.writePlot(labR, tf, fm, 300 / 96.0, "L'Abbe"); BufferedImage back = javax.imageio.ImageIO.read(tf);
+                check(back != null && back.getWidth() == 1625 && back.getHeight() == 1625, fm + " export is readable and has the pixel size of the chosen resolution (300 dpi: 1625 px)"); } } catch (Exception e) { check(false, "raster export threw " + e); } }
+
+        // ---- 8. L'Abbe plot shows the study circles for every pooling method (GLMM and LRP have no study weights)
+        { MetaData bd4 = new MetaData(); bd4.put("event.e", new double[]{12, 8, 20, 5, 30, 9}); bd4.put("n.e", new double[]{100, 60, 150, 40, 220, 80}); bd4.put("event.c", new double[]{20, 15, 31, 9, 41, 14}); bd4.put("n.c", new double[]{100, 62, 148, 42, 215, 79}); bd4.n = 6;
+            for (String mth : new String[]{"Inverse", "Peto", "MH", "SSW", "GLMM", "LRP"}) { MetaSpec s4 = new MetaSpec(); s4.type = "bin"; s4.sm = "OR"; s4.method = mth; s4.common = true; s4.random = true; if (mth.equals("GLMM")) s4.methodTau = "ML";
+                try { MetaResult r4 = Meta.run(s4, bd4); Plots.Opts q = new Plots.Opts(); q.scale = 3; q.studyLabels = false; BufferedImage lim = Plots.labbe(r4, q); int grey = 0; for (int yy = 0; yy < lim.getHeight(); yy++) for (int xx = 0; xx < lim.getWidth(); xx++) if ((lim.getRGB(xx, yy) & 0xFFFFFF) == 0xD3D3D3) grey++;
+                    check(grey > 5000, "L'Abbe plot (" + mth + "): study circles are drawn (" + grey + " grey pixels)"); } catch (Exception e) { check(false, "L'Abbe plot " + mth + " threw " + e); } } }
+
+        // ---- 8b. L'Abbe symbol sizes of GLMM / LRP follow metafor::labbe (psize = rescaled sqrt(1/vi) of the arm-level variances, range 0.5 to 3.5)
+        { MetaSpec s5 = new MetaSpec(); s5.type = "bin"; s5.sm = "OR"; double[] ee5 = {12, 8, 20, 5, 30, 0}, ne5 = {100, 60, 150, 40, 220, 80}, ec5 = {20, 15, 31, 9, 41, 14}, nc5 = {100, 62, 148, 42, 215, 79}, te5 = {0, 0, 0, 0, 0, 0};
+            double[] ps5 = org.metajava.plot.Plots.labbeMetaforPsize(s5, ee5, ne5, ec5, nc5, te5); double mn5 = 9, mx5 = 0; for (double q5 : ps5) { mn5 = Math.min(mn5, q5); mx5 = Math.max(mx5, q5); }
+            check(Math.abs(mn5 - 0.5) < 1e-12 && Math.abs(mx5 - 3.5) < 1e-12, "L'Abbe (GLMM/LRP): symbol sizes span 0.5 to 3.5 as metafor (" + mn5 + " to " + mx5 + ")");
+            double[] w5 = new double[6]; for (int i = 0; i < 6; i++) { double a5 = ee5[i] == 0 ? 0.5 : ee5[i], b5 = ne5[i] - ee5[i] + (ee5[i] == 0 ? 0.5 : 0), c5 = ec5[i], d5 = nc5[i] - ec5[i]; w5[i] = Math.sqrt(1 / (1 / a5 + 1 / b5 + 1 / c5 + 1 / d5)); }
+            double lo5 = 9, hi5 = 0; for (double q5 : w5) { lo5 = Math.min(lo5, q5); hi5 = Math.max(hi5, q5); } boolean same5 = true; for (int i = 0; i < 6; i++) same5 &= Math.abs(ps5[i] - ((w5[i] - lo5) / (hi5 - lo5) * 3 + 0.5)) < 1e-12;
+            check(same5, "L'Abbe (GLMM/LRP): symbol sizes equal metafor's sqrt(1/(vi_x + vi_y)) rescaling with the 0.5 continuity correction on zero cells"); }
+
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);
     }

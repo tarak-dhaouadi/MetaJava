@@ -8,10 +8,23 @@ import java.awt.image.BufferedImage;
 public final class Canvas {
     public final BufferedImage img; public final Graphics2D g; public final int w, h; private final double sc;
     public double scaleF() { return sc; }
-    public Canvas(int w, int h, double scale) {
+    /** Set (per thread) while a plot is being recorded as vector graphics; every non-probe Canvas created meanwhile draws into a {@link VectorGraphics}. */
+    private static final ThreadLocal<java.util.List<VectorGraphics>> REC = new ThreadLocal<>();
+    /** Runs {@code render} (a plot function taking the resolution scale) in vector mode and returns the recording of the plot it drew. */
+    public static VectorGraphics record(java.util.function.DoubleFunction<?> render, double scale) {
+        java.util.List<VectorGraphics> got = new java.util.ArrayList<>(); REC.set(got);
+        try { render.apply(scale); } finally { REC.remove(); }
+        if (got.isEmpty()) throw new IllegalStateException("The plot did not draw anything");
+        return got.get(got.size() - 1);
+    }
+    /** Small raster canvas used only to measure text; never recorded. */
+    public static Canvas probe() { return new Canvas(10, 10, 1, true); }
+    public Canvas(int w, int h, double scale) { this(w, h, scale, false); }
+    private Canvas(int w, int h, double scale, boolean probe) {
         this.sc = scale; this.w = (int) (w * scale); this.h = (int) (h * scale);
-        img = new BufferedImage(this.w, this.h, BufferedImage.TYPE_INT_RGB);
-        g = img.createGraphics();
+        java.util.List<VectorGraphics> rec = probe ? null : REC.get();
+        if (rec != null) { VectorGraphics vg = new VectorGraphics(this.w, this.h, scale); rec.add(vg); g = vg; img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB); }
+        else { img = new BufferedImage(this.w, this.h, BufferedImage.TYPE_INT_RGB); g = img.createGraphics(); }
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);

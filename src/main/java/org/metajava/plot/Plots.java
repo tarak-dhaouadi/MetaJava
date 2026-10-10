@@ -15,7 +15,7 @@ public final class Plots {
     public static class Opts { public double scale = 1; public int width = 900; public String theme = "Default"; public String sortBy = "Original order"; public boolean ascending = true;
         public boolean overall = true, analysisDetails = false, testOverall = true, hetStats = true, studyLabels = true, regLine = true, contour = false, ciI2 = false, ciTau = false;
         public String xLeft = "", xRight = "", xlab = ""; public boolean showSubgroupName = true, testSubgroup = true, testEffectSubgroup = false; public boolean overallResults = true;
-        public boolean weightsCol = true, effectCol = true, seCol = true, teCol = true; public double spacing = 1.0; public int digits = 2; public boolean predictionLine = true; }
+        public boolean weightsCol = true, effectCol = true, seCol = true, teCol = true; public double spacing = 1.0; public int digits = 2; public boolean predictionLine = true; public boolean apexLine = false; }
 
     static class Row { String label; double te, lo, up, w, se; int type; // 0 study,1 diamond,2 header,3 PI,4 blank,5 text
         String[] lcols = new String[0]; String rcol1 = "", rcol2 = "", wtxt = ""; String text = ""; double predLo, predUp; boolean hasPred;
@@ -159,7 +159,7 @@ public final class Plots {
     static BufferedImage drawForest(List<Row> rows, MetaResult r, Opts o, boolean log, String smL, boolean showWeight, boolean loo) {
         MetaSpec s = r.spec; final float FS = 12f; int rowH = (int) Math.round(20 * o.spacing), M = 14, nrow = rows.size();
         String[] lh = loo ? new String[]{"P-value", "Tau\u00B2", "Tau", "I\u00B2"} : leftHead(s); int nl = lh.length;
-        Canvas probe = new Canvas(10, 10, 1); FontMetrics fm = probe.g.getFontMetrics(Canvas.font(FS)), fb = probe.g.getFontMetrics(Canvas.bold(FS));
+        Canvas probe = Canvas.probe(); FontMetrics fm = probe.g.getFontMetrics(Canvas.font(FS)), fb = probe.g.getFontMetrics(Canvas.bold(FS));
         int labW = fb.stringWidth("Study");
         for (Row w : rows) if (w.type == 0 || w.type == 1 || w.type == 2 || w.type == 3) labW = Math.max(labW, (w.type == 0 ? fm : fb).stringWidth(w.label == null ? "" : w.label));
         int[] cw = new int[nl]; for (int j = 0; j < nl; j++) { cw[j] = fb.stringWidth(lh[j]); for (Row w : rows) if (j < w.lcols.length) cw[j] = Math.max(cw[j], (w.type == 1 ? fb : fm).stringWidth(w.lcols[j])); }
@@ -327,6 +327,7 @@ public final class Plots {
         Axes a = new Axes(); a.c = c; a.x0 = 70; a.x1 = c.w / c.scaleF() - 30; a.y0 = 40; a.y1 = c.h / c.scaleF() - 60; a.xl = xl; a.xh = xh; a.yl = yl; a.yh = yh; a.yRev = yRev;
         Graphics2D g = c.g; g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
         double[] xt = logX ? logTicks(Math.exp(xl), Math.exp(xh)) : Canvas.pretty(xl, xh, 6), yt = Canvas.pretty(yl, yh, 6);
+        if (logX) { int inside = 0; for (double t : xt) { double v = Math.log(t); if (v >= xl && v <= xh) inside++; } if (inside < 2) xt = Canvas.pretty(Math.exp(xl), Math.exp(xh), 5); }   // narrow range: the 1-2-5 log ticks leave fewer than two labels
         for (double t : xt) { double v = logX ? Math.log(t) : t; if (v < xl || v > xh) continue; double xx = a.X(v); c.line(xx, a.y1, xx, a.y1 + 5); c.text(Canvas.tick(t), xx, a.y1 + 18, 10, 1, false); }
         for (double t : yt) { if (t < yl - 1e-9 || t > yh + 1e-9) continue; double yy = a.Y(t); c.line(a.x0 - 5, yy, a.x0, yy); c.textRot(Canvas.tick(t), a.x0 - 10, yy, 10); }
         c.text(xlab, (a.x0 + a.x1) / 2, a.y1 + 40, 11, 1, false); c.textRot(ylab, 16, (a.y0 + a.y1) / 2, 11);
@@ -430,6 +431,76 @@ public final class Plots {
         Shape clip = c.g.getClip(); c.g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0)); c.line(a.X(0), a.Y(0), a.X(xm * 1.05), a.Y(slope * xm * 1.05)); c.g.setClip(clip);
         for (int i = 0; i < pts.size(); i++) { double xx = a.X(pts.get(i)[0]), yy = a.Y(pts.get(i)[1]); c.g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) c.text(labs.get(i), xx + 4, yy - 3, 8, 0, false); }
         return c.img;
+    }
+
+    /** Doi plot (Furuya-Kanamori et al. 2018): |Z-score| (reversed axis) against the effect size, studies joined in order of effect; optional dashed line through the apex (Opts.apexLine, off as in metasens::doiplot). */
+    public static BufferedImage doi(Lfk l, MetaResult r, Opts o) {
+        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); Canvas c = new Canvas(620, 520, o.scale); int k = l.k;
+        if (l.lfk != l.lfk) { c.text("Doi plot not available (needs at least two studies with different effects)", 310, 260, 12, 1, false); return c.img; }
+        double mn = l.te[0], mx = l.te[k - 1], pad = (mx - mn) > 0 ? (mx - mn) * 0.06 : 0.5, yh = 0; for (double z : l.absZ) yh = Math.max(yh, z); yh = Math.max(yh * 1.08, 0.5);
+        Axes a = axes(c, mn - pad, mx + pad, 0, yh, true, xlabFor(s), "|Z-score|", log, ""); Graphics2D g = c.g;
+        g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
+        if (o.apexLine) c.dashed(a.X(l.te[l.apex]), a.Y(0), a.X(l.te[l.apex]), a.y1);   // not part of metasens::doiplot: optional
+        for (int j = 1; j < k; j++) c.line(a.X(l.te[j - 1]), a.Y(l.absZ[j - 1]), a.X(l.te[j]), a.Y(l.absZ[j]));
+        for (int j = 0; j < k; j++) { double xx = a.X(l.te[j]), yy = a.Y(l.absZ[j]); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); if (o.studyLabels) c.text(l.label[j], xx + 5, yy - 4, 8, 0, false); }
+        c.text("LFK index: " + Fmt.num(l.lfk, 2), a.x0 + 8, a.y0 + 17, 11, 0, false);
+        return c.img;
+    }
+
+    /** L'Abbe plot (meta::labbe.metabin): event rate in the experimental group against the control group; symbol area follows the study weight; GLMM and LRP, which have no study weights, use the metafor::labbe symbol sizes. */
+    public static BufferedImage labbe(MetaResult r, Opts o) {
+        MetaSpec s = r.spec; MetaData d = r.data; Canvas c = new Canvas(520, 520, o.scale); int n = r.TE.length;
+        double[] ee = d.get("event.e"), ne = d.get("n.e"), ec = d.get("event.c"), nc = d.get("n.c");
+        if (ee == null || ne == null || ec == null || nc == null) { c.text("L'Abb\u00E9 plot requires binary outcome data", 260, 260, 12, 1, false); return c.img; }
+        // GLMM and LRP give no study weights: symbol sizes then follow metafor::labbe (psize from the arm-level variances, plim = c(0.5, 3.5)); other methods keep the meta::labbe.metabin weights
+        double[] psz = s.noWeights() ? labbeMetaforPsize(s, ee, ne, ec, nc, r.TE) : null;
+        double[] w = s.common ? r.wCommonFull : r.wRandomFull; boolean anyW = false; for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && w[i] > 0) anyW = true;
+        if (psz != null) { w = new double[n]; for (int i = 0; i < n; i++) w[i] = psz[i]; }
+        else if (!anyW) { w = new double[n]; for (int i = 0; i < n; i++) w[i] = !Double.isNaN(r.TE[i]) && r.seTE[i] > 0 ? 1 / (r.seTE[i] * r.seTE[i]) : Double.NaN; }
+        double wmax = 0; for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && !Double.isNaN(w[i])) wmax = Math.max(wmax, w[i]);
+        double hi = 0; for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && !Double.isNaN(w[i]) && ne[i] > 0 && nc[i] > 0) hi = Math.max(hi, Math.max(ee[i] / ne[i], ec[i] / nc[i]));
+        double[] tk = Canvas.pretty(0, Math.max(hi * 1.05, 0.05), 5); double lim = Math.min(1, tk[tk.length - 1]);   // same limits on both axes, as metafor::labbe
+        Axes a = axes(c, 0, lim, 0, lim, false, "Event rate (" + s.labelC + ")", "Event rate (" + s.labelE + ")", false, ""); Graphics2D g = c.g;
+        Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
+        g.setColor(new Color(211, 211, 211)); g.setStroke(new BasicStroke(1f)); c.line(a.X(0), a.Y(0), a.X(lim), a.Y(lim));   // no effect (lightgray)
+        g.setColor(Color.BLACK);
+        if (s.common) labbeLine(c, a, s, r.overall.teCommon, false, lim); if (s.random) labbeLine(c, a, s, r.overall.teRandom, true, lim);
+        g.setClip(clip);
+        for (int i = 0; i < n; i++) { if (Double.isNaN(r.TE[i]) || Double.isNaN(w[i]) || ne[i] <= 0 || nc[i] <= 0) continue;
+            double xx = a.X(ec[i] / nc[i]), yy = a.Y(ee[i] / ne[i]), dia = psz != null ? 4 * w[i] : Math.max(4, 14 * Math.sqrt(w[i] / wmax)), rad = dia / 2;   // metafor: cex = psize in [0.5, 3.5] -> diameter 2 to 14 px
+            g.setColor(new Color(211, 211, 211)); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia)); g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia));
+            if (o.studyLabels) c.text(r.studlab[i], xx - rad - 3, yy + 3, 8, 2, false); }
+        g.setColor(Color.BLACK); return c.img;
+    }
+    /** Symbol sizes of metafor::labbe.rma (plim = c(0.5, 3.5)): wi = sqrt(1/vi) with vi the sum of the arm-level sampling variances (escalc measures PLN for RR, PLO for OR, PR for RD, PAS for ASD, continuity correction as add/to of the model), rescaled linearly to [0.5, 3.5]; all 1 when every wi is equal. */
+    public static double[] labbeMetaforPsize(MetaSpec s, double[] ee, double[] ne, double[] ec, double[] nc, double[] te) {
+        int n = te.length; double[] vi = new double[n], ps = new double[n]; double[] vx = armVar(s, ec, nc), vy = armVar(s, ee, ne);
+        double mn = Double.POSITIVE_INFINITY, mx = Double.NEGATIVE_INFINITY; double[] wi = new double[n];
+        for (int i = 0; i < n; i++) { vi[i] = vx[i] + vy[i]; wi[i] = vi[i] > 0 && !Double.isInfinite(vi[i]) && !Double.isNaN(vi[i]) && !Double.isNaN(te[i]) ? Math.sqrt(1 / vi[i]) : Double.NaN;
+            if (!Double.isNaN(wi[i])) { mn = Math.min(mn, wi[i]); mx = Math.max(mx, wi[i]); } }
+        double rng = mx - mn;
+        for (int i = 0; i < n; i++) ps[i] = Double.isNaN(wi[i]) ? Double.NaN : rng <= Math.sqrt(Math.ulp(1.0)) ? 1 : (wi[i] - mn) / rng * (3.5 - 0.5) + 0.5;
+        return ps;
+    }
+    /** Arm-level sampling variances as escalc(measure = PLN / PLO / PR / PAS, add, to, addvi = TRUE) for the events xi out of ni. */
+    private static double[] armVar(MetaSpec s, double[] x, double[] nn) {
+        int n = x.length; double[] v = new double[n]; boolean any = false; for (int i = 0; i < n; i++) if (nn[i] > 0 && (x[i] == 0 || x[i] == nn[i])) any = true;
+        for (int i = 0; i < n; i++) { if (!(nn[i] > 0)) { v[i] = Double.NaN; continue; }
+            boolean zero = x[i] == 0 || x[i] == nn[i]; double add = s.methodIncr.equals("all") ? s.incr : s.methodIncr.equals("if0all") ? (any ? s.incr : 0) : s.methodIncr.equals("only0") ? (zero ? s.incr : 0) : 0;
+            double xi = x[i] + add, mi = nn[i] - x[i] + add, ni = xi + mi;
+            switch (s.sm) { case "RR": v[i] = 1 / xi - 1 / ni; break; case "RD": { double p = xi / ni; v[i] = p * (1 - p) / ni; break; } case "ASD": v[i] = 1 / (4 * ni); break; default: v[i] = 1 / xi + 1 / mi; } }
+        return v;
+    }
+    /** Line of the pooled effect in the L'Abbe plot: event rate in the experimental group implied by a control rate x. */
+    private static void labbeLine(Canvas c, Axes a, MetaSpec s, double te, boolean random, double lim) {
+        if (Double.isNaN(te)) return; double[] xs = new double[101], ys = new double[101]; boolean ok = true;
+        for (int i = 0; i <= 100; i++) { double x = lim * i / 100.0, y;
+            switch (s.sm) { case "RR": y = Math.exp(te) * x; break; case "OR": { double e = Math.exp(te); y = e * x / (1 - x + e * x); break; } case "RD": y = x + te; break;
+                case "ASD": y = Math.pow(Math.sin(Math.max(0, Math.min(Math.PI / 2, Math.asin(Math.sqrt(x)) + te))), 2); break; default: ok = false; y = x; }
+            xs[i] = x; ys[i] = Math.max(0, Math.min(1, y)); }
+        if (!ok) return; Graphics2D g = c.g; Stroke old = g.getStroke();
+        g.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, random ? new float[]{9, 3} : new float[]{5, 4}, 0));
+        Path2D p = new Path2D.Double(); for (int i = 0; i <= 100; i++) { if (i == 0) p.moveTo(a.X(xs[i]), a.Y(ys[i])); else p.lineTo(a.X(xs[i]), a.Y(ys[i])); } g.draw(p); g.setStroke(old);
     }
 
     /** 1-2-5 tick values inside [exp(lo), exp(hi)] for a log axis (bounds given on the log scale). */
