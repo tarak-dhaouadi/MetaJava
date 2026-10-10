@@ -1,7 +1,5 @@
 # Changelog
 
-## Unreleased
-
 ### New - cluster detection in the GOSH output
 - Wording: clusters are groups of subsets, not of studies; the 40-point inclusion threshold is a heuristic, and the studies listed are "associated with" a cluster, not proven causes. The meta-regression sign-flip share is labelled as an exploratory sign-stability measure, and the output states that summaries refer to the subsets actually analysed (all, or a random sample).
 - Option **Detect clusters of subsets (colour by cluster)** in section 10: a Gaussian mixture model with full covariances (EM, k-means++ starts, seeded) is fitted to the standardised GOSH points (estimate and I² for the ordinary GOSH; all coefficients and the residual I² for the meta-regression GOSH). The number of clusters (1 to 6) is chosen by the integrated completed likelihood (ICL), so one skewed cloud is not split into overlapping pieces; for large clouds the model is fitted to a sample of 5000 subsets and every subset is then assigned to its most probable cluster. Clusters below 1% of the subsets are merged.
