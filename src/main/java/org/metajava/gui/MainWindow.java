@@ -68,7 +68,7 @@ public class MainWindow extends JFrame {
     JComboBox<String> selDir = Ui.combo("Auto", "Positive", "Negative");
     // meta-regression extras, subgroup plots, GOSH
     JCheckBox permChk = Ui.check("Permutation test (permutest)", false), permExactChk = Ui.check("Exact test when k \u2264 9 (all k! permutations)", false), cmpChk = Ui.check("Model comparison table (AIC / BIC / R\u00B2)", false),
-        orchardChk = Ui.check("Orchard plot (subgroups)", false), caterChk = Ui.check("Caterpillar plot (subgroups)", false), goshChk = Ui.check("GOSH plot (heterogeneity diagnostics)", false), goshHlChk = Ui.check("Colour subsets by the most influential study", false);
+        orchardChk = Ui.check("Orchard plot (subgroups)", false), caterChk = Ui.check("Caterpillar plot (subgroups)", false), goshChk = Ui.check("GOSH plot (heterogeneity diagnostics)", false), goshHlChk = Ui.check("Colour subsets by the most influential study", false), goshClChk = Ui.check("Detect clusters of subsets (colour by cluster)", false), goshRegChk = Ui.check("GOSH for meta-regression (coefficients and residual heterogeneity)", false);
     JSpinner permIterSp = new JSpinner(new SpinnerNumberModel(5000, 100, 100000, 1000)), goshSubSp = new JSpinner(new SpinnerNumberModel(20000, 1000, 500000, 5000));
     JTextField permSeedF = new JTextField("1", 6), goshSeedF = new JTextField("1", 6);
     JComboBox<String> biasMethod = Ui.combo("Default", "Egger", "Begg", "Thompson", "Harbord", "Peters", "Macaskill", "Deeks", "Pustejovsky", "Schwarzer");
@@ -163,7 +163,11 @@ public class MainWindow extends JFrame {
         Ui.Section dg = new Ui.Section("10. Diagnostics", false); dg.row(null, infChk); dg.row(null, baujatChk); dg.row(null, radialChk); dg.row(null, labbeChk);
         goshChk.setToolTipText("Graphical display of study heterogeneity (Olkin et al., 2012; metafor::gosh): the random-effects model is fitted to all (or many random) subsets of the studies; pooled estimate against I\u00B2");
         goshSubSp.setToolTipText("All subsets are used when there are fewer than this many (at most 18 studies); otherwise this many random subsets"); goshSeedF.setToolTipText("Seed for the random subsets");
-        dg.row(null, goshChk); dg.row("GOSH subsets", goshSubSp); dg.row("Random seed (GOSH)", goshSeedF); dg.row(null, goshHlChk); p.add(dg); p.add(Box.createVerticalStrut(8));
+        goshClChk.setToolTipText("Gaussian mixture model (ICL) fitted to the GOSH points; reports the clusters, the studies that separate them and colours the plots by cluster. Replaces the highlight of the most influential study");
+        goshRegChk.setToolTipText("Fits the meta-regression model (covariates / factors chosen in the Meta-regression section) to subsets of the studies and shows how the regression coefficients and the residual heterogeneity vary; output below the ordinary GOSH analysis. Subsets in which the coefficients cannot be estimated are counted and left out");
+        goshSubSp.setToolTipText("All subsets are used when there are at most this many possible subsets; otherwise this many random subsets (as metafor::gosh). Also used for the meta-regression GOSH");
+        java.awt.event.ItemListener goshEn = e -> { boolean on = goshChk.isSelected(); goshClChk.setEnabled(on); goshRegChk.setEnabled(on); }; goshChk.addItemListener(goshEn); goshEn.itemStateChanged(null);
+        dg.row(null, goshChk); dg.row("GOSH subsets", goshSubSp); dg.row("Random seed (GOSH)", goshSeedF); dg.row(null, goshHlChk); dg.row(null, goshClChk); dg.row(null, goshRegChk); p.add(dg); p.add(Box.createVerticalStrut(8));
         Ui.Section ou = new Ui.Section("11. Export", false); JButton sa = Ui.button("Save all plots\u2026", false), st = Ui.button("Save results (.txt)\u2026", false), sx = Ui.button("Save tables (.xlsx)\u2026", false), sw = Ui.button("Save full report (.docx)\u2026", false); sa.addActionListener(e -> savePlots()); st.addActionListener(e -> saveText()); sx.addActionListener(e -> saveExcel()); sw.addActionListener(e -> saveWord());
         sx.setToolTipText("Excel workbook with the results tables: one sheet per analysis section"); sw.setToolTipText("Word document with the whole output (paragraphs, tables and figures) in the order of the results panel");
         dpiSp.setToolTipText("Resolution of PNG, TIFF and JPG files. SVG and PDF are resolution independent and ignore it."); fmtBox.addActionListener(e -> dpiSp.setEnabled(RasterWriter.isRaster((String) fmtBox.getSelectedItem()))); dpiSp.setEnabled(RasterWriter.isRaster((String) fmtBox.getSelectedItem()));
@@ -339,7 +343,7 @@ public class MainWindow extends JFrame {
     /** Everything the background code needs, captured on the UI thread (Swing components are never read from worker threads). */
     static final class Snap {
         MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; String biasMethod, tfSide, tfEst, selDir; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
-        boolean perm, permExact, cmp, orchard, cater, gosh, goshHl; int permIter, goshSub; long permSeed, goshSeed;
+        boolean perm, permExact, cmp, orchard, cater, gosh, goshHl, goshCl, goshReg; int permIter, goshSub; long permSeed, goshSeed;
         boolean doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, loo, looForest, cum, cumForest, funnel, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
     }
     private final ThreadLocal<List<Item>> sink = new ThreadLocal<>();
@@ -369,7 +373,7 @@ public class MainWindow extends JFrame {
             n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
             n.o.contour = n.funnel && n.contour; n.o.studyLabels = n.labels;
             n.perm = permChk.isSelected(); n.permExact = permExactChk.isSelected(); n.cmp = cmpChk.isSelected(); n.permIter = (Integer) permIterSp.getValue(); n.permSeed = lng(permSeedF, 1);
-            n.orchard = orchardChk.isSelected(); n.cater = caterChk.isSelected(); n.gosh = goshChk.isSelected(); n.goshHl = goshHlChk.isSelected(); n.goshSub = (Integer) goshSubSp.getValue(); n.goshSeed = lng(goshSeedF, 1);
+            n.orchard = orchardChk.isSelected(); n.cater = caterChk.isSelected(); n.gosh = goshChk.isSelected(); n.goshHl = goshHlChk.isSelected(); n.goshCl = goshClChk.isSelected(); n.goshReg = goshRegChk.isSelected(); n.goshSub = (Integer) goshSubSp.getValue(); n.goshSeed = lng(goshSeedF, 1);
             n.pet = petChk.isSelected(); n.petPlot = petPlotChk.isSelected(); n.sel = selChk.isSelected(); n.selDir = (String) selDir.getSelectedItem(); n.fail = failChk.isSelected();
         } catch (Validate.Failed ex) { showValidation(ex); return;
         } catch (Exception ex) { if (auto) softError(ex); else error(ex); return; }
@@ -417,8 +421,9 @@ public class MainWindow extends JFrame {
             if (n.labbe) secs.add(new Object[]{(Runnable) () -> { if (!s.type.equals("bin")) { addText("L\u2019Abb\u00E9 Plot", "The L\u2019Abb\u00E9 plot requires binary outcome data (analysis type: metabin)."); return; }
                 if (!java.util.Arrays.asList("RR", "OR", "RD", "ASD").contains(s.sm)) addText("L\u2019Abb\u00E9 Plot", "Note: the line of the pooled effect is only drawn for RR, OR, RD and ASD;\nthe study event rates are shown without it.");
                 addPlot("L\u2019Abb\u00E9 Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.labbe(r, q); }); }, false});
-            if (n.gosh) secs.add(new Object[]{(Runnable) () -> { Gosh gs = Gosh.run(r, n.goshSub, n.goshSeed); addText("GOSH Analysis", RegReport.goshText(gs, r));
-                addPlot("GOSH Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.gosh(gs, r, q, n.goshHl); }); }, true});
+            if (n.gosh) secs.add(new Object[]{(Runnable) () -> { Gosh gs = Gosh.run(r, n.goshSub, n.goshSeed); final GoshCluster gc = n.goshCl ? gs.detectClusters() : null; addText("GOSH Analysis", RegReport.goshText(gs, r));
+                addPlot("GOSH Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.gosh(gs, r, q, n.goshHl, gc); });
+                if (n.goshReg) goshRegression(r, n); }, true});
             final int total = secs.size();
             for (Object[] sc : secs) {
                 final Out out = new Out(); outs.add(out); final Runnable body = (Runnable) sc[0];
@@ -475,6 +480,21 @@ public class MainWindow extends JFrame {
         if (n.cmp) { try { ModelCompare mc = ModelCompare.run(r, nums, nd, facs, fd, n.regIntercept); addText("Model Comparison", RegReport.compareText(mc, r)); }
             catch (IllegalArgumentException ex) { addText("Model Comparison", ex.getMessage()); } }
         if (n.bubble && g.x1 != null) addPlot("Bubble Plot", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.studyLabels = n.labels; q.regLine = n.regLine; return Plots.bubble(g, q, r); });
+    }
+
+    /** GOSH with the meta-regression model of section 6: output right below the ordinary GOSH analysis and plot. */
+    void goshRegression(MetaResult r, Snap n) {
+        final String title = "GOSH Analysis - Meta-Regression";
+        List<String> nums = n.nums, facs = n.facs; if (nums.isEmpty() && facs.isEmpty()) { addText(title, "GOSH for meta-regression: select at least one covariate or factor in the Meta-regression section."); return; }
+        Map<String, double[]> nd = new HashMap<>(); for (String c : nums) nd.put(c, n.tbl.num(c)); Map<String, String[]> fd = new HashMap<>(); for (String f : facs) fd.put(f, n.tbl.strings(f));
+        List<String> terms = new ArrayList<>(nums); terms.addAll(facs);
+        final GoshReg gr;
+        try { Reg.Design D = Reg.design(r, nums, nd, facs, fd, n.regIntercept, null); gr = GoshReg.run(r, D, n.regIntercept, n.goshSub, n.goshSeed); }
+        catch (IllegalArgumentException ex) { addText(title + ": ~ " + String.join(" + ", terms), "GOSH for meta-regression: " + ex.getMessage()); return; }
+        if (n.goshCl) gr.detectClusters();
+        addText(title + ": ~ " + String.join(" + ", terms), RegReport.goshRegText(gr, r));
+        addPlot("GOSH Meta-Regression: Coefficients versus Residual Heterogeneity", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; return ExtraPlots.goshRegCoef(gr, q); });
+        addPlot("GOSH Meta-Regression: Scatterplot Matrix", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; return ExtraPlots.goshRegMatrix(gr, q); });
     }
 
     void influence(MetaResult r, MetaSpec s, Snap n) {

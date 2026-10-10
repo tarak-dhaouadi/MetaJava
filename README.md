@@ -175,7 +175,14 @@ restricted likelihood for REML (BIC and AICc then use k - p), the ordinary likel
   against I² (as selected for the main analysis) with marginal densities and dashed lines for the analysis of all studies. Dense
   clouds are drawn as a density map (so SVG / PDF stay small); optionally the subsets are coloured by whether they contain the most
   influential study. The text output gives quantiles over the subsets and, per study, the mean estimate and I² of the subsets with
-  and without it.
+  and without it. **Cluster detection** (option): a Gaussian mixture (EM, number of clusters 1–6 chosen by ICL) is fitted to the
+  GOSH points; the output lists the clusters (size, mean estimate and I²), the studies that are almost always in or out of a
+  cluster, and the plot is coloured by cluster. **GOSH for meta-regression** (option, output right below the ordinary GOSH analysis):
+  the meta-regression model of section 6 (covariates / factors) is fitted to subsets of the studies (at least *p* studies, *p* =
+  number of coefficients; all subsets (sum of choose(k, m), m = p..k) or a random sample drawn as in `metafor::gosh`; the output states which); it reports
+  how many subsets are valid, not estimable (rank-deficient: no variation in a moderator, missing factor level), saturated (k = p) or
+  failed, the distribution of every coefficient and of the residual I² and τ², sign flips, per-study in/out means, and draws the
+  plots *coefficients versus residual heterogeneity* and a *scatterplot matrix*.
 * **Orchard and caterpillar plots for subgroups** (section 5): the orchard plot shows the studies of each subgroup as dots (area
   proportional to precision) with the pooled estimate, its confidence interval (thick) and its prediction interval (thin) (Nakagawa
   et al., 2021); the caterpillar plot lists the studies of each subgroup ordered by effect with their confidence intervals, the pooled
@@ -184,8 +191,7 @@ restricted likelihood for REML (BIC and AICc then use k - p), the ordinary likel
 
 ## Not implemented
 
-Drapery plots; `permutest` confidence intervals (`permci`); GOSH for meta-regression models (the GOSH plot uses the
-intercept-only model) and cluster detection in the GOSH output; `metacr`, `metabind` and cumulative analysis by cluster; three-level models.
+Drapery plots; `permutest` confidence intervals (`permci`); `metacr`, `metabind` and cumulative analysis by cluster; three-level models.
 
 ## Validation
 

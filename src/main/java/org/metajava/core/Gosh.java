@@ -15,6 +15,8 @@ public final class Gosh {
     public double fullEst, fullI2, fullTau2; public int failed;
     /** Per study: mean estimate / I^2 over the subsets that include / exclude it. */
     public double[] estIn, estOut, i2In, i2Out; public int[] nIn;
+    /** Cluster detection over the subsets (null until {@link #detectClusters} is called). */
+    public GoshCluster clusters;
     public static final int MIN_SUBSETS = 1000, MAX_SUBSETS = 500000;
 
     public static Gosh run(MetaResult r, int maxSubsets, long seed) {
@@ -64,6 +66,12 @@ public final class Gosh {
             for (int j = 0; j < k; j++) { if ((m[j >> 6] >>> (j & 63) & 1L) != 0) { sEi[j] += g.est[b]; sIi[j] += g.i2[b]; g.nIn[j]++; } else { sEo[j] += g.est[b]; sIo[j] += g.i2[b]; nOut[j]++; } } }
         for (int j = 0; j < k; j++) { g.estIn[j] = g.nIn[j] > 0 ? sEi[j] / g.nIn[j] : Double.NaN; g.i2In[j] = g.nIn[j] > 0 ? sIi[j] / g.nIn[j] : Double.NaN; g.estOut[j] = nOut[j] > 0 ? sEo[j] / nOut[j] : Double.NaN; g.i2Out[j] = nOut[j] > 0 ? sIo[j] / nOut[j] : Double.NaN; }
         return g;
+    }
+
+    /** Detects clusters among the (estimate, I^2) points of the valid subsets; the result is kept in {@link #clusters}. */
+    public GoshCluster detectClusters() {
+        double[][] X = new double[nSub][]; for (int b = 0; b < nSub; b++) X[b] = new double[]{est[b], i2[b]};
+        clusters = GoshCluster.detect(X, new String[]{"estimate", "I^2"}, mask, k, size, seed); return clusters;
     }
 
     public boolean includes(int b, int j) { return (mask[b][j >> 6] >>> (j & 63) & 1L) != 0; }
