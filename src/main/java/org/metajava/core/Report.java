@@ -7,6 +7,37 @@ public final class Report {
     private Report() {}
     static final String NL = "\n";
 
+    /** A table printed in the text output, kept in structured form for the Excel and Word exports. */
+    public static final class Tbl {
+        public final String rendered; public final List<String> head; public final List<String[]> rows; public final boolean[] right;
+        public Tbl(String rendered, List<String> head, List<String[]> rows, boolean[] right) { this.rendered = rendered; this.head = new ArrayList<>(head); this.rows = new ArrayList<>(rows); this.right = right.clone(); }
+    }
+    private static final ThreadLocal<List<Tbl>> REC = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> MUTE = new ThreadLocal<>();
+    /** Starts recording the tables printed by this thread (see {@link #drain}). */
+    public static void startCapture() { REC.set(new ArrayList<>()); }
+    public static void stopCapture() { REC.remove(); MUTE.remove(); }
+    /** Returns the tables recorded since the last call and clears the record. */
+    public static List<Tbl> drain() { List<Tbl> l = REC.get(); if (l == null) return new ArrayList<>(); List<Tbl> c = new ArrayList<>(l); l.clear(); return c; }
+    private static void record(String rendered, List<String> head, List<String[]> rows, boolean[] right) { List<Tbl> l = REC.get(); if (l != null && MUTE.get() == null) l.add(new Tbl(rendered, head, rows, right)); }
+    /** Registers a table that was assembled by hand (rendered text and its cells). */
+    private static void recordManual(String rendered, List<String> head, List<String[]> rows, boolean[] right) { List<Tbl> l = REC.get(); if (l != null) l.add(new Tbl(rendered, head, rows, right)); }
+
+    /** Splits a text output into paragraphs (a String[] of lines) and tables (Tbl), in the order printed. */
+    public static List<Object> blocks(String text, List<Tbl> tables) {
+        List<Object> out = new ArrayList<>(); int pos = 0;
+        for (Tbl t : tables) {
+            int i = text.indexOf(t.rendered, pos); if (i < 0) continue;
+            paragraphs(text.substring(pos, i), out); out.add(t); pos = i + t.rendered.length();
+        }
+        paragraphs(text.substring(pos), out); return out;
+    }
+    private static void paragraphs(String seg, List<Object> out) {
+        List<String> cur = new ArrayList<>();
+        for (String line : seg.split("\n", -1)) { if (line.trim().isEmpty()) { if (!cur.isEmpty()) { out.add(cur.toArray(new String[0])); cur.clear(); } } else cur.add(line); }
+        if (!cur.isEmpty()) out.add(cur.toArray(new String[0]));
+    }
+
     static final Map<String, String> TAU_NAME = new LinkedHashMap<>();
     static { TAU_NAME.put("DL", "DerSimonian-Laird"); TAU_NAME.put("PM", "Paule-Mandel"); TAU_NAME.put("REML", "Restricted maximum-likelihood");
         TAU_NAME.put("ML", "Maximum-likelihood"); TAU_NAME.put("HS", "Hunter-Schmidt"); TAU_NAME.put("SJ", "Sidik-Jonkman"); TAU_NAME.put("HE", "Hedges"); TAU_NAME.put("EB", "Empirical Bayes"); }
@@ -221,8 +252,12 @@ public final class Report {
         sb.append("Negative values indicate asymmetry towards smaller effects (left limb), positive values towards larger effects.").append(NL);
         if (!l.note.isEmpty()) sb.append("Note: ").append(l.note).append(NL);
         sb.append(NL); int w = 5; for (String x : l.label) w = Math.max(w, x.length());
-        sb.append(Fmt.padR("Study", w)).append("  ").append(Fmt.pad(ratio ? "log " + smLabel(r.spec) : smLabel(r.spec), 12)).append(Fmt.pad("SE", 10)).append(Fmt.pad("Z-score", 10)).append(Fmt.pad("|Z-score|", 11)).append(NL);
-        for (int j = 0; j < l.k; j++) sb.append(Fmt.padR(l.label[j], w)).append("  ").append(Fmt.pad(Fmt.num(l.te[j], d), 12)).append(Fmt.pad(Fmt.num(l.se[j], d), 10)).append(Fmt.pad(Fmt.num(l.zscore[j], 3), 10)).append(Fmt.pad(Fmt.num(l.absZ[j], 3), 11)).append(j == l.apex ? "  <- apex" : "").append(NL);
+        StringBuilder tb = new StringBuilder(); List<String[]> lrows = new ArrayList<>();
+        tb.append(Fmt.padR("Study", w)).append("  ").append(Fmt.pad(ratio ? "log " + smLabel(r.spec) : smLabel(r.spec), 12)).append(Fmt.pad("SE", 10)).append(Fmt.pad("Z-score", 10)).append(Fmt.pad("|Z-score|", 11)).append(NL);
+        for (int j = 0; j < l.k; j++) { tb.append(Fmt.padR(l.label[j], w)).append("  ").append(Fmt.pad(Fmt.num(l.te[j], d), 12)).append(Fmt.pad(Fmt.num(l.se[j], d), 10)).append(Fmt.pad(Fmt.num(l.zscore[j], 3), 10)).append(Fmt.pad(Fmt.num(l.absZ[j], 3), 11)).append(j == l.apex ? "  <- apex" : "").append(NL);
+            lrows.add(new String[]{l.label[j], Fmt.num(l.te[j], d), Fmt.num(l.se[j], d), Fmt.num(l.zscore[j], 3), Fmt.num(l.absZ[j], 3), j == l.apex ? "apex" : ""}); }
+        sb.append(tb);
+        recordManual(tb.toString(), List.of("Study", ratio ? "log " + smLabel(r.spec) : smLabel(r.spec), "SE", "Z-score", "|Z-score|", ""), lrows, new boolean[]{false, true, true, true, true, false});
         return sb.toString();
     }
 
@@ -277,8 +312,12 @@ public final class Report {
         row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); row.add(Fmt.pval(pv, 4));
         if (s.random) { row.add(Fmt.num(p.tau2, 4)); row.add(Fmt.num(p.tau, 4)); } row.add(Fmt.num(100 * p.I2, 1) + "%"); if (s.prediction && s.random) row.add(Fmt.ci(bt(s, p.loPred, p), bt(s, p.upPred, p), d));
         boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false;
-        b.append(table(head, rows, right)).append(NL); // overall row separately
-        b.append(table(head, List.<String[]>of(row.toArray(new String[0])), right).split("\n", 2)[1]).append(NL).append(NL);
+        MUTE.set(Boolean.TRUE); String t1, t2;
+        try { t1 = table(head, rows, right); t2 = table(head, List.<String[]>of(row.toArray(new String[0])), right).split("\n", 2)[1]; } finally { MUTE.remove(); }
+        List<String[]> all = new ArrayList<>(rows); all.add(row.toArray(new String[0]));
+        b.append(t1).append(NL); // overall row separately
+        b.append(t2).append(NL).append(NL);
+        recordManual(t1 + NL + t2, head, all, right);
         b.append(details(r));
         return b.toString();
     }
@@ -343,6 +382,7 @@ public final class Report {
         for (int j = 0; j < n; j++) { line.append(right[j] ? Fmt.pad(head.get(j), w[j]) : Fmt.padR(head.get(j), w[j])); if (j < n - 1) line.append(' '); }
         b.append(line).append(NL);
         for (String[] r : rows) { line.setLength(0); for (int j = 0; j < n; j++) { String c = j < r.length ? r[j] : ""; line.append(right[j] ? Fmt.pad(c, w[j]) : Fmt.padR(c, w[j])); if (j < n - 1) line.append(' '); } b.append(line).append(NL); }
+        record(b.toString(), head, rows, right);
         return b.toString();
     }
 }

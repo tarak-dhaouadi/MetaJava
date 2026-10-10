@@ -2,6 +2,7 @@ package org.metajava;
 
 import org.metajava.core.*;
 import org.metajava.plot.Plots;
+import org.metajava.export.ResultsDoc;
 
 import java.awt.image.BufferedImage;
 
@@ -268,13 +269,57 @@ public class SelfTest {
                 try { MetaResult r4 = Meta.run(s4, bd4); Plots.Opts q = new Plots.Opts(); q.scale = 3; q.studyLabels = false; BufferedImage lim = Plots.labbe(r4, q); int grey = 0; for (int yy = 0; yy < lim.getHeight(); yy++) for (int xx = 0; xx < lim.getWidth(); xx++) if ((lim.getRGB(xx, yy) & 0xFFFFFF) == 0xD3D3D3) grey++;
                     check(grey > 5000, "L'Abbe plot (" + mth + "): study circles are drawn (" + grey + " grey pixels)"); } catch (Exception e) { check(false, "L'Abbe plot " + mth + " threw " + e); } } }
 
-        // ---- 8b. L'Abbe symbol sizes of GLMM / LRP follow metafor::labbe (psize = rescaled sqrt(1/vi) of the arm-level variances, range 0.5 to 3.5)
+        // ---- 8b. L'Abbe symbol sizes (all pooling methods) follow metafor::labbe (psize = rescaled sqrt(1/vi) of the arm-level variances, range 0.5 to 3.5)
         { MetaSpec s5 = new MetaSpec(); s5.type = "bin"; s5.sm = "OR"; double[] ee5 = {12, 8, 20, 5, 30, 0}, ne5 = {100, 60, 150, 40, 220, 80}, ec5 = {20, 15, 31, 9, 41, 14}, nc5 = {100, 62, 148, 42, 215, 79}, te5 = {0, 0, 0, 0, 0, 0};
             double[] ps5 = org.metajava.plot.Plots.labbeMetaforPsize(s5, ee5, ne5, ec5, nc5, te5); double mn5 = 9, mx5 = 0; for (double q5 : ps5) { mn5 = Math.min(mn5, q5); mx5 = Math.max(mx5, q5); }
-            check(Math.abs(mn5 - 0.5) < 1e-12 && Math.abs(mx5 - 3.5) < 1e-12, "L'Abbe (GLMM/LRP): symbol sizes span 0.5 to 3.5 as metafor (" + mn5 + " to " + mx5 + ")");
+            check(Math.abs(mn5 - 0.5) < 1e-12 && Math.abs(mx5 - 3.5) < 1e-12, "L'Abbe: symbol sizes span 0.5 to 3.5 as metafor (" + mn5 + " to " + mx5 + ")");
             double[] w5 = new double[6]; for (int i = 0; i < 6; i++) { double a5 = ee5[i] == 0 ? 0.5 : ee5[i], b5 = ne5[i] - ee5[i] + (ee5[i] == 0 ? 0.5 : 0), c5 = ec5[i], d5 = nc5[i] - ec5[i]; w5[i] = Math.sqrt(1 / (1 / a5 + 1 / b5 + 1 / c5 + 1 / d5)); }
             double lo5 = 9, hi5 = 0; for (double q5 : w5) { lo5 = Math.min(lo5, q5); hi5 = Math.max(hi5, q5); } boolean same5 = true; for (int i = 0; i < 6; i++) same5 &= Math.abs(ps5[i] - ((w5[i] - lo5) / (hi5 - lo5) * 3 + 0.5)) < 1e-12;
-            check(same5, "L'Abbe (GLMM/LRP): symbol sizes equal metafor's sqrt(1/(vi_x + vi_y)) rescaling with the 0.5 continuity correction on zero cells"); }
+            check(same5, "L'Abbe: symbol sizes equal metafor's sqrt(1/(vi_x + vi_y)) rescaling with the 0.5 continuity correction on zero cells"); }
+
+        // ---- 8c. L'Abbe circles drawn at metafor's size (diameter = 4 x psize px) for every pooling method; psize all 1 when every wi is equal
+        { double[] ee6 = {10, 300, 90}, ne6 = {20, 1000, 300}, ec6 = {4, 150, 120}, nc6 = {20, 1000, 300};
+            for (String mth : new String[]{"Inverse", "MH", "Peto", "GLMM"}) { MetaData bd6 = new MetaData(); bd6.put("event.e", ee6); bd6.put("n.e", ne6); bd6.put("event.c", ec6); bd6.put("n.c", nc6); bd6.n = 3;
+                MetaSpec s6 = new MetaSpec(); s6.type = "bin"; s6.sm = "OR"; s6.method = mth; s6.common = true; s6.random = false; if (mth.equals("GLMM")) { s6.methodTau = "ML"; s6.common = false; s6.random = true; }
+                try { MetaResult r6 = Meta.run(s6, bd6); Plots.Opts q = new Plots.Opts(); q.scale = 1; q.studyLabels = false; BufferedImage im6 = Plots.labbe(r6, q);
+                    double[] ps6 = Plots.labbeMetaforPsize(s6, ee6, ne6, ec6, nc6, r6.TE); int W = im6.getWidth(), H = im6.getHeight(); boolean[][] seen = new boolean[W][H]; java.util.List<int[]> boxes = new java.util.ArrayList<>();
+                    for (int x0 = 0; x0 < W; x0++) for (int y0 = 0; y0 < H; y0++) { if (seen[x0][y0] || (im6.getRGB(x0, y0) & 0xFFFFFF) != 0xD3D3D3) continue;
+                        java.util.ArrayDeque<int[]> stk = new java.util.ArrayDeque<>(); stk.push(new int[]{x0, y0}); seen[x0][y0] = true; int mnx = x0, mxx = x0, mny = y0, mxy = y0;
+                        while (!stk.isEmpty()) { int[] c = stk.pop(); mnx = Math.min(mnx, c[0]); mxx = Math.max(mxx, c[0]); mny = Math.min(mny, c[1]); mxy = Math.max(mxy, c[1]);
+                            for (int[] dd : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) { int nx = c[0] + dd[0], ny = c[1] + dd[1]; if (nx >= 0 && ny >= 0 && nx < W && ny < H && !seen[nx][ny] && (im6.getRGB(nx, ny) & 0xFFFFFF) == 0xD3D3D3) { seen[nx][ny] = true; stk.push(new int[]{nx, ny}); } } }
+                        if (mxx - mnx < 30 && mxy - mny < 30) boxes.add(new int[]{mxx - mnx + 1, mxy - mny + 1}); }
+                    int big = 0; for (int[] b : boxes) big = Math.max(big, b[0]); double mid = 0; for (double pv6 : ps6) if (pv6 > 0.6 && pv6 < 3.4) mid = 4 * pv6;
+                    boolean midFound = false; for (int[] b : boxes) if (Math.abs(b[0] - (mid - 2)) <= 1.5) midFound = true;
+                    check(Math.abs(ps6[1] - 3.5) < 1e-12 && Math.abs(ps6[0] - 0.5) < 1e-12 && big >= 11 && big <= 14 && midFound, "L'Abbe (" + mth + "): the largest circle is 14 px across (grey fill " + big + "), the middle one " + String.format("%.1f", mid) + " px, psize " + java.util.Arrays.toString(ps6)); }
+                catch (Exception e) { check(false, "L'Abbe circle sizes " + mth + " threw " + e); } }
+            MetaSpec s7 = new MetaSpec(); s7.type = "bin"; s7.sm = "RR"; double[] eq = org.metajava.plot.Plots.labbeMetaforPsize(s7, new double[]{10, 10}, new double[]{50, 50}, new double[]{20, 20}, new double[]{50, 50}, new double[]{0, 0});
+            check(eq[0] == 1 && eq[1] == 1, "L'Abbe: every symbol gets size 1 when all values are equal (metafor)"); }
+
+        // ---- 9. JSON, project files, Excel and Word export
+        { Object j = org.metajava.io.Json.parse(org.metajava.io.Json.write(new java.util.LinkedHashMap<String, Object>() {{ put("a", "caf\u00E9 \"q\" \\ \n tab\t"); put("n", 0.1 + 0.2); put("i", 42); put("b", true); put("z", null); put("l", java.util.Arrays.asList("x", null, 1.5, new java.util.LinkedHashMap<String, Object>() {{ put("k", java.util.Collections.emptyList()); }})); }}));
+            @SuppressWarnings("unchecked") java.util.Map<String, Object> jm = (java.util.Map<String, Object>) j; @SuppressWarnings("unchecked") java.util.List<Object> jl = (java.util.List<Object>) jm.get("l");
+            check(jm.get("a").equals("caf\u00E9 \"q\" \\ \n tab\t") && Math.abs((Double) jm.get("n") - 0.30000000000000004) < 1e-15 && ((Double) jm.get("i")) == 42 && jm.get("b").equals(Boolean.TRUE) && jm.containsKey("z") && jm.get("z") == null && jl.size() == 4 && jl.get(1) == null, "JSON: write and parse round-trip (unicode, escapes, numbers, null, nesting)");
+            boolean bad = false; try { org.metajava.io.Json.parse("{\"a\": [1, 2}"); } catch (IllegalArgumentException e) { bad = true; } check(bad, "JSON: malformed text is rejected"); }
+        try { MetaData bd8 = new MetaData(); bd8.put("event.e", new double[]{12, 8, 20, 5, 30, 9}); bd8.put("n.e", new double[]{100, 60, 150, 40, 220, 80}); bd8.put("event.c", new double[]{20, 15, 31, 9, 41, 14}); bd8.put("n.c", new double[]{100, 62, 148, 42, 215, 79}); bd8.n = 6;
+            MetaSpec s8 = new MetaSpec(); s8.type = "bin"; s8.sm = "OR"; s8.method = "Inverse"; s8.common = true; s8.random = true; s8.prediction = true; s8.title = "Test review"; MetaResult r8 = Meta.run(s8, bd8);
+            Report.startCapture(); String t8 = Report.summary(r8); java.util.List<Report.Tbl> tb8 = Report.drain(); Report.startCapture(); Meta.leaveOneOut(r8); String l8 = Report.looText(r8); java.util.List<Report.Tbl> lb8 = Report.drain(); Report.stopCapture();
+            java.util.List<Object> bl = Report.blocks(t8, tb8); int nt = 0, np = 0; StringBuilder rebuilt = new StringBuilder(); for (Object o : bl) { if (o instanceof Report.Tbl) nt++; else np++; }
+            check(nt == tb8.size() && nt >= 3 && np >= 3, "Export: every printed table of the summary is found again in the text (" + nt + " tables, " + np + " paragraphs)");
+            java.util.List<Object> lbl = Report.blocks(l8, lb8); Report.Tbl loo = null; for (Object o : lbl) if (o instanceof Report.Tbl) loo = (Report.Tbl) o;
+            check(loo != null && loo.rows.size() == 7 && loo.rows.get(0)[0].startsWith("Omitting") == false || loo != null && loo.rows.size() == 7, "Export: leave-one-out table has the 6 omitted-study rows plus the overall row (" + (loo == null ? -1 : loo.rows.size()) + " rows)");
+            ResultsDoc doc = new ResultsDoc(); doc.title = "Test review"; doc.subtitle = "t"; doc.text("Meta-Analysis", t8, tb8); doc.text("Leave-One-Out Analysis", l8, lb8); doc.text("Funnel note", "Plain note\nsecond line", new java.util.ArrayList<>());
+            BufferedImage fig = Plots.labbe(r8, new Plots.Opts()); java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream(); javax.imageio.ImageIO.write(fig, "png", bo); doc.figure("L'Abbe Plot", bo.toByteArray(), fig.getWidth(), fig.getHeight(), 96);
+            java.io.File fx = java.io.File.createTempFile("mjx", ".xlsx"), fd = java.io.File.createTempFile("mjd", ".docx"); fx.deleteOnExit(); fd.deleteOnExit(); org.metajava.export.Xlsx.write(fx, doc); org.metajava.export.Docx.write(fd, doc);
+            boolean wf = true; int sheets = 0, drawings = 0, tbls = 0; String x1 = ""; javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+            try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(fx)) { for (java.util.Enumeration<? extends java.util.zip.ZipEntry> en = z.entries(); en.hasMoreElements(); ) { java.util.zip.ZipEntry e = en.nextElement(); byte[] b = z.getInputStream(e).readAllBytes(); try { dbf.newDocumentBuilder().parse(new java.io.ByteArrayInputStream(b)); } catch (Exception ex) { wf = false; System.out.println("   not well-formed: " + e.getName() + " " + ex.getMessage()); }
+                if (e.getName().startsWith("xl/worksheets/")) sheets++; if (e.getName().equals("xl/worksheets/sheet1.xml")) x1 = new String(b, "UTF-8"); } }
+            check(wf && sheets == 3 && x1.contains("<v>") && x1.contains("lower") && x1.contains("upper"), "Excel export: valid package with 3 sheets (2 with tables, notes), numeric cells and split CI columns (" + sheets + " sheets)");
+            try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(fd)) { String dx = ""; boolean png = false; for (java.util.Enumeration<? extends java.util.zip.ZipEntry> en = z.entries(); en.hasMoreElements(); ) { java.util.zip.ZipEntry e = en.nextElement(); byte[] b = z.getInputStream(e).readAllBytes();
+                    if (!e.getName().endsWith(".png")) try { dbf.newDocumentBuilder().parse(new java.io.ByteArrayInputStream(b)); } catch (Exception ex) { wf = false; System.out.println("   not well-formed: " + e.getName() + " " + ex.getMessage()); } else png = b.length > 8 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G';
+                    if (e.getName().equals("word/document.xml")) dx = new String(b, "UTF-8"); }
+                for (int i = dx.indexOf("<w:tbl>"); i >= 0; i = dx.indexOf("<w:tbl>", i + 1)) tbls++; for (int i = dx.indexOf("<w:drawing>"); i >= 0; i = dx.indexOf("<w:drawing>", i + 1)) drawings++;
+                check(wf && tbls == nt + (loo == null ? 0 : 1) && drawings == 1 && png && dx.indexOf("Meta-Analysis") < dx.indexOf("Leave-One-Out Analysis") && dx.indexOf("Leave-One-Out Analysis") < dx.indexOf("<w:drawing>"), "Word export: valid package, " + tbls + " tables, 1 figure, sections in the order of the output"); }
+        } catch (Exception e) { e.printStackTrace(); check(false, "export tests threw " + e); }
 
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);

@@ -5,6 +5,9 @@ import org.metajava.io.TableReader;
 import org.metajava.plot.Plots;
 import org.metajava.plot.Canvas;
 import org.metajava.plot.VectorExport;
+import org.metajava.export.ResultsDoc;
+import org.metajava.export.Xlsx;
+import org.metajava.export.Docx;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -65,6 +68,8 @@ public class MainWindow extends JFrame {
     JSpinner dpiSp = new JSpinner(new SpinnerNumberModel(300, 72, 1200, 100)); JComboBox<String> fmtBox = Ui.combo("PNG", "TIFF", "JPG", "SVG", "PDF");
     final List<Object[]> plots = new ArrayList<>(); // {title, DoubleFunction<BufferedImage>}
     final JLabel status = Ui.muted("Ready");
+    final ProgressStrip strip = new ProgressStrip();
+    final List<Item> shown = new ArrayList<>(); String shownTitle = "", shownSource = "";   // the output as displayed (for the Excel / Word export)
     String lastText = "";
     boolean suppress = false; final javax.swing.Timer autoTimer = new javax.swing.Timer(350, e -> runImpl(true));
 
@@ -72,7 +77,7 @@ public class MainWindow extends JFrame {
         super("MetaJava \u2013 Meta-analysis (meta / metafor)");
         setDefaultCloseOperation(EXIT_ON_CLOSE); setSize(1500, 900); setLocationRelativeTo(null);
         getContentPane().setBackground(Ui.BG); setLayout(new BorderLayout());
-        add(header(), BorderLayout.NORTH);
+        JPanel north = new JPanel(new BorderLayout()); north.setOpaque(false); north.add(header(), BorderLayout.NORTH); north.add(strip, BorderLayout.CENTER); add(north, BorderLayout.NORTH);
         JPanel left = leftPanel(); JScrollPane ls = new JScrollPane(left); ls.setBorder(null); ls.getVerticalScrollBar().setUnitIncrement(16); ls.setPreferredSize(new Dimension(470, 800));
         results.setLayout(new BoxLayout(results, BoxLayout.Y_AXIS)); results.setBackground(Color.WHITE); results.setBorder(new EmptyBorder(14, 18, 14, 18));
         resScroll = new JScrollPane(results); resScroll.getVerticalScrollBar().setUnitIncrement(24); resScroll.setBorder(new LineBorder(Ui.BORDER));
@@ -88,12 +93,20 @@ public class MainWindow extends JFrame {
         h.setBorder(new EmptyBorder(12, 20, 12, 20));
         JLabel t = new JLabel("MetaJava"); t.setForeground(Color.WHITE); t.setFont(new Font("SansSerif", Font.BOLD, 22));
         JLabel s = new JLabel("  Meta-analysis based on the R packages meta and metafor"); s.setForeground(new Color(0xC9D8EE)); s.setFont(new Font("SansSerif", Font.PLAIN, 13));
-        JPanel l = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0)); l.setOpaque(false); l.add(t); l.add(s); h.add(l, BorderLayout.WEST);
-        JButton run = Ui.button("\u25B6  Run analysis", true); run.setBackground(new Color(0x2E9E5B)); run.addActionListener(e -> run());
-        JLabel cl = new JLabel("CPU threads"); cl.setForeground(new Color(0xC9D8EE)); cl.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        JPanel l = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0)); l.setOpaque(false); l.add(t); l.add(s);
+        PillButton run = new PillButton("Run analysis", Icons.play(15, Color.WHITE), "Run the analysis now").colors(new Color(0x2E9E5B), Color.WHITE); run.addActionListener(e -> run());
+        JLabel cl = new JLabel("CPU threads"); cl.setForeground(new Color(0xC9D8EE)); cl.setFont(new Font("SansSerif", Font.PLAIN, 15));
         JSpinner th = new JSpinner(new SpinnerNumberModel(Par.threads(), 1, Par.maxThreads(), 1)); th.setToolTipText("Worker threads for parallel analyses (this machine: " + Par.maxThreads() + " cores)");
+        th.setFont(Ui.BOLD.deriveFont(20f)); th.setPreferredSize(new Dimension(76, 38));
+        { JFormattedTextField tf = ((JSpinner.DefaultEditor) th.getEditor()).getTextField(); tf.setFont(Ui.BOLD.deriveFont(20f)); tf.setHorizontalAlignment(JTextField.CENTER); }   // number centred in the white box
         th.addChangeListener(e -> { int v = (Integer) th.getValue(); Par.setThreads(v); try { PREFS.putInt("threads", v); } catch (Exception ex) { } });
-        JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0)); east.setOpaque(false); east.add(cl); east.add(th); east.add(run); h.add(east, BorderLayout.EAST);
+        JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0)); east.setOpaque(false); east.add(cl); east.add(th); east.add(run);
+        PillButton load = new PillButton("Load project", Icons.folderOpen(17, Ui.PRIMARY_DARK), "Open a saved MetaJava project (.json): data, assignments and all settings"), save = new PillButton("Save project", Icons.floppy(17, Ui.PRIMARY_DARK), "Save the session (data, assignments and all settings) to a .json file");
+        load.addActionListener(e -> loadProject()); save.addActionListener(e -> saveProject());
+        JPanel btns = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0)); btns.setOpaque(false); btns.add(load); btns.add(save);
+        JPanel row = new JPanel(new BorderLayout()); row.setOpaque(false); row.setBorder(new EmptyBorder(12, 0, 0, 0)); row.add(btns, BorderLayout.WEST); row.add(east, BorderLayout.EAST);
+        JPanel top = new JPanel(new BorderLayout()); top.setOpaque(false); top.add(l, BorderLayout.WEST);
+        h.add(top, BorderLayout.NORTH); h.add(row, BorderLayout.SOUTH);
         return h;
     }
 
@@ -129,9 +142,10 @@ public class MainWindow extends JFrame {
         Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
         pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row(null, doiChk); pb.row(null, doiApexChk); p.add(pb); p.add(Box.createVerticalStrut(8));
         Ui.Section dg = new Ui.Section("10. Diagnostics", false); dg.row(null, infChk); dg.row(null, baujatChk); dg.row(null, radialChk); dg.row(null, labbeChk); p.add(dg); p.add(Box.createVerticalStrut(8));
-        Ui.Section ou = new Ui.Section("11. Export", false); JButton sa = Ui.button("Save all plots\u2026", false), st = Ui.button("Save results (.txt)\u2026", false); sa.addActionListener(e -> savePlots()); st.addActionListener(e -> saveText());
+        Ui.Section ou = new Ui.Section("11. Export", false); JButton sa = Ui.button("Save all plots\u2026", false), st = Ui.button("Save results (.txt)\u2026", false), sx = Ui.button("Save tables (.xlsx)\u2026", false), sw = Ui.button("Save full report (.docx)\u2026", false); sa.addActionListener(e -> savePlots()); st.addActionListener(e -> saveText()); sx.addActionListener(e -> saveExcel()); sw.addActionListener(e -> saveWord());
+        sx.setToolTipText("Excel workbook with the results tables: one sheet per analysis section"); sw.setToolTipText("Word document with the whole output (paragraphs, tables and figures) in the order of the results panel");
         dpiSp.setToolTipText("Resolution of PNG, TIFF and JPG files. SVG and PDF are resolution independent and ignore it."); fmtBox.addActionListener(e -> dpiSp.setEnabled(RasterWriter.isRaster((String) fmtBox.getSelectedItem()))); dpiSp.setEnabled(RasterWriter.isRaster((String) fmtBox.getSelectedItem()));
-        ou.row("Plot format", fmtBox); ou.row("Plot resolution (dpi)", dpiSp); ou.row(null, sa); ou.row(null, st); p.add(ou);
+        ou.row("Plot format", fmtBox); ou.row("Plot resolution (dpi)", dpiSp); ou.row(null, sa); ou.row(null, st); ou.row(null, sx); ou.row(null, sw); p.add(ou);
         p.add(Box.createVerticalGlue());
         modelBox.setSelectedIndex(0); return p;
     }
@@ -229,9 +243,13 @@ public class MainWindow extends JFrame {
     }
     void load(File f, int sheet) {
         try { table = TableReader.read(f, sheet); fileLabel.setText(f.getName() + " \u2013 " + table.nrow + " rows, " + table.names.size() + " columns");
-            DefaultTableModel m = new DefaultTableModel(table.names.toArray(), 0); for (int i = 0; i < Math.min(table.nrow, 200); i++) { Object[] row = new Object[table.names.size()]; for (int j = 0; j < row.length; j++) row[j] = table.cols.get(j)[i]; m.addRow(row); }
-            preview.setModel(m); preview.setAutoResizeMode(JTable.AUTO_RESIZE_OFF); refreshColumns(); status.setText("Loaded " + f.getName());
+            showTable(table); refreshColumns(); status.setText("Loaded " + f.getName());
         } catch (Exception ex) { error(ex); }
+    }
+    /** Fills the data preview (first 200 rows). */
+    void showTable(DataTable t) {
+        DefaultTableModel m = new DefaultTableModel(t.names.toArray(), 0); for (int i = 0; i < Math.min(t.nrow, 200); i++) { Object[] row = new Object[t.names.size()]; for (int j = 0; j < row.length; j++) row[j] = i < t.cols.get(j).length ? t.cols.get(j)[i] : null; m.addRow(row); }
+        preview.setModel(m); preview.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
     }
     void error(Exception ex) { ex.printStackTrace(); JOptionPane.showMessageDialog(this, String.valueOf(ex.getMessage() == null ? ex : ex.getMessage()), "Error", JOptionPane.ERROR_MESSAGE); status.setText("Error: " + ex.getMessage()); }
 
@@ -270,7 +288,7 @@ public class MainWindow extends JFrame {
     void run() { runImpl(false); }
 
     // ===== analysis pipeline: computed off the UI thread; independent sections run concurrently =====
-    static final class Item { final String title, text; final DoubleFunction<BufferedImage> render; BufferedImage img; Item(String t, String x, DoubleFunction<BufferedImage> r) { title = t; text = x; render = r; } }
+    static final class Item { final String title, text; final DoubleFunction<BufferedImage> render; BufferedImage img; List<Report.Tbl> tables = new ArrayList<>(); Item(String t, String x, DoubleFunction<BufferedImage> r) { title = t; text = x; render = r; } }
     static final class Out { final List<Item> items = new ArrayList<>(); Exception error; }
     /** Everything the background code needs, captured on the UI thread (Swing components are never read from worker threads). */
     static final class Snap {
@@ -281,6 +299,15 @@ public class MainWindow extends JFrame {
     private volatile int generation = 0; private java.util.concurrent.Future<?> current;
     private final java.util.concurrent.ExecutorService coordinator = java.util.concurrent.Executors.newCachedThreadPool(r -> { Thread t = new Thread(r, "metajava-analysis"); t.setDaemon(true); return t; });
     final JProgressBar busy = new JProgressBar(0, 100);
+    private volatile double heavyFrac = 0; private final java.util.concurrent.atomic.AtomicInteger lastPct = new java.util.concurrent.atomic.AtomicInteger();
+    /** Any thread: reports the overall progress (0..1) of run `gen` to the top strip and the small bar; never goes backwards within a run, and posts to the UI thread only when the percentage changes. */
+    void progressTo(int gen, double frac) {
+        final int p = (int) Math.max(0, Math.min(99, Math.floor(frac * 100)));
+        if (lastPct.getAndUpdate(o -> Math.max(o, p)) >= p) return;
+        SwingUtilities.invokeLater(() -> { if (gen == generation) { busy.setIndeterminate(false); busy.setValue(p); strip.setProgress(p); } });
+    }
+    /** UI thread: the run is over. */
+    void runFinished() { busy.setIndeterminate(false); busy.setVisible(false); strip.stop(); }
 
     void runImpl(boolean auto) {
         if (table == null) { if (auto) return; JOptionPane.showMessageDialog(this, "Please load a data file first.", "No data", JOptionPane.WARNING_MESSAGE); return; }
@@ -295,8 +322,8 @@ public class MainWindow extends JFrame {
             n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
             n.o.contour = n.funnel && n.contour; n.o.studyLabels = n.labels;
         } catch (Exception ex) { if (auto) softError(ex); else error(ex); return; }
-        final int gen = ++generation; if (current != null) current.cancel(true);
-        status.setText("Running\u2026"); busy.setValue(0); busy.setIndeterminate(true); busy.setVisible(true);   // indeterminate until the first section completes: a long first section (e.g. a GLMM leave-one-out) must not look frozen
+        final int gen = ++generation; lastPct.set(0); heavyFrac = 0; if (current != null) current.cancel(true);
+        status.setText("Running\u2026"); busy.setValue(0); busy.setIndeterminate(true); busy.setVisible(true); strip.start();   // the small bar is indeterminate until the first step reports: a long first section (e.g. a GLMM leave-one-out) must not look frozen
         final int scrollPos = resScroll.getVerticalScrollBar().getValue();
         current = coordinator.submit(() -> Par.withCancel(() -> gen != generation, () -> analyse(n, gen, auto, scrollPos)));   // loops inside the analysis stop as soon as it is superseded
     }
@@ -306,7 +333,7 @@ public class MainWindow extends JFrame {
     /** Runs on a background thread. Light sections go to the shared pool at once; heavy ones run in turn here, using the pool for their inner loops. */
     void analyse(Snap n, int gen, boolean auto, int scrollPos) {
         try {
-            final MetaSpec s = n.s; final MetaResult r = Meta.run(s, n.d); checkCurrent(gen);
+            final MetaSpec s = n.s; final MetaResult r = Meta.run(s, n.d); checkCurrent(gen); progressTo(gen, 0.05);
             final List<Out> outs = new ArrayList<>(); final List<Runnable> light = new ArrayList<>(), heavy = new ArrayList<>(); final java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
             final List<Object[]> secs = new ArrayList<>();   // {body, heavy?}
             final Plots.Opts o = n.o;
@@ -331,7 +358,6 @@ public class MainWindow extends JFrame {
                 if (l.lfk == l.lfk) addPlot("Doi Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; q.apexLine = n.doiApex; return Plots.doi(l, r, q); }); }, false});
             if (n.labbe) secs.add(new Object[]{(Runnable) () -> { if (!s.type.equals("bin")) { addText("L\u2019Abb\u00E9 Plot", "The L\u2019Abb\u00E9 plot requires binary outcome data (analysis type: metabin)."); return; }
                 if (!java.util.Arrays.asList("RR", "OR", "RD", "ASD").contains(s.sm)) addText("L\u2019Abb\u00E9 Plot", "Note: the line of the pooled effect is only drawn for RR, OR, RD and ASD;\nthe study event rates are shown without it.");
-                if (s.noWeights()) addText("L\u2019Abb\u00E9 Plot", "Note: " + s.method + " gives no study weights; the symbol sizes follow\nmetafor::labbe (inverse standard error of the arm-level event rates,\nrescaled between 0.5 and 3.5).");
                 addPlot("L\u2019Abb\u00E9 Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.labbe(r, q); }); }, false});
             if (n.radial) secs.add(new Object[]{(Runnable) () -> addPlot("Radial Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.radial(r, q); }), false});
             final int total = secs.size();
@@ -339,33 +365,33 @@ public class MainWindow extends JFrame {
                 final Out out = new Out(); outs.add(out); final Runnable body = (Runnable) sc[0];
                 final Runnable task = () -> {
                     if (gen != generation) return;
-                    sink.set(out.items);
+                    sink.set(out.items); Report.startCapture();
                     try { body.run(); for (Item it : out.items) if (it.render != null) it.img = it.render.apply(1.0); }   // plots are rendered here, not on the UI thread
                     catch (Exception ex) { out.error = ex; }
-                    finally { sink.remove(); final int dn = done.incrementAndGet(); SwingUtilities.invokeLater(() -> { if (gen == generation) { busy.setIndeterminate(false); busy.setValue(100 * dn / total); } }); }
+                    finally { Report.stopCapture(); sink.remove(); heavyFrac = 0; final int dn = done.incrementAndGet(); progressTo(gen, 0.05 + 0.95 * dn / total); }
                 };
                 (((boolean) sc[1]) ? heavy : light).add(task);
             }
             final List<java.util.concurrent.Future<?>> fs = new ArrayList<>();
             for (Runnable t : light) fs.add(Par.submit(() -> { t.run(); return null; }));
-            for (Runnable t : heavy) { checkCurrent(gen); t.run(); }
+            for (Runnable t : heavy) { checkCurrent(gen); heavyFrac = 0; Par.withProgress(fr -> { if (fr > heavyFrac) { heavyFrac = fr; progressTo(gen, 0.05 + 0.95 * (done.get() + Math.min(1.0, fr)) / total); } }, t); }
             for (java.util.concurrent.Future<?> f : fs) f.get();
             checkCurrent(gen);
             SwingUtilities.invokeLater(() -> display(n, outs, r, gen, auto, scrollPos));
         } catch (java.util.concurrent.CancellationException | InterruptedException ex) { /* superseded by a newer run */
         } catch (Throwable ex) {
             final Exception e = ex instanceof Exception ? (Exception) ex : new RuntimeException(ex);
-            SwingUtilities.invokeLater(() -> { if (gen != generation) return; busy.setIndeterminate(false); busy.setVisible(false); if (auto) softError(e); else error(e); });
+            SwingUtilities.invokeLater(() -> { if (gen != generation) return; runFinished(); if (auto) softError(e); else error(e); });
         }
     }
 
     /** UI thread: builds the Swing components from the finished sections (images are already rendered). */
     void display(Snap n, List<Out> outs, MetaResult r, int gen, boolean auto, int scrollPos) {
         if (gen != generation) return;
-        results.removeAll(); plots.clear(); lastText = ""; Exception first = null;
-        for (Out o : outs) { for (Item it : o.items) { if (it.render == null) showText(it.title, it.text); else showPlot(it.title, it.render, it.img); } if (o.error != null && first == null) first = o.error; }
-        for (String w : r.warnings) showText("Warning", w);
-        busy.setIndeterminate(false); busy.setVisible(false);
+        results.removeAll(); plots.clear(); shown.clear(); shownTitle = n.s.title; shownSource = fileLabel.getText(); lastText = ""; Exception first = null;
+        for (Out o : outs) { for (Item it : o.items) { shown.add(it); if (it.render == null) showText(it.title, it.text); else showPlot(it.title, it.render, it.img); } if (o.error != null && first == null) first = o.error; }
+        for (String w : r.warnings) { shown.add(new Item("Warning", w, null)); showText("Warning", w); }
+        strip.setProgress(100); runFinished();
         if (first != null) { if (auto) { softError(first); return; } error(first); }
         else status.setText("Done \u2013 k = " + r.overall.k + " studies");
         results.add(Box.createVerticalGlue()); results.revalidate(); results.repaint(); final boolean fa = auto; SwingUtilities.invokeLater(() -> resScroll.getVerticalScrollBar().setValue(fa ? scrollPos : 0));
@@ -401,7 +427,7 @@ public class MainWindow extends JFrame {
     }
 
     /** Called from analysis threads: collects the item in the current section. */
-    void addText(String title, String text) { sink.get().add(new Item(title, text, null)); }
+    void addText(String title, String text) { Item it = new Item(title, text, null); it.tables = Report.drain(); sink.get().add(it); }
     void addPlot(String title, DoubleFunction<BufferedImage> render) { sink.get().add(new Item(title, null, render)); }
 
     /** UI thread only. */
@@ -448,6 +474,52 @@ public class MainWindow extends JFrame {
     void saveText() {
         JFileChooser fc = new JFileChooser(); fc.setSelectedFile(new File("meta_results.txt")); if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
         try (Writer w = new OutputStreamWriter(new FileOutputStream(fc.getSelectedFile()), "UTF-8")) { w.write(lastText); status.setText("Saved results"); } catch (Exception ex) { error(ex); }
+    }
+
+    // ===== project files (JSON) =====
+    private File lastDir;
+    private File choose(boolean save, String desc, String ext, String defName) {
+        JFileChooser fc = new JFileChooser(lastDir); fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(desc, ext)); if (save) fc.setSelectedFile(new File(lastDir, defName));
+        if ((save ? fc.showSaveDialog(this) : fc.showOpenDialog(this)) != JFileChooser.APPROVE_OPTION) return null;
+        File f = fc.getSelectedFile(); lastDir = f.getParentFile();
+        if (save) { if (!f.getName().toLowerCase().endsWith("." + ext)) f = new File(f.getParentFile(), f.getName() + "." + ext);
+            if (f.exists() && JOptionPane.showConfirmDialog(this, f.getName() + " already exists. Replace it?", "Confirm", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return null; }
+        return f;
+    }
+    void saveProject() {
+        String base = file == null ? "metajava_project" : file.getName().replaceFirst("\\.[^.]*$", "") + "_project";
+        File f = choose(true, "MetaJava project (*.json)", "json", base + ".json"); if (f == null) return;
+        try { ProjectIO.save(this, f); status.setText("Project saved: " + f.getName()); } catch (Exception ex) { error(ex); }
+    }
+    void loadProject() {
+        File f = choose(false, "MetaJava project (*.json)", "json", null); if (f == null) return;
+        try { ProjectIO.load(this, f); status.setText("Project loaded: " + f.getName()); } catch (Exception ex) { error(new Exception("Cannot open the project: " + ex.getMessage(), ex)); }
+    }
+
+    // ===== Excel and Word export =====
+    private ResultsDoc buildDoc(double scale) throws IOException {
+        ResultsDoc doc = new ResultsDoc(); doc.title = shownTitle == null ? "" : shownTitle;
+        doc.subtitle = "Generated by MetaJava on " + java.time.LocalDate.now() + (shownSource == null || shownSource.isEmpty() || shownSource.startsWith("No file") ? "" : " \u00B7 Data: " + shownSource);
+        final List<Item> items = new ArrayList<>(shown); final byte[][] png = new byte[items.size()][]; final int[][] dim = new int[items.size()][];
+        if (scale > 0) Par.forRange(items.size(), i -> { Item it = items.get(i); if (it.render == null) return;
+            try { BufferedImage im = it.render.apply(scale); ByteArrayOutputStream bo = new ByteArrayOutputStream(); ImageIO.write(im, "png", bo); png[i] = bo.toByteArray(); dim[i] = new int[]{im.getWidth(), im.getHeight()}; } catch (IOException e) { throw new UncheckedIOException(e); } });
+        for (int i = 0; i < items.size(); i++) { Item it = items.get(i); if (it.render == null) doc.text(it.title, it.text, it.tables); else if (png[i] != null) doc.figure(it.title, png[i], dim[i][0], dim[i][1], scale * 96.0); }
+        return doc;
+    }
+    void saveExcel() {
+        if (shown.isEmpty()) { JOptionPane.showMessageDialog(this, "Run an analysis first."); return; }
+        File f = choose(true, "Excel workbook (*.xlsx)", "xlsx", "meta_results.xlsx"); if (f == null) return;
+        try { Xlsx.write(f, buildDoc(0)); status.setText("Saved tables: " + f.getName()); } catch (Exception ex) { error(ex); }
+    }
+    void saveWord() {
+        if (shown.isEmpty()) { JOptionPane.showMessageDialog(this, "Run an analysis first."); return; }
+        File f = choose(true, "Word document (*.docx)", "docx", "meta_report.docx"); if (f == null) return;
+        final double sc = Math.min(scaleDpi(), 300 / 96.0);   // figures at the chosen resolution, at most 300 dpi (keeps the file a reasonable size)
+        status.setText("Writing report\u2026"); busy.setIndeterminate(true); busy.setVisible(true);
+        new Thread(() -> {
+            try { Docx.write(f, buildDoc(sc)); SwingUtilities.invokeLater(() -> { busy.setIndeterminate(false); busy.setVisible(false); status.setText("Saved report: " + f.getName()); }); }
+            catch (Throwable ex) { SwingUtilities.invokeLater(() -> { busy.setIndeterminate(false); busy.setVisible(false); error(ex instanceof Exception ? (Exception) ex : new RuntimeException(ex)); }); }
+        }, "metajava-docx").start();
     }
 
     static final java.util.prefs.Preferences PREFS = java.util.prefs.Preferences.userNodeForPackage(MainWindow.class);

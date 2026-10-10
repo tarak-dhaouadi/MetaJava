@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Fix - L'Abbe symbol sizes follow metafor::labbe for every pooling method
+- The circle sizes no longer depend on the pooling method. For Inverse, MH, Peto, SSW, GLMM and LRP alike, `psize = sqrt(1/vi)` with `vi` the sum of the two arm-level sampling variances (`escalc` measures PLN for RR, PLO for OR, PR for RD, PAS for ASD, with the continuity correction of the analysis), rescaled linearly to `plim = c(0.5, 3.5)`; all 1 when every value is equal. On screen the diameter is 4 x psize (largest circle 14 px, smallest 2 px). The weight-based sizes (and the note about GLMM/LRP) are gone. Covered by new self-tests that measure the drawn circles.
+
+### New - Load project / Save project
+- Two buttons under the title bar. **Save project** writes the session to a `.json` file: the data table, analysis type, column assignments and every setting (all combo boxes, check boxes, fields, spinners and the covariate / factor selections; found by reflection, so new settings are saved automatically). **Load project** restores it and re-runs the analysis. The data is stored in the file, so a project opens even when the original spreadsheet has moved.
+
+### New - Excel and Word export (section 11)
+- **Save tables (.xlsx)**: one worksheet per analysis section, with the printed tables as real cells (numbers are numeric, keeping the printed decimals; confidence intervals are split into lower / upper columns) and the lines printed around them. Text sections without tables go on a "Notes" sheet.
+- **Save full report (.docx)**: the whole output in the order of the results panel: headings, paragraphs, tables and figures (figures at the chosen dpi, at most 300). Written without external libraries.
+
+### New - progress bar under the header
+- A thin (4 px) bar in a lighter blue spans the window under the header; below it "Running analysis..." with a spinner and the percentage. The line appears only if a run lasts more than 0.25 s, so quick automatic updates do not shift the layout. The small bar at the bottom left is kept. Long sections (leave-one-out, GLMM, influence) report progress while they run.
+
 ### Fix - L'Abbe plot symbol sizes with GLMM and LRP
 - With `method = "GLMM"` or `"LRP"` the circle sizes now follow `metafor::labbe`: `psize` is `sqrt(1/vi)` with `vi` the sum of the two arm-level sampling variances (`escalc` measures PLN for RR, PLO for OR, PR for RD, PAS for ASD, with the continuity correction of the analysis), rescaled linearly to the range 0.5-3.5 (all equal when every `wi` is equal). Previously the inverse variance of the study estimate was used and scaled to the largest study. The other methods still follow the study weights. Covered by two new self-tests.
 

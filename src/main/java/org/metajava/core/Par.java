@@ -2,7 +2,9 @@ package org.metajava.core;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.DoubleConsumer;
 import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
 
@@ -17,6 +19,8 @@ import java.util.function.IntFunction;
  */
 public final class Par {
     private static final ThreadLocal<BooleanSupplier> CANCEL = new ThreadLocal<>();
+    private static final ThreadLocal<DoubleConsumer> PROGRESS = new ThreadLocal<>();   // progress sink of the calling thread (outermost loops only)
+    private static final ThreadLocal<Boolean> IN_LOOP = new ThreadLocal<>();          // set while a loop body runs: nested loops do not report
     private static volatile int threads = defaultThreads();   // volatile: read on every loop, written rarely
     private static volatile ForkJoinPool pool;
 
@@ -59,6 +63,12 @@ public final class Par {
         try { r.run(); } finally { if (old == null) CANCEL.remove(); else CANCEL.set(old); }
     }
 
+    /** Runs r with a progress sink attached to this thread: the outermost parallel loop started inside r reports the fraction of its iterations completed (0..1). */
+    public static void withProgress(DoubleConsumer sink, Runnable r) {
+        DoubleConsumer old = PROGRESS.get(); PROGRESS.set(sink);
+        try { r.run(); } finally { if (old == null) PROGRESS.remove(); else PROGRESS.set(old); }
+    }
+
     /** Throws CancellationException when the condition attached to this thread is true (also usable inside long sequential loops). */
     public static void checkCancel() { BooleanSupplier c = CANCEL.get(); if (c != null && c.getAsBoolean()) throw new CancellationException("analysis superseded"); }
 
@@ -68,10 +78,17 @@ public final class Par {
     }
 
     /** Runs body(0..n-1); results must be written to per-index slots by the caller. Rethrows the first failure. */
-    public static void forRange(int n, IntConsumer body) {
+    public static void forRange(int n, IntConsumer body0) {
         if (n <= 0) return;
         final BooleanSupplier tok = CANCEL.get();
-        if (n == 1 || threads <= 1) { for (int i = 0; i < n; i++) { if (tok != null && tok.getAsBoolean()) throw new CancellationException("analysis superseded"); body.accept(i); } return; }
+        final DoubleConsumer pg = IN_LOOP.get() == null ? PROGRESS.get() : null; final AtomicInteger cnt = new AtomicInteger(); final boolean outer = IN_LOOP.get() == null;
+        final IntConsumer body = pg == null ? body0 : i -> { body0.accept(i); pg.accept(cnt.incrementAndGet() / (double) n); };
+        if (n == 1 || threads <= 1) {
+            if (outer) IN_LOOP.set(Boolean.TRUE);
+            try { for (int i = 0; i < n; i++) { if (tok != null && tok.getAsBoolean()) throw new CancellationException("analysis superseded"); body.accept(i); } }
+            finally { if (outer) IN_LOOP.remove(); }
+            return;
+        }
         final int chunk = Math.max(1, (int) Math.ceil(n / (threads * 4.0)));
         final AtomicBoolean abort = new AtomicBoolean();
         final RecursiveAction root = new Range(0, n, chunk, body, tok, abort);
@@ -89,13 +106,14 @@ public final class Par {
         @Override protected void compute() {
             if (hi - lo <= chunk) {
                 BooleanSupplier old = CANCEL.get(); CANCEL.set(tok);   // inner loops started by body see the same condition
+                Boolean oldLoop = IN_LOOP.get(); IN_LOOP.set(Boolean.TRUE);   // inner loops do not report progress
                 try {
                     for (int i = lo; i < hi; i++) {
                         if (abort.get() || tok != null && tok.getAsBoolean()) throw new CancellationException("analysis superseded");
                         body.accept(i);
                     }
                 } catch (RuntimeException | Error e) { abort.set(true); throw e;
-                } finally { if (old == null) CANCEL.remove(); else CANCEL.set(old); }
+                } finally { if (old == null) CANCEL.remove(); else CANCEL.set(old); if (oldLoop == null) IN_LOOP.remove(); else IN_LOOP.set(oldLoop); }
                 return;
             }
             int mid = (lo + hi) >>> 1; invokeAll(new Range(lo, mid, chunk, body, tok, abort), new Range(mid, hi, chunk, body, tok, abort));

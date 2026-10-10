@@ -447,17 +447,13 @@ public final class Plots {
         return c.img;
     }
 
-    /** L'Abbe plot (meta::labbe.metabin): event rate in the experimental group against the control group; symbol area follows the study weight; GLMM and LRP, which have no study weights, use the metafor::labbe symbol sizes. */
+    /** L'Abbe plot (meta::labbe.metabin): event rate in the experimental group against the control group; symbol sizes follow metafor::labbe (psize) for every pooling method. */
     public static BufferedImage labbe(MetaResult r, Opts o) {
         MetaSpec s = r.spec; MetaData d = r.data; Canvas c = new Canvas(520, 520, o.scale); int n = r.TE.length;
         double[] ee = d.get("event.e"), ne = d.get("n.e"), ec = d.get("event.c"), nc = d.get("n.c");
         if (ee == null || ne == null || ec == null || nc == null) { c.text("L'Abb\u00E9 plot requires binary outcome data", 260, 260, 12, 1, false); return c.img; }
-        // GLMM and LRP give no study weights: symbol sizes then follow metafor::labbe (psize from the arm-level variances, plim = c(0.5, 3.5)); other methods keep the meta::labbe.metabin weights
-        double[] psz = s.noWeights() ? labbeMetaforPsize(s, ee, ne, ec, nc, r.TE) : null;
-        double[] w = s.common ? r.wCommonFull : r.wRandomFull; boolean anyW = false; for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && w[i] > 0) anyW = true;
-        if (psz != null) { w = new double[n]; for (int i = 0; i < n; i++) w[i] = psz[i]; }
-        else if (!anyW) { w = new double[n]; for (int i = 0; i < n; i++) w[i] = !Double.isNaN(r.TE[i]) && r.seTE[i] > 0 ? 1 / (r.seTE[i] * r.seTE[i]) : Double.NaN; }
-        double wmax = 0; for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && !Double.isNaN(w[i])) wmax = Math.max(wmax, w[i]);
+        // symbol sizes follow metafor::labbe for every pooling method: psize = sqrt(1/vi), vi = arm-level variances summed, rescaled linearly to plim = c(0.5, 3.5) (all 1 if every value is equal)
+        double[] w = labbeMetaforPsize(s, ee, ne, ec, nc, r.TE);
         double hi = 0; for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && !Double.isNaN(w[i]) && ne[i] > 0 && nc[i] > 0) hi = Math.max(hi, Math.max(ee[i] / ne[i], ec[i] / nc[i]));
         double[] tk = Canvas.pretty(0, Math.max(hi * 1.05, 0.05), 5); double lim = Math.min(1, tk[tk.length - 1]);   // same limits on both axes, as metafor::labbe
         Axes a = axes(c, 0, lim, 0, lim, false, "Event rate (" + s.labelC + ")", "Event rate (" + s.labelE + ")", false, ""); Graphics2D g = c.g;
@@ -467,7 +463,7 @@ public final class Plots {
         if (s.common) labbeLine(c, a, s, r.overall.teCommon, false, lim); if (s.random) labbeLine(c, a, s, r.overall.teRandom, true, lim);
         g.setClip(clip);
         for (int i = 0; i < n; i++) { if (Double.isNaN(r.TE[i]) || Double.isNaN(w[i]) || ne[i] <= 0 || nc[i] <= 0) continue;
-            double xx = a.X(ec[i] / nc[i]), yy = a.Y(ee[i] / ne[i]), dia = psz != null ? 4 * w[i] : Math.max(4, 14 * Math.sqrt(w[i] / wmax)), rad = dia / 2;   // metafor: cex = psize in [0.5, 3.5] -> diameter 2 to 14 px
+            double xx = a.X(ec[i] / nc[i]), yy = a.Y(ee[i] / ne[i]), dia = 4 * w[i], rad = dia / 2;   // metafor: cex = psize in [0.5, 3.5] -> diameter 2 to 14 px
             g.setColor(new Color(211, 211, 211)); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia)); g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia));
             if (o.studyLabels) c.text(r.studlab[i], xx - rad - 3, yy + 3, 8, 2, false); }
         g.setColor(Color.BLACK); return c.img;

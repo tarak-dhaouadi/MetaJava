@@ -12,6 +12,8 @@ meta 8.5-0); outlier and influence diagnostics follow [metafor](https://cran.r-p
 
 * Eight analysis types (`metabin`, `metacont`, `metacor`, `metagen`, `metainc`, `metamean`, `metaprop`, `metarate`).
 * Reads `.xlsx`, `.csv`, `.tsv` and `.txt` files; the results update automatically when a setting changes.
+* **Load project / Save project** (buttons under the title bar) keep a whole session in a `.json` file: data, column assignments and all settings.
+* Exports: results tables to Excel (`.xlsx`, one sheet per section), the whole output (paragraphs, tables, figures) to Word (`.docx`), plots as PNG, TIFF, JPG, SVG and PDF, and the text output as `.txt`.
 * Forest plots (main and subgroup), leave-one-out, cumulative, funnel (optionally contour-enhanced), bubble, Baujat,
   radial (Galbraith), L'Abbé, Doi (with LFK index) and influence-diagnostics plots, drawn in the style of R; PNG, TIFF, JPG, SVG and PDF export (resolution in dpi for the raster formats).
 
