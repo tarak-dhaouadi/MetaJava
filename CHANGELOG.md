@@ -1,5 +1,59 @@
 # Changelog
 
+### Changed - cluster detection: fewer false clusters, thresholds checked on simulated data
+- **Why.** Taking the better of two silhouette widths (effects, or ln(Q_E/df)) gives every cluster two chances to pass. With the same threshold for both (0.60) the detector reported clusters in 4-21% of data sets that have heterogeneity but no outlier (homogeneous: 0-8%).
+- **What.** The two routes now have separate thresholds: effects silhouette >= 0.60 (`MIN_SILHOUETTE`), or ln(Q_E/df) silhouette >= **0.70** (`HET_MIN_SILHOUETTE`, new) with a minimum share of 5% of the subsets (`HET_MIN_SHARE`, new). `detectClusters(minSil, hetMinSil, hetMinShare)` sets them; the result records them. The estimates, subsets, sampling and all other numbers are unchanged.
+- **Simulation** (24 data sets per scenario, 3000 random subsets, k = 12-25, standard errors 0.08-0.33; the share of data sets in which clusters were reported; "ordinary / meta-regression" GOSH):
+
+| scenario | route threshold 0.60 | **0.70** | 0.80 | effects route only |
+|---|---|---|---|---|
+| homogeneous, k = 20 | 0 / 8% | **0 / 4%** | 0 / 4% | 0 / 0% |
+| tau = 0.15, k = 15 | 8 / 4% | **0 / 0%** | 0 / 0% | 0 / 0% |
+| tau = 0.3, k = 15 | 4 / 17% | **0 / 0%** | 0 / 0% | 0 / 0% |
+| tau = 0.5, k = 25 | 21 / 4% | **0 / 0%** | 0 / 0% | 0 / 0% |
+| skewed random effects, tau = 0.3 | 13 / 13% | **8 / 4%** | 8 / 0% | 4 / 0% |
+| one outlier, +1.0 | 63 / 50% | **58 / 29%** | 42 / 8% | 13 / 0% |
+| one outlier, +2.5 | 100 / 100% | **100 / 96%** | 100 / 92% | 92 / 0% |
+| two outliers, +2 | 96 / 96% | **92 / 88%** | 75 / 38% | 0 / 0% |
+| subgroup of 3 of 12, +0.8 | 54 / 25% | **42 / 17%** | 21 / 13% | 0 / 4% |
+| subgroup of 3 of 12, +1.2 | 75 / 46% | **75 / 46%** | 58 / 8% | 0 / 0% |
+| subgroup of 4 of 16, +1.0 | 58 / 33% | **58 / 21%** | 33 / 4% | 0 / 0% |
+
+  0.70 removes nearly all the false clusters and keeps most of the power; 0.80 loses too much power (a minimum share of 10% changed nothing, so the default stays 5%). Weak signals are missed (an outlier of +1.0 is found in 58% / 29% of the data sets, a subgroup of +0.8 in 42% / 17%), and skewed random effects still give about 4-8% false clusters in the ordinary GOSH: the clusters are exploratory.
+- **Self-tests** now use several data sets per scenario, with weaker signals than before: heterogeneity without outliers (tau = 0.3 and 0.5) gives at most 1 of 6 data sets with clusters, two outliers of +2 are found in at least 4 of 6, one outlier of +2.5 in at least 5 of 6 (ordinary and meta-regression), and the lenient route is shown to give at least as many false clusters.
+- Fixed the `detectClusters` Javadoc (it said the check used the effects only), removed the unused `copyHead()` from `GoshCluster`, and fixed the class comment.
+
+### Changed - REML / ML: a second maximum of the likelihood is reported, the estimates are not changed
+- **Investigation.** The tau^2 of ML and REML is the root of the score equation found by a search from 0. Checked against a dense grid on the restricted likelihood in 3000 random data sets (3-40 studies, 1-3 coefficients, equal and very unequal variances, outliers, near-equal variances): in 2 of 3000 (7 studies with variances from 0.003 to 16) the likelihood has two maxima and the search stops at the lower one (tau^2 = 3.28, while tau^2 = 0.0038 has a log-likelihood 0.31 higher).
+- **Decision.** Moving the estimate to the global maximum changed the metafor reference values of the self-tests (exact permutation p-values in the 4th decimal; GOSH meta-regression means), so the estimates are **left as they are**: they reproduce metafor. The estimator code and the GOSH calculations are untouched (the diagnostic only adds code; no line of `estimateTau2`, `Rma.fit` or GOSH was changed for it). Any change of the estimate needs a separate comparison against metafor.
+- **Diagnostic `Rma.higherMode()`** (ML and REML only; sets `higherModeGain`). It evaluates the *same* (restricted) log-likelihood that the score equation is the derivative of, over the whole admissible range tau^2 >= 0: tau^2 = 0 and 240 geometric points from 1e-9 to 1e9 times the scale of the data. Each local maximum of that grid is refined on the score equation (or taken as the boundary 0 when the score is not positive there) and a mode is reported only if its log-likelihood is higher than that of the estimate by more than 1e-6 and its tau^2 differs from the estimate. It is not run for the GOSH subsets.
+- **Warning text.** "Note: the restricted log-likelihood has a second, higher maximum at tau^2 = ... (higher by ...). The results above and below use the selected mode, tau^2 = ... (the one found by the usual search from zero, as in metafor); the higher mode is not used in any calculation." It appears in the heterogeneity block of the pooled analysis and in the meta-regression output.
+- **Verification** (independent code, not the diagnostic itself): (1) the finite-difference derivative of the likelihood equals the score used by the solver (largest relative difference 2e-5 over 72 000 points, i.e. finite-difference error), so both look at the same likelihood; (2) 16 000 random data sets x REML and ML (3-40 studies, 1-3 coefficients, equal and very unequal variances over up to 6 orders of magnitude, outliers) were compared with a separate 3000-point grid: REML 9 higher modes found, ML 94, **0 false alarms and 0 missed** in both; the smallest reported gain was 0.0002 (so the 1e-6 threshold is not borderline). ML has a second mode about ten times as often as REML.
+- Self-tests: the 7-study data set above (estimate unchanged, higher mode 0.0038 found, gain 0.31, both modes stationary and the higher one a maximum, warning states the selected mode and that the higher mode is not used), no warning for ordinary data sets, the reference data and a tau^2 = 0 boundary case, nothing reported for DL / PM; ML reports only clearly higher modes.
+
+### New - limit the ordinary GOSH plot to the central 99% of the subsets
+- Option **Limit the ordinary GOSH plot to the central 99% of subsets** in section 10, just above **Colour subsets by the most influential study** (off by default). The estimate axis is limited to the central 99% of the subsets, but only when that is more than 25% narrower than the full range; the displayed range and the number and percentage of subsets outside it are stated below the plot. No subset is removed from the analysis or the tables; the density map and marginal densities show only the subsets inside the displayed range.
+
+### Changed - defaults at start-up
+- The options **Subgroup analysis (uses the subgroup column)**, **Funnel plot**, **Test for funnel plot asymmetry** and **PET-PEESE plot** are no longer ticked when the app starts; the user chooses.
+
+### Fixed - colouring of the GOSH meta-regression plots
+- The two meta-regression GOSH plots (coefficients against residual heterogeneity, scatterplot matrix) now follow the same colouring rules as the ordinary GOSH plot: by cluster when clusters were found, otherwise by inclusion of the most influential study when **Colour subsets by the most influential study** is ticked (it had no effect on these plots). When the cluster detection is on but finds no meaningful clusters, the plots say so instead of silently staying uncoloured.
+
+### Changed - cluster detection no longer reports clusters in homogeneous or unstructured GOSH clouds
+- The Gaussian mixture (ICL) is kept, but its components are accepted as clusters only if each one has a silhouette width of at least 0.6 (`GoshCluster.MIN_SILHOUETTE`, can be changed with `detectClusters(minSil)`) in the effects (estimate or coefficients) **or** in the heterogeneity measured by ln(Q_E/df), and holds at least 5 % of the valid subsets (`MIN_SHARE`). A cluster that fails is merged with the closest one; if none remains the output reports one cluster, "No meaningful clusters". The I² column plays no part in this check: many subsets have I² = 0 exactly (a spike that is present even when tau² = 0), and ICL alone proposed 2 to 6 components for every homogeneous data set tried.
+- An average silhouette over all subsets was not used: a few far-away tail subsets raise the width of the bulk and gave false clusters in the meta-regression GOSH.
+- Checked on simulated data (12 replicates per scenario, ordinary / meta-regression GOSH): homogeneous data, 0 and 1 clusters reported in 36 data sets each; heterogeneity without outliers or skewed effects, 2 and 5 in 36; one outlier study, 8 and 7 of 12; two outlier studies, 11 and 11 of 12; a subgroup of 3 of 12 studies with a large effect (self-test data), found in both analyses in 5 of 6 data sets. Balanced subgroups of studies (6 + 6, 4 + 4 + 4) are not resolved: their subsets form a ridge, not separate clouds.
+- The report states the criterion, the components ICL proposed, how many were merged and the share of subsets with I² = 0.
+- New self-test checks for homogeneous data (tau² = 0), a spike-only cloud, outlier studies, a subgroup, the threshold setting, and the serial equivalence of the parallel calculations.
+
+### Changed - GOSH meta-regression plots
+- An axis is limited to the central 99 % of the subsets when that is more than 25 % narrower than the full range (a few extreme, nearly collinear subsets otherwise flatten the plot). The plot states the displayed range and the number and percentage of subsets outside it; no subset is removed from the analysis, the tables or the cluster detection. Option **Limit the GOSH meta-regression plot axes to the central 99 % of the subsets** (on by default).
+
+### Changed - performance and consistency
+- The per-study means over the subsets that include / exclude each study (ordinary and meta-regression GOSH) and the cluster inclusion rates are computed in parallel, one study per task; the sums are taken in the same order, so the numbers are identical.
+- GOSH for the meta-regression model now requires the meta-regression to be turned on in section 6, as the influence diagnostics do.
+
 ### New - cluster detection in the GOSH output
 - Wording: clusters are groups of subsets, not of studies; the 40-point inclusion threshold is a heuristic, and the studies listed are "associated with" a cluster, not proven causes. The meta-regression sign-flip share is labelled as an exploratory sign-stability measure, and the output states that summaries refer to the subsets actually analysed (all, or a random sample).
 - Option **Detect clusters of subsets (colour by cluster)** in section 10: a Gaussian mixture model with full covariances (EM, k-means++ starts, seeded) is fitted to the standardised GOSH points (estimate and I² for the ordinary GOSH; all coefficients and the residual I² for the meta-regression GOSH). The number of clusters (1 to 6) is chosen by the integrated completed likelihood (ICL), so one skewed cloud is not split into overlapping pieces; for large clouds the model is fitted to a sample of 5000 subsets and every subset is then assigned to its most probable cluster. Clusters below 1% of the subsets are merged.

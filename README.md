@@ -87,7 +87,7 @@ measure, tau² estimator and interval methods automatically.
 ### Model and heterogeneity
 
 * **Model:** random effects, common effect, or both.
-* **tau² estimator:** REML (default), DL, PM, ML, HS, SJ, HE, EB.
+* **tau² estimator:** REML (default), DL, PM, ML, HS, SJ, HE, EB. With ML and REML and few, very unequal studies the likelihood can have two maxima; the estimate is the one found by the usual search from zero (as in metafor); the output warns when a higher maximum exists and states that the estimate uses the selected mode and the higher mode is not used.
 * **CI for tau²:** default (Q-profile; Jackson for DL), QP, BJ, J, or none.
 * **Random-effects CI method:** classic, HK (Hartung-Knapp), KR (Kenward-Roger); **ad hoc HK variance
   correction:** none, `se`, `ci`, IQWiG6.
@@ -176,8 +176,13 @@ restricted likelihood for REML (BIC and AICc then use k - p), the ordinary likel
   clouds are drawn as a density map (so SVG / PDF stay small); optionally the subsets are coloured by whether they contain the most
   influential study. The text output gives quantiles over the subsets and, per study, the mean estimate and I² of the subsets with
   and without it. **Cluster detection** (option): a Gaussian mixture (EM, number of clusters 1–6 chosen by ICL) is fitted to the
-  GOSH points; the output lists the clusters (size, mean estimate and I²), the studies that are almost always in or out of a
-  cluster, and the plot is coloured by cluster. **GOSH for meta-regression** (option, output right below the ordinary GOSH analysis):
+  GOSH points. The components are accepted as clusters only if each is clearly separated from the others, either in the effects
+  (estimate or coefficients; silhouette width ≥ 0.60) or, through a stricter route, in the heterogeneity measured by ln(Q<sub>E</sub>/df)
+  (silhouette width ≥ 0.70), and each holds at least 5 % of the valid subsets, because many subsets have I² = 0 exactly even for homogeneous studies and this spike alone is never evidence of a cluster;
+  otherwise the output says "No meaningful clusters". The thresholds are heuristics, checked on simulated data with and without
+  structure (see the CHANGELOG). The output lists the clusters (size, mean estimate and I²), the studies that are almost always in or out of a
+  cluster, and the plot is coloured by cluster. Limits: two balanced subgroups of studies form a continuous ridge of subsets and are not
+  resolved, and a group of more than about four studies cannot be isolated. **GOSH for meta-regression** (option, output right below the ordinary GOSH analysis):
   the meta-regression model of section 6 (covariates / factors) is fitted to subsets of the studies (at least *p* studies, *p* =
   number of coefficients; all subsets (sum of choose(k, m), m = p..k) or a random sample drawn as in `metafor::gosh`; the output states which); it reports
   how many subsets are valid, not estimable (rank-deficient: no variation in a moderator, missing factor level), saturated (k = p) or

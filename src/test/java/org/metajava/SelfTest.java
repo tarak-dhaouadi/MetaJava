@@ -35,6 +35,159 @@ public class SelfTest {
 
     static int countColour(BufferedImage im, int rgb) { int n = 0; for (int y = 0; y < im.getHeight(); y++) for (int x = 0; x < im.getWidth(); x++) if ((im.getRGB(x, y) & 0xFFFFFF) == rgb) n++; return n; }
 
+    // ------------------------------------------------------------------ cluster detection: separation criterion, tests on data with and without structure
+    /** Simulated meta-analysis: k studies, standard errors 0.1-0.25, true effect 0.3 (+ shift for the studies listed), one unrelated covariate x. kind: 0 homogeneous (tau^2 = 0), 1 two outliers (+1.5), 2 a subgroup of 3 studies (+1.2). */
+    static double[][] simData(int kind, long seed, int k) {
+        java.util.Random rnd = new java.util.Random(seed); double[] se = new double[k], th = new double[k], y = new double[k], x = new double[k]; for (int i = 0; i < k; i++) se[i] = 0.1 + 0.15 * rnd.nextDouble();
+        if (kind == 1) { th[0] = 1.5; th[1] = 1.5; } if (kind == 2) for (int i = k - 3; i < k; i++) th[i] = 1.2;
+        for (int i = 0; i < k; i++) { y[i] = 0.3 + th[i] + se[i] * rnd.nextGaussian(); x[i] = rnd.nextGaussian(); } return new double[][]{y, se, x};
+    }
+    static MetaResult simResult(double[] y, double[] se) { MetaSpec sp = new MetaSpec(); sp.type = "gen"; sp.sm = "MD"; sp.methodTau = "REML"; MetaData md = new MetaData(); md.put("TE", y); md.put("seTE", se); md.n = y.length; return Meta.run(sp, md); }
+    static boolean separatesAny(GoshCluster c, int lo, int hi) { for (int g = 0; g < c.G; g++) for (int[] jj : c.separating(g)) if (jj[0] >= lo && jj[0] <= hi) return true; return false; }
+
+    /** Pixels that are clearly orange (the colour of the subsets that exclude the highlighted study). */
+    static int orangePixels(BufferedImage im) { int n = 0; for (int y = 0; y < im.getHeight(); y++) for (int x = 0; x < im.getWidth(); x++) { int c = im.getRGB(x, y); int r = c >> 16 & 255, g = c >> 8 & 255, b = c & 255; if (r > 180 && r - g > 40 && g - b > 20) n++; } return n; }
+
+    /** Ordinary GOSH plot: option to limit the x axis to the central 99% of the subsets (heavy-tailed effects, so that a few subsets are far out). */
+    static void ordinaryAxisLimitTests() {
+        java.util.Random rnd = new java.util.Random(1); int k = 12; double[] y = new double[k], se = new double[k]; for (int i = 0; i < k; i++) { se[i] = 0.1 + 0.15 * rnd.nextDouble(); y[i] = 0.3 + 0.3 * Math.tan(Math.PI * (rnd.nextDouble() - 0.5)) + se[i] * rnd.nextGaussian(); }
+        MetaResult res = simResult(y, se); Gosh go = Gosh.run(res, 8000, 1); int nSub = go.nSub, nValid = 0; for (int b = 0; b < go.nSub; b++) if (!Double.isNaN(go.est[b]) && !Double.isNaN(go.i2[b])) nValid++;
+        java.util.List<String> on = org.metajava.plot.ExtraPlots.goshAxisNotes(go, res, true), off = org.metajava.plot.ExtraPlots.goshAxisNotes(go, res, false);
+        String txt = String.join(" ", on); java.util.regex.Matcher mt = java.util.regex.Pattern.compile("\\(([0-9.]+)%\\) outside").matcher(txt); boolean has = mt.find(); double pct = has ? Double.parseDouble(mt.group(1)) : -1;
+        check(!on.isEmpty() && txt.contains("central 99%") && txt.contains("x axis") && has && pct > 0 && pct <= 5, "ordinary GOSH plot: extreme subsets limit the x axis to the central 99%, with the displayed range and the share of subsets outside stated (" + pct + "%)");
+        int nValid2 = 0; for (int b = 0; b < go.nSub; b++) if (!Double.isNaN(go.est[b]) && !Double.isNaN(go.i2[b])) nValid2++;
+        check(off.isEmpty() && go.nSub == nSub && nValid2 == nValid, "ordinary GOSH plot: nothing is stated when the axis is not limited; all " + nValid + " valid subsets stay in the analysis");
+        Plots.Opts po = new Plots.Opts(); po.scale = 1.0; BufferedImage t1 = org.metajava.plot.ExtraPlots.gosh(go, res, po, false, null, true), t0 = org.metajava.plot.ExtraPlots.gosh(go, res, po, false, null, false), t00 = org.metajava.plot.ExtraPlots.gosh(go, res, po, false);
+        check(t1.getHeight() > t0.getHeight() && t0.getHeight() == t00.getHeight() && t0.getWidth() == t1.getWidth(), "ordinary GOSH plot with the limited axis carries the note (height " + t1.getHeight() + " against " + t0.getHeight() + "); without the option the plot is as before");
+        double[][] dd = simData(0, 1, 5); MetaResult rh = simResult(dd[0], dd[1]); Gosh gh = Gosh.run(rh, 8000, 1);   // 26 subsets: the central 99% is almost the full range
+        check(org.metajava.plot.ExtraPlots.goshAxisNotes(gh, rh, true).isEmpty(), "ordinary GOSH plot: the axis is not limited when the central 99% is not more than 25% narrower than the full range");
+    }
+
+    static void clusterGateTests() {
+        ordinaryAxisLimitTests();
+        java.util.List<String> noF = java.util.List.of(); java.util.Map<String, String[]> noFd = new java.util.HashMap<>();
+        // (a) homogeneous data (tau^2 = 0): the mixture alone proposes several components, because many subsets have I^2 = 0 exactly (a spike), but they are not clusters
+        for (long seed = 1; seed <= 3; seed++) {
+            double[][] dd = simData(0, seed, 12); MetaResult res = simResult(dd[0], dd[1]); java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", dd[2]);
+            Gosh go = Gosh.run(res, 8000, 1); GoshCluster co = go.detectClusters();
+            check(co.iclG >= 2 && co.spike >= 0.5, "homogeneous data " + seed + " (ordinary): ICL alone proposes " + co.iclG + " components and " + Math.round(100 * co.spike) + "% of the subsets have I^2 = 0");
+            check(co.G == 1 && !co.found(), "homogeneous data " + seed + " (ordinary): reported as one cluster, no meaningful clusters (G = " + co.G + ")");
+            GoshReg gg = GoshReg.run(res, Reg.design(res, java.util.List.of("x"), nd, noF, noFd, true, null), true, 8000, 1); GoshCluster cg = gg.detectClusters();
+            check(cg.iclG >= 2 && cg.G == 1 && !cg.found(), "homogeneous data " + seed + " (meta-regression): ICL proposes " + cg.iclG + " components, reported as one cluster (G = " + cg.G + ")");
+            check(RegReport.goshText(go, res).contains("No meaningful clusters") && RegReport.goshRegText(gg, res).contains("No meaningful clusters"), "homogeneous data " + seed + ": the report says that there are no meaningful clusters");
+        }
+        // (b) the spike alone is not structure: estimates independent of I^2, 40% of the subsets at I^2 = 0
+        { java.util.SplittableRandom rg = new java.util.SplittableRandom(11); int nn = 3000, kk = 10; double[][] Xs = new double[nn][2]; long[][] mk = new long[nn][1]; int[] szs = new int[nn]; double[] hf = new double[nn];
+          for (int b = 0; b < nn; b++) { double u1 = rg.nextDouble(), u2 = rg.nextDouble(); Xs[b][0] = 0.3 + 0.05 * Math.sqrt(-2 * Math.log(1 - u1)) * Math.cos(2 * Math.PI * u2); Xs[b][1] = rg.nextDouble() < 0.4 ? 0 : 5 + 40 * rg.nextDouble();
+            long m = 0; for (int j = 0; j < kk; j++) if (rg.nextBoolean()) m |= 1L << j; mk[b][0] = m; szs[b] = Long.bitCount(m); double w1 = rg.nextDouble(), w2 = rg.nextDouble(); hf[b] = Math.sqrt(-2 * Math.log(1 - w1)) * Math.cos(2 * Math.PI * w2); }
+          GoshCluster c0 = GoshCluster.detect(Xs, new String[]{"estimate", "I^2"}, mk, kk, szs, 1); GoshCluster c1 = GoshCluster.detect(Xs, new String[]{"estimate", "I^2"}, mk, kk, szs, 1, 1, GoshCluster.MIN_SILHOUETTE, GoshCluster.MIN_SHARE, hf);
+          check(c0.iclG >= 2 && c0.G == 1, "spike at I^2 = 0 only: ICL proposes " + c0.iclG + " components, no cluster is reported (G = " + c0.G + ")");
+          check(c1.iclG >= 2 && c1.G == 1, "spike at I^2 = 0 only, with a continuous heterogeneity measure: no cluster is reported (G = " + c1.G + ")"); }
+        // (c) genuine outliers: two studies far from the others
+        for (long seed = 1; seed <= 2; seed++) {
+            double[][] dd = simData(1, seed, 12); MetaResult res = simResult(dd[0], dd[1]); java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", dd[2]);
+            Gosh go = Gosh.run(res, 8000, 1); GoshCluster co = go.detectClusters(); GoshReg gg = GoshReg.run(res, Reg.design(res, java.util.List.of("x"), nd, noF, noFd, true, null), true, 8000, 1); GoshCluster cg = gg.detectClusters();
+            check(co.found() && separatesAny(co, 0, 1), "two outlier studies " + seed + " (ordinary): " + co.G + " clusters, the outliers are among the studies that separate them");
+            check(cg.found() && separatesAny(cg, 0, 1), "two outlier studies " + seed + " (meta-regression): " + cg.G + " clusters, the outliers are among the studies that separate them");
+            check(RegReport.goshText(go, res).contains("Clusters found") && RegReport.goshRegText(gg, res).contains("Clusters found"), "two outlier studies " + seed + ": the report lists the clusters");
+            check(co.share != null && Math.abs(java.util.Arrays.stream(co.share).sum() - 100) < 1e-6, "two outlier studies " + seed + ": cluster shares add up to 100%");
+        }
+        // (d) a real subgroup: 3 of 12 studies with a much larger effect
+        for (long seed = 1; seed <= 2; seed++) {
+            double[][] dd = simData(2, seed, 12); MetaResult res = simResult(dd[0], dd[1]); java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", dd[2]);
+            GoshCluster co = Gosh.run(res, 8000, 1).detectClusters(); GoshCluster cg = GoshReg.run(res, Reg.design(res, java.util.List.of("x"), nd, noF, noFd, true, null), true, 8000, 1).detectClusters();
+            check(co.found() && separatesAny(co, 9, 11), "subgroup of 3 studies " + seed + " (ordinary): " + co.G + " clusters, subgroup studies separate them");
+            check(cg.found() && separatesAny(cg, 9, 11), "subgroup of 3 studies " + seed + " (meta-regression): " + cg.G + " clusters, subgroup studies separate them");
+        }
+        // (e) the threshold can be changed: nothing is separated well enough for 0.97
+        { double[][] dd = simData(1, 1, 12); MetaResult res = simResult(dd[0], dd[1]); Gosh go = Gosh.run(res, 8000, 1); GoshCluster strict = go.detectClusters(0.97, 0.97, GoshCluster.HET_MIN_SHARE);
+          check(GoshCluster.MIN_SILHOUETTE == 0.60 && GoshCluster.MIN_SHARE == 0.05 && strict.G == 1 && strict.iclG >= 2, "separation threshold is configurable (0.97: one cluster although ICL proposed " + strict.iclG + ")");
+          check(go.detectClusters().minSil == GoshCluster.MIN_SILHOUETTE, "default separation threshold is used by detectClusters()"); }
+        // (f) in / out means per study (computed in parallel) equal a plain serial computation
+        { double[][] dd = simData(1, 2, 12); MetaResult res = simResult(dd[0], dd[1]); java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", dd[2]); Gosh go = Gosh.run(res, 5000, 3); GoshReg gg = GoshReg.run(res, Reg.design(res, java.util.List.of("x"), nd, noF, noFd, true, null), true, 5000, 3);
+          double worst = 0; for (int j = 0; j < go.k; j++) { double si = 0, so = 0; int ni = 0, no = 0; for (int b = 0; b < go.nSub; b++) { if (Double.isNaN(go.est[b]) || Double.isNaN(go.i2[b])) continue; if (go.includes(b, j)) { si += go.i2[b]; ni++; } else { so += go.i2[b]; no++; } }
+              worst = Math.max(worst, Math.max(Math.abs(si / ni - go.i2In[j]), Math.abs(so / no - go.i2Out[j]))); }
+          double worstR = 0; for (int j = 0; j < gg.k; j++) for (int a = 0; a < gg.p; a++) { double si = 0, so = 0; int ni = 0, no = 0; for (int b = 0; b < gg.nSub; b++) { if (!gg.valid(b)) continue; boolean in = (gg.mask[b][j >> 6] >>> (j & 63) & 1L) != 0; if (in) { si += gg.coef[a][b]; ni++; } else { so += gg.coef[a][b]; no++; } }
+              worstR = Math.max(worstR, Math.max(Math.abs(si / ni - gg.coefIn[a][j]), Math.abs(so / no - gg.coefOut[a][j]))); }
+          check(worst == 0 && worstR == 0, "in / out means per study (parallel) equal the serial computation (ordinary " + worst + ", meta-regression " + worstR + ")");
+          double[][] d1 = simData(1, 1, 12); MetaResult r1 = simResult(d1[0], d1[1]); java.util.Map<String, double[]> n1b = new java.util.HashMap<>(); n1b.put("x", d1[2]); gg = GoshReg.run(r1, Reg.design(r1, java.util.List.of("x"), n1b, noF, noFd, true, null), true, 5000, 3);   // two outliers, seed 1: clusters are found
+          GoshCluster c = gg.detectClusters(); double tot = 0; if (c.found()) for (int g = 0; g < c.G; g++) for (int j = 0; j < c.rateIn[g].length; j++) { int cnt = 0, sz = 0; for (int b = 0; b < gg.nSub; b++) if (c.label[b] == g) { sz++; if ((gg.mask[b][j >> 6] >>> (j & 63) & 1L) != 0) cnt++; } tot = Math.max(tot, Math.abs((double) cnt / sz - c.rateIn[g][j])); }
+          check(c.found() && tot < 1e-12, "cluster inclusion rates (parallel) equal the serial computation"); }
+        // (g) GOSH plots: central 99% axis limits are disclosed, no subset is removed
+        { double[] ta = {4, 6, 3, 62, 33, 180, 8, 505, 29, 17, 186, 5, 27}, n1 = {123, 306, 231, 13598, 5069, 1541, 2545, 88391, 7499, 1716, 50634, 2498, 16913}, tc = {11, 29, 11, 248, 47, 372, 10, 499, 45, 65, 141, 3, 29}, n2 = {139, 303, 220, 12867, 5808, 1451, 629, 88391, 7277, 1665, 27338, 2341, 17854};
+          double[] ablat = {44, 55, 42, 52, 13, 44, 19, 13, 27, 42, 18, 33, 33}, year = {48, 49, 60, 77, 73, 53, 73, 80, 68, 61, 74, 69, 76}; String[] alloc = {"random", "random", "random", "random", "alt", "alt", "sys", "random", "random", "sys", "sys", "alt", "random"};
+          int K = 13; double[] by = new double[K], bse = new double[K]; for (int i = 0; i < K; i++) { by[i] = Math.log((ta[i] / n1[i]) / (tc[i] / n2[i])); bse[i] = Math.sqrt(1 / ta[i] - 1 / n1[i] + 1 / tc[i] - 1 / n2[i]); }
+          MetaResult rb = simResult(by, bse); java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("ablat", ablat); nd.put("year", year); java.util.Map<String, String[]> fd = new java.util.HashMap<>(); fd.put("alloc", alloc);
+          GoshReg gb = GoshReg.run(rb, Reg.design(rb, java.util.List.of("ablat", "year"), nd, java.util.List.of("alloc"), fd, true, null), true, 20000, 1); int nv = gb.nValid;
+          java.util.List<String> notes = org.metajava.plot.ExtraPlots.goshRegAxisNotes(gb, true), none = org.metajava.plot.ExtraPlots.goshRegAxisNotes(gb, false);
+          String all = String.join(" ", notes); java.util.regex.Matcher mt = java.util.regex.Pattern.compile("\\(([0-9.]+)%\\) outside").matcher(all); double maxPct = 0; int found = 0; while (mt.find()) { found++; maxPct = Math.max(maxPct, Double.parseDouble(mt.group(1))); }
+          check(!notes.isEmpty() && all.contains("central 99%") && found >= 1 && maxPct > 0 && maxPct <= 5, "regression GOSH plots: extreme coefficients limit the axes, with the displayed range and the share of subsets outside stated (max " + maxPct + "%)");
+          check(none.isEmpty() && gb.nValid == nv, "regression GOSH plots: nothing is stated or removed when the axes are not limited; all " + nv + " valid subsets stay in the analysis");
+          Plots.Opts po = new Plots.Opts(); po.scale = 1.0; BufferedImage a1 = org.metajava.plot.ExtraPlots.goshRegCoef(gb, po, true), a0 = org.metajava.plot.ExtraPlots.goshRegCoef(gb, po, false), m1 = org.metajava.plot.ExtraPlots.goshRegMatrix(gb, po, true);
+          { int hl = gb.mostInfluential(); double bd = -1; int arg = 0; for (int j = 0; j < gb.k; j++) { double d = Math.abs(gb.i2In[j] - gb.i2Out[j]); if (d > bd) { bd = d; arg = j; } }
+            BufferedImage plain = org.metajava.plot.ExtraPlots.goshRegCoef(gb, po, true, false), hlc = org.metajava.plot.ExtraPlots.goshRegCoef(gb, po, true, true), hlm = org.metajava.plot.ExtraPlots.goshRegMatrix(gb, po, true, true), plm = org.metajava.plot.ExtraPlots.goshRegMatrix(gb, po, true, false);
+            check(hl == arg && hl >= 0 && hl < gb.k, "meta-regression GOSH: most influential study = largest difference in mean residual I^2 between the subsets with and without it (" + gb.labels[hl] + ")");
+            check(orangePixels(plain) == 0 && orangePixels(plm) == 0 && orangePixels(hlc) > 50 && orangePixels(hlm) > 50, "meta-regression GOSH plots are coloured by inclusion of the most influential study when asked (as the ordinary GOSH plot): " + orangePixels(hlc) + " and " + orangePixels(hlm) + " orange pixels, none without the option"); }
+          check(a1.getHeight() > a0.getHeight() && m1.getWidth() >= 560, "regression GOSH plots with limited axes carry the note (" + a1.getWidth() + "x" + a1.getHeight() + " against " + a0.getWidth() + "x" + a0.getHeight() + ")"); }
+    }
+
+    /** Simulated meta-analysis (standard errors 0.08-0.33): tau between studies, the first nOut studies shifted; x is an unrelated covariate with slope 0.3 (meta-regression). */
+    static MetaResult robustMeta(long seed, int k, double tau, int nOut, double shift, double slope, double[] x) {
+        java.util.Random R = new java.util.Random(seed); double[] y = new double[k], se = new double[k];
+        for (int i = 0; i < k; i++) { se[i] = 0.08 + 0.25 * R.nextDouble(); x[i] = R.nextGaussian(); y[i] = 0.2 + slope * x[i] + tau * R.nextGaussian() + se[i] * R.nextGaussian() + (i < nOut ? shift : 0); }
+        return simResult(y, se);
+    }
+    static GoshCluster[] robustPair(long seed, int k, double tau, int nOut, double shift, double hetMin) {
+        double[] x0 = new double[k], x = new double[k]; MetaResult r0 = robustMeta(seed, k, tau, nOut, shift, 0, x0), r = robustMeta(seed, k, tau, nOut, shift, 0.3, x); java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", x);   // the covariate has a real effect only in the meta-regression data
+        GoshCluster a = Gosh.run(r0, 4000, seed).detectClusters(GoshCluster.MIN_SILHOUETTE, hetMin, GoshCluster.HET_MIN_SHARE);
+        GoshCluster b = GoshReg.run(r, Reg.design(r, java.util.List.of("x"), nd, java.util.List.of(), new java.util.HashMap<>(), true, null), true, 4000, seed).detectClusters(GoshCluster.MIN_SILHOUETTE, hetMin, GoshCluster.HET_MIN_SHARE);
+        return new GoshCluster[]{a, b};
+    }
+
+    /**
+     * Several data sets per scenario (not a single lucky seed), including heterogeneity without outliers (where the first version reported clusters in 15-20% of the
+     * data sets) and weaker signals than the other tests. The limits are set from the simulation in the CHANGELOG (24 data sets per scenario) with a margin for the small number here.
+     */
+    static void clusterRobustnessTests() {
+        int n = 6, fpO = 0, fpR = 0, fpLoose = 0, hetO = 0, hetR = 0, out2O = 0, out2R = 0, sepOk = 0, sepN = 0, out1O = 0, out1R = 0;
+        for (long sd = 1; sd <= n; sd++) {
+            GoshCluster[] h = robustPair(sd, 15, 0.3, 0, 0, GoshCluster.HET_MIN_SILHOUETTE); if (h[0].found()) fpO++; if (h[1].found()) fpR++;
+            GoshCluster[] hl = robustPair(sd, 15, 0.3, 0, 0, GoshCluster.MIN_SILHOUETTE); if (hl[0].found()) fpLoose++; if (hl[1].found()) fpLoose++;   // heterogeneity route as lenient as the effects route (the first version)
+            GoshCluster[] b = robustPair(sd, 25, 0.5, 0, 0, GoshCluster.HET_MIN_SILHOUETTE); if (b[0].found()) hetO++; if (b[1].found()) hetR++;
+            GoshCluster[] t = robustPair(sd, 15, 0, 2, 2.0, GoshCluster.HET_MIN_SILHOUETTE); if (t[0].found()) { out2O++; sepN++; if (separatesAny(t[0], 0, 1)) sepOk++; } if (t[1].found()) { out2R++; sepN++; if (separatesAny(t[1], 0, 1)) sepOk++; }
+            GoshCluster[] o = robustPair(sd, 15, 0, 1, 2.5, GoshCluster.HET_MIN_SILHOUETTE); if (o[0].found()) out1O++; if (o[1].found()) out1R++;
+        }
+        check(fpO <= 1 && fpR <= 1, "heterogeneity without outliers (tau = 0.3, k = 15): at most 1 of " + n + " data sets gives clusters (ordinary " + fpO + ", meta-regression " + fpR + ")");
+        check(hetO <= 1 && hetR <= 1, "heterogeneity without outliers (tau = 0.5, k = 25): at most 1 of " + n + " data sets gives clusters (ordinary " + hetO + ", meta-regression " + hetR + ")");
+        check(fpLoose >= fpO + fpR, "the stricter heterogeneity route never gives more clusters than the lenient one on data without outliers (" + (fpO + fpR) + " against " + fpLoose + ")");
+        check(out2O >= 4 && out2R >= 4, "two outlier studies (+2, standard errors 0.08-0.33): found in at least 4 of " + n + " data sets (ordinary " + out2O + ", meta-regression " + out2R + ")");
+        check(sepN > 0 && sepOk == sepN, "when clusters are found for the two outlier studies, one of the outliers is among the separating studies (" + sepOk + " of " + sepN + ")");
+        check(out1O >= 5 && out1R >= 5, "one clear outlier study (+2.5): found in at least 5 of " + n + " data sets (ordinary " + out1O + ", meta-regression " + out1R + ")");
+        GoshCluster[] c = robustPair(1, 15, 0, 1, 2.5, GoshCluster.HET_MIN_SILHOUETTE); check(c[0].hetMinSil == GoshCluster.HET_MIN_SILHOUETTE && GoshCluster.HET_MIN_SILHOUETTE == 0.70 && c[0].minShare == GoshCluster.MIN_SHARE, "the thresholds of the two routes are recorded in the result");
+    }
+
+    /** The likelihood of the ML / REML estimators can have two maxima with few, very unequal studies: the estimate is unchanged (as in metafor), a higher mode is reported. */
+    static void remlModeTests() {
+        double[] y = {0.20657085589375465, -5.116347049481632, 0.16546564893809362, 0.37492810016703193, -1.9057887912530813, 4.199789824364626, -3.7110214579973917};
+        double[] v = {0.002620136899687197, 2.0794018448444427, 0.0034911660476908283, 0.007768072574424503, 4.017428242692546, 16.03248909438053, 6.287382328017086};
+        Rma f = Rma.fit(y, v, null, "REML"); double alt = f.higherMode();
+        near(f.tau2, 3.28426506, 1e-6, "REML: the estimate is the one of the usual root search (unchanged), tau^2 of a two-mode likelihood");
+        near(alt, 0.0037990, 2e-5, "REML: the higher mode of the likelihood is found by the diagnostic (tau^2 = 0.0038)");
+        check(Rma.logLik(f, alt, true) > Rma.logLik(f, f.tau2, true) + 0.1, "REML: the likelihood is clearly higher at the second mode");
+        check(Double.isNaN(Rma.fit(y, v, null, "DL").higherMode()) && Double.isNaN(Rma.fit(y, v, null, "PM").higherMode()), "the diagnostic is not run for estimators that are not likelihood based");
+        MetaSpec sp = genSpec("MD"); sp.methodTau = "REML"; sp.prediction = false; MetaData md = new MetaData(); md.put("TE", y); md.put("seTE", java.util.Arrays.stream(v).map(Math::sqrt).toArray()); md.n = y.length; md.studlab = new String[]{"A", "B", "C", "D", "E", "F", "G"};
+        String txt = Report.summary(Meta.run(sp, md)); check(txt.contains("restricted log-likelihood has a second, higher maximum at tau^2 = 0.0038"), "the summary warns that the restricted likelihood has a second, higher maximum");
+        check(txt.contains("use the selected mode, tau^2 = 3.2843") && txt.contains("the higher mode is not used in any calculation") && txt.contains("as in metafor"), "the warning states that the results use the selected mode (as in metafor) and that the higher mode is not used");
+        near(f.higherModeGain, Rma.logLik(f, alt, true) - Rma.logLik(f, f.tau2, true), 1e-12, "the reported gain is the difference of the restricted log-likelihoods at the two modes"); check(f.higherModeGain > 0.3 && f.higherModeGain > Rma.MODE_MIN_GAIN, "the gain is far above the reporting threshold (" + f.higherModeGain + ")");
+        { double h = 1e-6; double dEst = (Rma.logLik(f, f.tau2 + h, true) - Rma.logLik(f, f.tau2 - h, true)) / (2 * h), dAlt = (Rma.logLik(f, alt + 1e-8, true) - Rma.logLik(f, alt - 1e-8, true)) / 2e-8;
+          check(Math.abs(dEst) < 1e-6 && Math.abs(dAlt) < 1e-4 && Rma.logLik(f, alt + 0.01, true) < Rma.logLik(f, alt, true) && Rma.logLik(f, alt * 0.5, true) < Rma.logLik(f, alt, true), "both modes are stationary points (the same restricted likelihood that the score equation differentiates), and the higher one is a maximum"); }
+        { Rma ml = Rma.fit(y, v, null, "ML"); double am = ml.higherMode(); check(Double.isNaN(am) || Rma.logLik(ml, am, false) > Rma.logLik(ml, ml.tau2, false) + Rma.MODE_MIN_GAIN, "ML: a reported higher mode always has a clearly higher (unrestricted) log-likelihood"); }
+        { double[] yh = {0.20, 0.21, 0.19, 0.2, 0.22, 0.18}, vh = {0.05, 0.06, 0.04, 0.05, 0.07, 0.05}; Rma hh = Rma.fit(yh, vh, null, "REML"); check(hh.tau2 == 0 && Double.isNaN(hh.higherMode()) && Double.isNaN(hh.higherModeGain), "boundary estimate tau^2 = 0 with a single mode: nothing is reported"); }
+        double[] y2 = {0.1, 0.35, 0.22, 0.4, 0.05, 0.3, 0.18, 0.27}, v2 = {0.02, 0.03, 0.025, 0.04, 0.02, 0.05, 0.03, 0.02};
+        check(Double.isNaN(Rma.fit(y2, v2, null, "REML").higherMode()) && Double.isNaN(Rma.fit(y2, v2, null, "ML").higherMode()), "an ordinary data set has a single mode: nothing is reported");
+        check(!Report.summary(Meta.run(sp, gen(LNHR, SEHR, true))).contains("second, higher maximum"), "no warning in the reference data sets");
+    }
+
     public static void main(String[] args) {
         // ---- 1. hazard ratios (meta forest plot 1; DL, method.predict = "S"): HR 0.51 [0.48; 0.54], I2 73.3%, tau2 0.0136, z = -22.07, PI [0.40; 0.64]
         MetaSpec s = refSpec("HR"); MetaData d = gen(LNHR, SEHR, true); MetaResult r = Meta.run(s, d); Pool p = r.overall;
@@ -457,6 +610,9 @@ public class SelfTest {
               boolean sep0 = false; for (int gq = 0; gq < cc.G; gq++) for (int[] jj : cc.separating(gq)) if (jj[0] == 0) sep0 = true; check(sep0, "cluster detection: study 0 is reported as the separating study");
               double[][] X1 = new double[nn][2]; for (int b = 0; b < nn; b++) { double u1 = rg.nextDouble(), u2 = rg.nextDouble(); X1[b][0] = Math.sqrt(-2 * Math.log(1 - u1)) * Math.cos(2 * Math.PI * u2); X1[b][1] = Math.sqrt(-2 * Math.log(1 - u1)) * Math.sin(2 * Math.PI * u2); }
               GoshCluster c1 = GoshCluster.detect(X1, new String[]{"a", "b"}, mk, kk, szs, 1); check(c1.G == 1 && !c1.found(), "cluster detection: one Gaussian cloud gives a single cluster (G = " + c1.G + ")"); }
+            clusterGateTests();
+            remlModeTests();
+            clusterRobustnessTests();
             gs.detectClusters(); gr.detectClusters(); GoshReg gq2 = s1; gq2.detectClusters();
             check(gr.clusters != null && gr.clusters.nUsed == gr.nValid, "cluster detection uses the valid subsets of the meta-regression GOSH");
             java.awt.image.BufferedImage[] im2 = {org.metajava.plot.ExtraPlots.goshRegCoef(gr, po), org.metajava.plot.ExtraPlots.goshRegMatrix(gr, po), org.metajava.plot.ExtraPlots.goshRegCoef(gf, po), org.metajava.plot.ExtraPlots.goshRegMatrix(gf, po), org.metajava.plot.ExtraPlots.goshRegCoef(s1, po), org.metajava.plot.ExtraPlots.goshRegMatrix(s1, po), org.metajava.plot.ExtraPlots.gosh(a1, br, po, false, a1.detectClusters())};

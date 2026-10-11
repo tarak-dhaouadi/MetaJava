@@ -100,6 +100,58 @@ public final class Rma {
         }
     }
 
+    /** Set by {@link #higherMode()}: log-likelihood of the higher mode minus that of the reported estimate (NaN when there is no higher mode). */
+    public double higherModeGain = Double.NaN;
+    /** Smallest log-likelihood difference reported as a higher mode; far above the rounding error of the likelihood (about 1e-12 for these sizes), far below anything that matters. */
+    public static final double MODE_MIN_GAIN = 1e-6;
+
+    /**
+     * Diagnostic for ML / REML (it never changes the estimate). The estimate is the root of the score equation found by the usual search from tau2 = 0, the one
+     * metafor-compatible results rest on; the score equation can have several roots, so that root can be a local maximum of the (restricted) likelihood.
+     * This method looks at <i>the same</i> likelihood that the score is the derivative of ({@link #logLik}: REML or ML, as selected) over the whole admissible range
+     * tau2 >= 0: tau2 = 0 and 240 geometrically spaced points from 1e-9 to 1e9 times the scale of the data (the larger of the mean sampling variance, the variance of the
+     * effects and the estimate), beyond which the likelihood only falls. Every local maximum of that grid is refined on the score equation (or taken as the boundary
+     * tau2 = 0 when the score is not positive there), so that only a verified stationary point or the boundary is compared. A higher mode is reported only if its
+     * log-likelihood exceeds that of the estimate by more than {@link #MODE_MIN_GAIN} and its tau2 differs from the estimate. Returns the tau2 of the highest such mode,
+     * and sets {@link #higherModeGain}; NaN (and a NaN gain) when there is none or the estimator is not ML / REML. About 250 likelihood evaluations, so it is not run
+     * for each GOSH subset.
+     */
+    public double higherMode() {
+        higherModeGain = Double.NaN;
+        if (!method.equals("ML") && !method.equals("REML")) return Double.NaN;
+        final boolean reml = method.equals("REML"); final Rma m = this; java.util.function.DoubleUnaryOperator sc = t -> score(m, t, reml);
+        final double t0 = tau2, l0 = logLik(m, t0, reml); if (Double.isNaN(l0) || Double.isNaN(t0)) return Double.NaN;
+        double vs = 0; for (double x : vi) vs += x; vs /= k; double ym = 0; for (double x : yi) ym += x; ym /= k; double yv = 0; for (double x : yi) yv += (x - ym) * (x - ym); yv /= Math.max(1, k - 1);
+        final double sc0 = Math.max(Math.max(vs, yv), Math.max(t0, 1e-300)); final int G = 240; final double lo = 1e-9 * sc0, hi = 1e9 * sc0, step = Math.pow(hi / lo, 1.0 / (G - 1));
+        double[] t = new double[G + 1], l = new double[G + 1]; t[0] = 0; l[0] = logLik(m, 0, reml); for (int j = 1; j <= G; j++) { t[j] = lo * Math.pow(step, j - 1); l[j] = logLik(m, t[j], reml); }
+        double bestT = Double.NaN, bestL = l0;
+        for (int j = 0; j <= G; j++) {
+            if (Double.isNaN(l[j])) continue;
+            boolean left = j == 0 || Double.isNaN(l[j - 1]) || l[j] >= l[j - 1], right = j == G || Double.isNaN(l[j + 1]) || l[j] > l[j + 1]; if (!(left && right)) continue;   // local maximum of the grid
+            double cand;
+            if (j == 0) { if (sc.applyAsDouble(0) > 0) continue; cand = 0; }   // boundary: the likelihood does not rise to the right of 0
+            else if (j == G) continue;                                          // maximum at the end of the range: not a verified stationary point
+            else { double a = t[j - 1], b = t[j + 1]; if (!(sc.applyAsDouble(a) > 0 && sc.applyAsDouble(b) < 0)) { if (j == 1 && sc.applyAsDouble(0) <= 0) cand = 0; else continue; } else cand = Dist.brent(sc, a, b, 1e-12, 500); }
+            double lc = logLik(m, cand, reml); if (Double.isNaN(lc) || Math.abs(cand - t0) <= 1e-8 * sc0) continue;
+            if (lc > bestL + MODE_MIN_GAIN) { bestL = lc; bestT = cand; }
+        }
+        if (!Double.isNaN(bestT)) higherModeGain = bestL - l0;
+        return bestT;
+    }
+
+    /** (Restricted) log-likelihood of the random-effects model at tau2 = t, up to a constant. */
+    public static double logLik(Rma m, double t, boolean reml) {
+        int k = m.k, p = m.p; double[] w = new double[k]; double sl = 0; for (int i = 0; i < k; i++) { w[i] = 1 / (m.vi[i] + t); sl += Math.log(m.vi[i] + t); }
+        double[][] A = new double[p][p]; double[] b = new double[p];
+        for (int i = 0; i < k; i++) for (int a = 0; a < p; a++) { b[a] += m.X[i][a] * w[i] * m.yi[i]; for (int c = 0; c < p; c++) A[a][c] += m.X[i][a] * w[i] * m.X[i][c]; }
+        double[][] inv = Lin.inv(A); if (inv == null) return Double.NaN; double[] be = Lin.mulv(inv, b); double rss = 0;
+        for (int i = 0; i < k; i++) { double f = 0; for (int a = 0; a < p; a++) f += m.X[i][a] * be[a]; rss += w[i] * (m.yi[i] - f) * (m.yi[i] - f); }
+        double ld = 0;
+        if (reml) { double[][] M = new double[p][]; for (int a = 0; a < p; a++) M[a] = A[a].clone(); for (int a = 0; a < p; a++) { int pv = a; for (int r = a + 1; r < p; r++) if (Math.abs(M[r][a]) > Math.abs(M[pv][a])) pv = r; double[] tmp = M[a]; M[a] = M[pv]; M[pv] = tmp;
+            ld += Math.log(Math.abs(M[a][a])); for (int r = a + 1; r < p; r++) { double f = M[r][a] / M[a][a]; for (int c = a; c < p; c++) M[r][c] -= f * M[a][c]; } } }
+        return -0.5 * (sl + ld + rss);
+    }
+
     static double genqTau2(double[] y, double[] v, double[][] X, double[] a) {
         int k = y.length;
         double q = rss(y, X, a), tr = trP(X, a);

@@ -147,6 +147,17 @@ public final class Report {
         return "Prediction interval (" + pct(s.levelPredict) + "%):" + NL + table(List.of("", pct(s.levelPredict) + "% PI"), rows, new boolean[]{false, true}) + NL;
     }
 
+    /**
+     * Note when the likelihood of the ML / REML estimator has a second, higher maximum than the estimate reported (few studies, very unequal variances).
+     * The estimate is NOT moved to it: it is the one found by the usual search from zero (as in metafor), and every result of the analysis uses it.
+     */
+    static String modeNote(double alt, double gain, double tau2, String method) {
+        if (Double.isNaN(alt)) return "";
+        String what = method.equals("REML") ? "restricted log-likelihood" : "log-likelihood";
+        return "Note: the " + what + " has a second, higher maximum at tau^2 = " + Fmt.num(alt, 4) + " (higher by " + (gain < 1e-3 ? String.format(java.util.Locale.ROOT, "%.1e", gain) : Fmt.num(gain, 3)) + "). The results above and below use the selected mode, tau^2 = " + Fmt.num(tau2, 4)
+            + " (the one found by the usual search from zero, as in metafor); the higher mode is not used in any calculation. With so few studies or such unequal variances tau^2 is poorly determined: compare with another estimator (for example DL, PM or SJ) and read the heterogeneity results with caution." + NL;
+    }
+
     static String hetText(MetaResult r, Pool p, MetaSpec s) {
         StringBuilder b = new StringBuilder(); int lv = (int) Math.round(s.levelHetstat * 100);
         if (p.k < 2) return b.toString();
@@ -157,6 +168,7 @@ public final class Report {
         } else b.append("Quantifying heterogeneity (with ").append(lv).append("% CIs):").append(NL);
         b.append(" I^2 = ").append(Fmt.num(100 * p.I2, 1)).append("% [").append(Fmt.num(100 * p.loI2, 1)).append("%; ").append(Fmt.num(100 * p.upI2, 1)).append("%]; H = ")
          .append(Fmt.num(p.H, 2)).append(" ").append(Fmt.ci(p.loH, p.upH, 2)).append(NL);
+        if (s.random) b.append(modeNote(p.altTau2, p.altGain, p.tau2, s.methodTau));
         if (p.glmm && !p.lrp && s.random && !Double.isNaN(p.I2tau))   // metafor's definition next to the Q-based one of meta
             b.append(" I^2 = ").append(Fmt.num(100 * p.I2tau, 1)).append("% (tau^2-based, as in metafor); H = ").append(Fmt.num(p.Htau, 2)).append(NL);
         b.append(NL);
@@ -271,6 +283,7 @@ public final class Report {
         b.append(table(List.of("logLik", "deviance", "AIC", "BIC", "AICc"), List.<String[]>of(new String[]{Fmt.num(g.logLik, 4), Fmt.num(g.deviance, 4), Fmt.num(g.aic, 4), Fmt.num(g.bic, 4), Fmt.num(g.aicc, 4)}), new boolean[]{true, true, true, true, true})).append(NL);
         b.append("tau^2 (estimated amount of residual heterogeneity):     ").append(Fmt.num(g.tau2, 4)); if (!Double.isNaN(g.seTau2)) b.append(" (SE = ").append(Fmt.num(g.seTau2, 4)).append(")"); b.append(NL);
         b.append("tau (square root of estimated tau^2 value):             ").append(Fmt.num(g.tau, 4)).append(NL);
+        b.append(modeNote(g.altTau2, g.altGain, g.tau2, g.method));
         b.append("I^2 (residual heterogeneity / unaccounted variability): ").append(Fmt.num(g.I2, 2)).append("%").append(NL);
         b.append("H^2 (unaccounted variability / sampling variability):   ").append(Fmt.num(g.H2, 2)).append(NL);
         if (!Double.isNaN(g.R2)) b.append("R^2 (amount of heterogeneity accounted for):            ").append(Fmt.num(g.R2, 2)).append("%").append(NL);

@@ -39,15 +39,29 @@ public final class ExtraPlots {
     public static BufferedImage gosh(Gosh gs, MetaResult r, Plots.Opts o, boolean highlight) { return gosh(gs, r, o, highlight, null); }
 
     /** cl: when it holds at least two clusters the subsets are coloured by cluster (instead of the density map or the highlight of one study). */
-    public static BufferedImage gosh(Gosh gs, MetaResult r, Plots.Opts o, boolean highlight0, GoshCluster cl) {
+    public static BufferedImage gosh(Gosh gs, MetaResult r, Plots.Opts o, boolean highlight0, GoshCluster cl) { return gosh(gs, r, o, highlight0, cl, false); }
+
+    /**
+     * @param trim limit the x axis to the central 99% of the subsets when that is more than 25% narrower than the full range (a few extreme subsets otherwise flatten the plot);
+     *             the displayed range and the number of subsets outside it are stated below the plot, and no subset is removed from the analysis
+     */
+    public static BufferedImage gosh(Gosh gs, MetaResult r, Plots.Opts o, boolean highlight0, GoshCluster cl, boolean trim) {
         final boolean clus = cl != null && cl.found(); final boolean highlight = highlight0 && !clus;
-        MetaSpec s = r.spec; boolean log = isLog(s); Canvas c = new Canvas(720, 640, o.scale); Graphics2D g = c.g;
+        MetaSpec s = r.spec; boolean log = isLog(s);
         final double fx0 = 72, fx1 = 600, fy0 = 112, fy1 = 548;
         int n = gs.nSub; double[] xs = new double[n]; double xmin = Double.POSITIVE_INFINITY, xmax = Double.NEGATIVE_INFINITY;
         for (int b = 0; b < n; b++) { xs[b] = Double.isNaN(gs.est[b]) ? Double.NaN : av(s, gs.est[b], gs.nHarm == null ? r.overall.nHarm : gs.nHarm[b]); if (!Double.isNaN(xs[b]) && !Double.isNaN(gs.i2[b])) { xmin = Math.min(xmin, xs[b]); xmax = Math.max(xmax, xs[b]); } }
         double full = av(s, gs.fullEst, r.overall.nHarm); xmin = Math.min(xmin, full); xmax = Math.max(xmax, full);
+        boolean trimmed = false;
+        if (trim) { double[] v = new double[n]; int nv = 0; for (int b = 0; b < n; b++) if (!Double.isNaN(xs[b]) && !Double.isNaN(gs.i2[b])) v[nv++] = xs[b];
+            if (nv >= 20) { v = Arrays.copyOf(v, nv); Arrays.sort(v); double ql = Math.min(quant(v, 0.005), full), qh = Math.max(quant(v, 0.995), full); if (qh > ql && xmax - xmin > 1.25 * (qh - ql)) { xmin = ql; xmax = qh; trimmed = true; } } }
         if (!(xmax > xmin)) { double m = Double.isFinite(xmin) ? xmin : 0; xmin = m - 0.5; xmax = m + 0.5; }
         double pad = (xmax - xmin) * 0.05; Ax a = new Ax(); a.x0 = fx0; a.x1 = fx1; a.xl = xmin - pad; a.xh = xmax + pad; a.log = log;
+        List<String> trimLines = new ArrayList<>(); int outside = 0;
+        if (trimmed) { int nv = 0; for (int b = 0; b < n; b++) if (!Double.isNaN(xs[b]) && !Double.isNaN(gs.i2[b])) { nv++; if (xs[b] < a.xl || xs[b] > a.xh) outside++; }
+            trimLines = trimNotes(new String[]{"x axis (" + Plots.xlabFor(s) + ")"}, new double[][]{{a.xl, a.xh}}, new int[]{outside}, nv, 118); }
+        Canvas c = new Canvas(720, trimLines.isEmpty() ? 640 : 632 + 12 * trimLines.size(), o.scale); Graphics2D g = c.g;
+        for (int l = 0; l < trimLines.size(); l++) c.text(trimLines.get(l), 20, 622 + 12 * l, 9, 0, false);
         double yl = 0, yh = 100;
         java.util.function.DoubleUnaryOperator Y = v -> fy1 - (v - yl) / (yh - yl) * (fy1 - fy0);
         // points or density
@@ -57,7 +71,7 @@ public final class ExtraPlots {
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(fx0, fy0, fx1 - fx0, fy1 - fy0));
         if (dens) {
             counts = new int[nx * ny]; int mx = 0;
-            for (int b = 0; b < n; b++) { if (Double.isNaN(xs[b]) || Double.isNaN(gs.i2[b])) continue; int ix = (int) Math.min(nx - 1, Math.max(0, (xs[b] - a.xl) / (a.xh - a.xl) * nx)), iy = (int) Math.min(ny - 1, Math.max(0, (gs.i2[b] - yl) / (yh - yl) * ny)); int v = ++counts[iy * nx + ix]; if (v > mx) mx = v; }
+            for (int b = 0; b < n; b++) { if (Double.isNaN(xs[b]) || Double.isNaN(gs.i2[b]) || xs[b] < a.xl || xs[b] > a.xh) continue; int ix = (int) Math.min(nx - 1, Math.max(0, (xs[b] - a.xl) / (a.xh - a.xl) * nx)), iy = (int) Math.min(ny - 1, Math.max(0, (gs.i2[b] - yl) / (yh - yl) * ny)); int v = ++counts[iy * nx + ix]; if (v > mx) mx = v; }
             double cw = (fx1 - fx0) / nx, ch = (fy1 - fy0) / ny;
             for (int iy = 0; iy < ny; iy++) for (int ix = 0; ix < nx; ix++) { int v = counts[iy * nx + ix]; if (v == 0) continue; double t = Math.log1p(v) / Math.log1p(mx);
                 g.setColor(ramp(t)); g.fill(new Rectangle2D.Double(fx0 + ix * cw - 0.3, fy1 - (iy + 1) * ch - 0.3, cw + 0.6, ch + 0.6)); }
@@ -78,7 +92,7 @@ public final class ExtraPlots {
         c.textRot("I² (%)", 16, (fy0 + fy1) / 2, 11);
         // marginal densities
         int nb = 50; double[] hx = new double[nb], hy = new double[nb];
-        for (int b = 0; b < n; b++) { if (Double.isNaN(xs[b]) || Double.isNaN(gs.i2[b])) continue; hx[(int) Math.min(nb - 1, Math.max(0, (xs[b] - a.xl) / (a.xh - a.xl) * nb))]++; hy[(int) Math.min(nb - 1, Math.max(0, (gs.i2[b] - yl) / (yh - yl) * nb))]++; }
+        for (int b = 0; b < n; b++) { if (Double.isNaN(xs[b]) || Double.isNaN(gs.i2[b]) || xs[b] < a.xl || xs[b] > a.xh) continue; hx[(int) Math.min(nb - 1, Math.max(0, (xs[b] - a.xl) / (a.xh - a.xl) * nb))]++; hy[(int) Math.min(nb - 1, Math.max(0, (gs.i2[b] - yl) / (yh - yl) * nb))]++; }
         hx = smooth(hx); hy = smooth(hy); double mx = 0, my = 0; for (double v : hx) mx = Math.max(mx, v); for (double v : hy) my = Math.max(my, v);
         Path2D top = new Path2D.Double(); top.moveTo(fx0, fy0 - 4);
         for (int i = 0; i < nb; i++) { double xx = fx0 + (i + 0.5) / nb * (fx1 - fx0); top.lineTo(xx, fy0 - 4 - (mx > 0 ? hx[i] / mx : 0) * 58); } top.lineTo(fx1, fy0 - 4); top.closePath();
@@ -127,18 +141,55 @@ public final class ExtraPlots {
         if (Double.isFinite(ref)) { lo = Math.min(lo, ref); hi = Math.max(hi, ref); } if (!(hi > lo)) { double m = Double.isFinite(lo) ? lo : 0; lo = m - 0.5; hi = m + 0.5; } double pad = (hi - lo) * 0.05; return new double[]{lo - pad, hi + pad};
     }
 
+    /**
+     * Axis range of the valid subsets. With trim, and when the central 99% of the subsets (0.5% to 99.5% quantiles, widened to include the reference value) is clearly
+     * narrower than the full range (the full range is more than 25% wider), the axis is limited to the central 99% so that a few extreme subsets (nearly collinear ones,
+     * for example) do not flatten the plot. The subsets outside are not removed from the analysis, only left out of the drawing; out[0] receives their number
+     * (0 when the full range is shown).
+     */
+    static double[] range(double[] x, int[] idx, double ref, boolean trim, int[] out) {
+        double[] full = range(x, idx, ref); if (out != null) out[0] = 0; if (!trim) return full;
+        double[] v = new double[idx.length]; int n = 0; for (int b : idx) if (Double.isFinite(x[b])) v[n++] = x[b]; if (n < 20) return full; v = Arrays.copyOf(v, n); Arrays.sort(v);
+        double lo0 = v[0], hi0 = v[n - 1], ql = quant(v, 0.005), qh = quant(v, 0.995); if (Double.isFinite(ref)) { lo0 = Math.min(lo0, ref); hi0 = Math.max(hi0, ref); ql = Math.min(ql, ref); qh = Math.max(qh, ref); }
+        if (!(qh > ql) || !(hi0 - lo0 > 1.25 * (qh - ql))) return full;
+        double pad = (qh - ql) * 0.05, lo = ql - pad, hi = qh + pad; int c = 0; for (double q : v) if (q < lo || q > hi) c++; if (out != null) out[0] = c; return new double[]{lo, hi};
+    }
+    static double quant(double[] sorted, double q) { double pos = q * (sorted.length - 1); int i = (int) Math.floor(pos); double f = pos - i; return i + 1 < sorted.length ? sorted[i] * (1 - f) + sorted[i + 1] * f : sorted[i]; }
+
+    /** Lines stating whether the x axis of the ordinary GOSH plot is limited to the central 99% of the subsets, the displayed range and how many valid subsets lie outside it (empty when it is not limited). */
+    public static List<String> goshAxisNotes(Gosh gs, MetaResult r, boolean trim) {
+        MetaSpec s = r.spec; int n = gs.nSub; double[] v = new double[n]; int nv = 0; double mn = Double.POSITIVE_INFINITY, mx = Double.NEGATIVE_INFINITY;
+        for (int b = 0; b < n; b++) { if (Double.isNaN(gs.est[b]) || Double.isNaN(gs.i2[b])) continue; double x = av(s, gs.est[b], gs.nHarm == null ? r.overall.nHarm : gs.nHarm[b]); v[nv++] = x; mn = Math.min(mn, x); mx = Math.max(mx, x); }
+        double full = av(s, gs.fullEst, r.overall.nHarm); mn = Math.min(mn, full); mx = Math.max(mx, full);
+        if (!trim || nv < 20) return new ArrayList<>(); v = Arrays.copyOf(v, nv); Arrays.sort(v); double ql = Math.min(quant(v, 0.005), full), qh = Math.max(quant(v, 0.995), full);
+        if (!(qh > ql && mx - mn > 1.25 * (qh - ql))) return new ArrayList<>(); double pad = (qh - ql) * 0.05, lo = ql - pad, hi = qh + pad; int out = 0; for (double x : v) if (x < lo || x > hi) out++;
+        return trimNotes(new String[]{"x axis (" + Plots.xlabFor(s) + ")"}, new double[][]{{lo, hi}}, new int[]{out}, nv, 118);
+    }
+
+    /** Lines (wrapped to about maxChars) that state which axes were limited to the central 99%, the displayed range and how many valid subsets lie outside; empty when no axis was limited. */
+    static List<String> trimNotes(String[] names, double[][] rg, int[] outside, int nValid, int maxChars) {
+        List<String> parts = new ArrayList<>(); for (int a = 0; a < names.length; a++) if (outside[a] > 0 && rg[a] != null)
+            parts.add(String.format(Locale.ROOT, "%s [%s, %s]: %,d subsets (%.1f%%) outside", names[a], Canvas.tick3(rg[a][0]), Canvas.tick3(rg[a][1]), outside[a], 100.0 * outside[a] / Math.max(1, nValid)));
+        List<String> lines = new ArrayList<>(); if (parts.isEmpty()) return lines;
+        String head = (parts.size() == 1 ? "Axis" : "Axes") + " limited to the central 99% of the valid subsets (displayed range; subsets outside it are kept in the analysis and the tables, only not drawn): ", cur = head;
+        for (int i = 0; i < parts.size(); i++) { String t = parts.get(i) + (i < parts.size() - 1 ? "; " : "."); if (cur.length() + t.length() > maxChars && cur.length() > 0 && !cur.equals(head) ) { lines.add(cur.trim()); cur = ""; } cur += t; }
+        lines.add(cur.trim()); List<String> w = new ArrayList<>(); for (String l : lines) { while (l.length() > maxChars) { int cut = l.lastIndexOf(' ', maxChars); if (cut < 20) cut = maxChars; w.add(l.substring(0, cut)); l = l.substring(cut).trim(); } w.add(l); } return w;
+    }
+
     /** One scatter panel (x against y) in the box [x0,x1] x [y0,y1]: density map for large clouds, points (coloured by cluster) otherwise. */
-    static void panel(Canvas c, GoshReg gs, double[] xv, double[] yv, double[] xr, double[] yr, double x0, double x1, double y0, double y1, GoshCluster cl, double refX, double refY, float ptSize) {
-        Graphics2D g = c.g; boolean clus = cl != null && cl.found(); int nv = gs.nValid; boolean dens = !clus && nv > 4000;
+    static void panel(Canvas c, GoshReg gs, double[] xv, double[] yv, double[] xr, double[] yr, double x0, double x1, double y0, double y1, GoshCluster cl, int hl, double refX, double refY, float ptSize) {
+        Graphics2D g = c.g; boolean clus = cl != null && cl.found(); final boolean hlOn = !clus && hl >= 0; int nv = gs.nValid; boolean dens = !clus && !hlOn && nv > 4000;
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0));
         if (dens) {
             int nx = Math.max(8, (int) Math.round((x1 - x0) / 3)), ny = Math.max(8, (int) Math.round((y1 - y0) / 3)); int[] cnt = new int[nx * ny]; int mx = 0;
-            for (int b = 0; b < gs.nSub; b++) { if (!gs.valid(b)) continue; int ix = (int) Math.min(nx - 1, Math.max(0, (xv[b] - xr[0]) / (xr[1] - xr[0]) * nx)), iy = (int) Math.min(ny - 1, Math.max(0, (yv[b] - yr[0]) / (yr[1] - yr[0]) * ny)); int v = ++cnt[iy * nx + ix]; if (v > mx) mx = v; }
+            for (int b = 0; b < gs.nSub; b++) { if (!gs.valid(b) || xv[b] < xr[0] || xv[b] > xr[1] || yv[b] < yr[0] || yv[b] > yr[1]) continue; int ix = (int) Math.min(nx - 1, Math.max(0, (xv[b] - xr[0]) / (xr[1] - xr[0]) * nx)), iy = (int) Math.min(ny - 1, Math.max(0, (yv[b] - yr[0]) / (yr[1] - yr[0]) * ny)); int v = ++cnt[iy * nx + ix]; if (v > mx) mx = v; }
             double cw = (x1 - x0) / nx, ch = (y1 - y0) / ny;
             for (int iy = 0; iy < ny; iy++) for (int ix = 0; ix < nx; ix++) { int v = cnt[iy * nx + ix]; if (v == 0) continue; g.setColor(ramp(Math.log1p(v) / Math.log1p(mx))); g.fill(new Rectangle2D.Double(x0 + ix * cw - 0.3, y1 - (iy + 1) * ch - 0.3, cw + 0.6, ch + 0.6)); }
         } else {
             int[] idx = validIdx(gs, clus ? 2500 : 4000); double r = ptSize / 2;
-            for (int b : idx) { if (clus && cl.label[b] < 0) continue; g.setColor(clus ? clusterColor(cl.label[b], 100) : new Color(BLUE.getRed(), BLUE.getGreen(), BLUE.getBlue(), nv > 1500 ? 60 : 90));
+            for (int pass = 0; pass < (hlOn ? 2 : 1); pass++) for (int b : idx) { if (clus && cl.label[b] < 0) continue;
+                boolean in = hlOn && gs.includes(b, hl); if (hlOn && (pass == 0) == in) continue;   // subsets without the study first, then those with it (as in the ordinary GOSH plot)
+                g.setColor(clus ? clusterColor(cl.label[b], 100) : !hlOn ? new Color(BLUE.getRed(), BLUE.getGreen(), BLUE.getBlue(), nv > 1500 ? 60 : 90) : in ? new Color(BLUE.getRed(), BLUE.getGreen(), BLUE.getBlue(), 80) : new Color(ORANGE.getRed(), ORANGE.getGreen(), ORANGE.getBlue(), 90));
                 g.fill(new Ellipse2D.Double(x0 + (xv[b] - xr[0]) / (xr[1] - xr[0]) * (x1 - x0) - r, y1 - (yv[b] - yr[0]) / (yr[1] - yr[0]) * (y1 - y0) - r, ptSize, ptSize)); }
         }
         g.setStroke(new BasicStroke(1f)); g.setColor(GRID);
@@ -155,17 +206,41 @@ public final class ExtraPlots {
     }
 
     /** "Coefficients versus residual heterogeneity": one panel per regression coefficient, coefficient (x) against residual I^2 (y) over the valid subsets; dashed lines: the model with all studies. */
-    public static BufferedImage goshRegCoef(GoshReg gs, Plots.Opts o) {
+    /** Lines stating which coefficient axes of the regression GOSH plots are limited to the central 99% of the subsets, the displayed range and how many valid subsets lie outside it (empty when no axis is limited or trim is false). */
+    public static List<String> goshRegAxisNotes(GoshReg gs, boolean trim) {
+        int p = gs.p; int[] all = validIdx(gs, Integer.MAX_VALUE); double[][] xrs = new double[p][]; int[] outN = new int[p]; int[] tmp = new int[1];
+        for (int a = 0; a < p; a++) { xrs[a] = range(gs.coef[a], all, gs.fullCoef[a], trim, tmp); outN[a] = tmp[0]; }
+        return trimNotes(gs.coefNames, xrs, outN, gs.nValid, 100);
+    }
+    /** Colour legend of the regression GOSH plots: clusters, or inclusion of the most influential study, or a note that no meaningful clusters were found (the cluster detection was asked for). */
+    static void goshRegLegend(Canvas c, GoshReg gs, GoshCluster cl, int hl, double x, double yDot) {
+        Graphics2D g = c.g; boolean clus = cl != null && cl.found();
+        if (clus) { double lx = x; for (int q = 0; q < cl.G; q++) { g.setColor(clusterColor(q, 220)); g.fill(new Ellipse2D.Double(lx, yDot, 8, 8)); g.setColor(Color.BLACK); c.text(String.format(Locale.ROOT, "cluster %d", q + 1), lx + 12, yDot + 8, 10, 0, false); lx += 80; } }
+        else if (hl >= 0) { String nm = gs.labels[hl]; g.setColor(new Color(BLUE.getRed(), BLUE.getGreen(), BLUE.getBlue(), 200)); g.fill(new Ellipse2D.Double(x, yDot, 8, 8)); g.setColor(Color.BLACK); c.text("subsets that include " + nm, x + 12, yDot + 8, 10, 0, false);
+            double lx = x + 40 + 6.2 * ("subsets that include " + nm).length(); g.setColor(new Color(ORANGE.getRed(), ORANGE.getGreen(), ORANGE.getBlue(), 220)); g.fill(new Ellipse2D.Double(lx, yDot, 8, 8)); g.setColor(Color.BLACK); c.text("subsets that exclude " + nm, lx + 12, yDot + 8, 10, 0, false); }
+        else if (cl != null) { g.setColor(INK); c.text("no meaningful clusters: the subsets are not coloured by cluster", x, yDot + 8, 10, 0, false); g.setColor(Color.BLACK); }
+    }
+    /** Study used to colour the subsets by inclusion (the most influential one), or -1 when the highlight is off or clusters are shown instead. */
+    static int highlightStudy(GoshReg gs, boolean highlight) { GoshCluster cl = gs.clusters; return highlight && !(cl != null && cl.found()) && gs.nValid > 0 ? gs.mostInfluential() : -1; }
+
+    public static BufferedImage goshRegCoef(GoshReg gs, Plots.Opts o) { return goshRegCoef(gs, o, true); }
+    /** @param trim limit an axis to the central 99% of the subsets when a few extreme subsets would flatten it (the displayed range and the number of subsets outside are stated in the plot) */
+    public static BufferedImage goshRegCoef(GoshReg gs, Plots.Opts o, boolean trim) { return goshRegCoef(gs, o, trim, false); }
+    /** @param highlight colour the subsets by inclusion of the most influential study (as in the ordinary GOSH plot; cluster colours take precedence when clusters were found) */
+    public static BufferedImage goshRegCoef(GoshReg gs, Plots.Opts o, boolean trim, boolean highlight) {
         int p = gs.p; int ncol = Math.min(3, p), nrow = (p + ncol - 1) / ncol; final int cw = 270, chh = 250; int W = ncol * cw + 30, H = nrow * chh + 70;
-        Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g; GoshCluster cl = gs.clusters; boolean clus = cl != null && cl.found();
-        int[] all = validIdx(gs, Integer.MAX_VALUE); double[] yr = {0, 100};
+        int[] all = validIdx(gs, Integer.MAX_VALUE); double[] yr = {0, 100}; double[][] xrs = new double[p][]; int[] outN = new int[p]; int[] tmp = new int[1];
+        for (int a = 0; a < p; a++) { xrs[a] = range(gs.coef[a], all, gs.fullCoef[a], trim, tmp); outN[a] = tmp[0]; }
+        List<String> notes = trimNotes(gs.coefNames, xrs, outN, gs.nValid, Math.max(60, (Math.max(W, 560) - 24) * 10 / 52)); if (!notes.isEmpty()) { W = Math.max(W, 560); H += 12 * notes.size() + 4; }
+        Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g; GoshCluster cl = gs.clusters; boolean clus = cl != null && cl.found(); final int hl = highlightStudy(gs, highlight);
+        for (int l = 0; l < notes.size(); l++) c.text(notes.get(l), 20, 50 + nrow * chh + 8 + 12 * l, 9, 0, false);
         c.text(String.format(Locale.ROOT, "%,d valid of %,d %ssubsets", gs.nValid, gs.nSub, gs.exhaustive ? "(all) " : "random "), 20, 18, 11, 0, true);
-        if (clus) { double lx = 20; for (int q = 0; q < cl.G; q++) { g.setColor(clusterColor(q, 220)); g.fill(new Ellipse2D.Double(lx, 29, 8, 8)); g.setColor(Color.BLACK); String t = String.format(Locale.ROOT, "cluster %d", q + 1); c.text(t, lx + 12, 37, 10, 0, false); lx += 80; } }
+        goshRegLegend(c, gs, cl, hl, 20, 29);
         for (int a = 0; a < p; a++) {
             int rI = a / ncol, cI = a % ncol; double x0 = 20 + cI * cw + 52, x1 = 20 + cI * cw + cw - 18, y0 = 50 + rI * chh + 22, y1 = 50 + rI * chh + chh - 52;
-            double[] xr = range(gs.coef[a], all, gs.fullCoef[a]);
+            double[] xr = xrs[a];
             c.text(gs.coefNames[a], (x0 + x1) / 2, y0 - 8, 11, 1, true);
-            panel(c, gs, gs.coef[a], gs.i2, xr, yr, x0, x1, y0, y1, cl, gs.fullCoef[a], gs.fullI2, 4.0f);
+            panel(c, gs, gs.coef[a], gs.i2, xr, yr, x0, x1, y0, y1, cl, hl, gs.fullCoef[a], gs.fullI2, 4.0f);
             g.setColor(Color.BLACK); xTicks(c, xr, x0, x1, y1, 5, true); yTicks(c, yr, y0, y1, x0, 5, true);
             c.text("coefficient", (x0 + x1) / 2, y1 + 32, 10, 1, false); if (cI == 0) c.textRot("residual I\u00B2 (%)", 14, (y0 + y1) / 2, 10);
         }
@@ -174,23 +249,30 @@ public final class ExtraPlots {
     }
 
     /** Scatterplot matrix of the residual I^2 and the regression coefficients over the valid subsets (histograms on the diagonal, scatterplots below, correlations above). */
-    public static BufferedImage goshRegMatrix(GoshReg gs, Plots.Opts o) {
+    public static BufferedImage goshRegMatrix(GoshReg gs, Plots.Opts o) { return goshRegMatrix(gs, o, true); }
+    /** @param trim limit an axis to the central 99% of the subsets when a few extreme subsets would flatten it (stated in the plot; the correlations always use all valid subsets) */
+    public static BufferedImage goshRegMatrix(GoshReg gs, Plots.Opts o, boolean trim) { return goshRegMatrix(gs, o, trim, false); }
+    public static BufferedImage goshRegMatrix(GoshReg gs, Plots.Opts o, boolean trim, boolean highlight) {
         int p = gs.p; int maxCoef = 7; int nc = Math.min(p, maxCoef); int m = nc + 1; final int cell = m <= 4 ? 150 : m <= 6 ? 125 : 105; final int left = 54, top = 44, bottom = 36;
-        int W = left + m * cell + 20, H = top + m * cell + bottom; Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g; GoshCluster cl = gs.clusters; boolean clus = cl != null && cl.found();
+        int W = left + m * cell + 20, H = top + m * cell + bottom;
         String[] nm = new String[m]; double[][] v = new double[m][]; double[] ref = new double[m]; nm[0] = "I\u00B2 (%)"; v[0] = gs.i2; ref[0] = gs.fullI2;
         for (int a = 0; a < nc; a++) { nm[a + 1] = gs.coefNames[a]; v[a + 1] = gs.coef[a]; ref[a + 1] = gs.fullCoef[a]; }
-        int[] all = validIdx(gs, Integer.MAX_VALUE); double[][] rg = new double[m][]; for (int a = 0; a < m; a++) rg[a] = a == 0 ? new double[]{0, 100} : range(v[a], all, ref[a]);
+        int[] all = validIdx(gs, Integer.MAX_VALUE); double[][] rg = new double[m][]; int[] outN = new int[m]; int[] tmp = new int[1];
+        for (int a = 0; a < m; a++) { if (a == 0) rg[a] = new double[]{0, 100}; else { rg[a] = range(v[a], all, ref[a], trim, tmp); outN[a] = tmp[0]; } }
+        List<String> notes = trimNotes(nm, rg, outN, gs.nValid, Math.max(60, (Math.max(W, 560) - 24) * 10 / 52)); if (!notes.isEmpty()) { W = Math.max(W, 560); H += 12 * notes.size() + 4; }
+        Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g; GoshCluster cl = gs.clusters; boolean clus = cl != null && cl.found(); final int hl = highlightStudy(gs, highlight);
+        for (int l = 0; l < notes.size(); l++) c.text(notes.get(l), 20, top + m * cell + bottom + 8 + 12 * l, 9, 0, false);
         c.text(String.format(Locale.ROOT, "%,d valid of %,d %ssubsets", gs.nValid, gs.nSub, gs.exhaustive ? "(all) " : "random ") + (p > nc ? "; first " + nc + " of " + p + " coefficients shown" : ""), left, 18, 11, 0, true);
-        if (clus) { double lx = left; for (int q = 0; q < cl.G; q++) { g.setColor(clusterColor(q, 220)); g.fill(new Ellipse2D.Double(lx, 27, 8, 8)); g.setColor(Color.BLACK); c.text(String.format(Locale.ROOT, "cluster %d", q + 1), lx + 12, 35, 10, 0, false); lx += 80; } }
+        goshRegLegend(c, gs, cl, hl, left, 27);
         for (int i = 0; i < m; i++) for (int j = 0; j < m; j++) {
             double x0 = left + j * cell + 4, x1 = left + (j + 1) * cell - 4, y0 = top + i * cell + 4, y1 = top + (i + 1) * cell - 4;
             if (i == j) {   // histogram of the variable
-                int nb = 20; double[] h = new double[nb]; for (int b : all) { double q = v[i][b]; if (Double.isFinite(q)) h[(int) Math.min(nb - 1, Math.max(0, (q - rg[i][0]) / (rg[i][1] - rg[i][0]) * nb))]++; } double mx = 0; for (double q : h) mx = Math.max(mx, q);
+                int nb = 20; double[] h = new double[nb]; for (int b : all) { double q = v[i][b]; if (Double.isFinite(q) && q >= rg[i][0] && q <= rg[i][1]) h[(int) Math.min(nb - 1, Math.max(0, (q - rg[i][0]) / (rg[i][1] - rg[i][0]) * nb))]++; } double mx = 0; for (double q : h) mx = Math.max(mx, q);
                 g.setColor(new Color(0xD9, 0xE2, 0xF0)); for (int q = 0; q < nb; q++) { double hh = mx > 0 ? h[q] / mx * (y1 - y0 - 18) : 0; g.fill(new Rectangle2D.Double(x0 + q * (x1 - x0) / nb, y1 - hh, (x1 - x0) / nb, hh)); }
                 g.setColor(BLUE); for (int q = 0; q < nb; q++) { double hh = mx > 0 ? h[q] / mx * (y1 - y0 - 18) : 0; g.draw(new Rectangle2D.Double(x0 + q * (x1 - x0) / nb, y1 - hh, (x1 - x0) / nb, hh)); }
                 g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0)); c.text(nm[i], (x0 + x1) / 2, y0 + 12, 11, 1, true);
                 g.setColor(GRID); double xx = x0 + (ref[i] - rg[i][0]) / (rg[i][1] - rg[i][0]) * (x1 - x0); c.dashed(xx, y0 + 16, xx, y1); g.setColor(Color.BLACK);
-            } else if (i > j) panel(c, gs, v[j], v[i], rg[j], rg[i], x0, x1, y0, y1, cl, ref[j], ref[i], 3.0f);
+            } else if (i > j) panel(c, gs, v[j], v[i], rg[j], rg[i], x0, x1, y0, y1, cl, hl, ref[j], ref[i], 3.0f);
             else {   // correlation
                 double r = corr(v[i], v[j], all); g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0));
                 c.text(Double.isNaN(r) ? "NA" : Fmt.num(r, 2), (x0 + x1) / 2, (y0 + y1) / 2 + 5, (float) (10 + 8 * (Double.isNaN(r) ? 0 : Math.abs(r))), 1, false); c.text("r", x0 + 8, y0 + 12, 9, 0, false);

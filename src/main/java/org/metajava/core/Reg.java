@@ -4,6 +4,7 @@ import java.util.*;
 
 /** Meta-regression (meta::metareg / metafor::rma.uni with moderators). */
 public final class Reg {
+    public double altTau2 = Double.NaN, altGain = Double.NaN;   // tau^2 of a higher mode of the likelihood (NaN: none), see Rma.higherMode()
     public String formula; public Rma fit; public String[] coefNames; public int k, p; public String method;
     public double logLik, deviance, aic, bic, aicc, tau2, seTau2 = Double.NaN, tau, I2, H2, R2 = Double.NaN;
     public double QE, pQE, QM, pQM; public int dfQE, dfQM; public String qmTest = "QM";
@@ -109,7 +110,7 @@ public final class Reg {
         Reg g = new Reg(); g.k = k; g.p = p; g.intercept = intercept; g.method = s.methodTau; g.X = X; g.yv = y; g.vv = v;
         if (k <= p) throw new IllegalArgumentException("Number of studies (" + k + ") must exceed number of coefficients (" + p + ").");
         g.fit = Rma.fit(y, v, X, s.methodTau); g.coefNames = D.names; g.refPos = D.refPos; g.refLabel = D.refLabel;
-        g.tau2 = g.fit.tau2; g.tau = Math.sqrt(g.tau2);
+        g.tau2 = g.fit.tau2; g.tau = Math.sqrt(g.tau2); g.altTau2 = g.fit.higherMode(); g.altGain = g.fit.higherModeGain;
         // intercept-only model for R2
         double[][] X0 = new double[k][1]; for (double[] q : X0) q[0] = 1;
         g.tau2RE = Rma.fit(y, v, X0, s.methodTau).tau2;

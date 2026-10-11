@@ -11,6 +11,7 @@ public class Pool {
     public double teRandom, seRandom, loRandom, upRandom, statRandom, pRandom, dfRandom = Double.NaN;
     public String testType = "z";
     public String randomLabelSuffix = "";
+    public double altTau2 = Double.NaN, altGain = Double.NaN;   // tau^2 of a higher mode of the likelihood (NaN: none), see Rma.higherMode()
     public double tau2, tau, loTau2 = Double.NaN, upTau2 = Double.NaN, loTau = Double.NaN, upTau = Double.NaN;
     public String tauCiMethod = "";
     public double Q, pQ, H, loH, upH, I2, loI2, upI2;
@@ -63,7 +64,7 @@ public class Pool {
         Rma m = null;
         if (cnt >= 2) {
             if (!Double.isNaN(s.tauPreset)) { p.tau2 = s.tauPreset * s.tauPreset * 0 + s.tauPreset; }
-            else { m = Rma.fit(y, v, null, s.methodTau); p.tau2 = m.tau2; }
+            else { m = Rma.fit(y, v, null, s.methodTau); p.tau2 = m.tau2; p.altTau2 = m.higherMode(); p.altGain = m.higherModeGain; }
         } else p.tau2 = Double.NaN;
         p.tau = Math.sqrt(p.tau2);
         double t2 = Double.isNaN(p.tau2) ? 0 : p.tau2;

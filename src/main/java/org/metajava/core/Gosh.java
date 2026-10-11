@@ -61,17 +61,29 @@ public final class Gosh {
         g.fullI2 = 100 * (qDef ? (f.QE > 0 ? Math.max(0, (f.QE - (k - 1)) / f.QE) : 0) : f.tau2 / (f.tau2 + Rma.typicalV(k, 1, v, f.X)));
         // in / out means
         g.estIn = new double[k]; g.estOut = new double[k]; g.i2In = new double[k]; g.i2Out = new double[k]; g.nIn = new int[k];
-        double[] sEi = new double[k], sEo = new double[k], sIi = new double[k], sIo = new double[k]; int[] nOut = new int[k];
-        for (int b = 0; b < n; b++) { if (Double.isNaN(g.est[b]) || Double.isNaN(g.i2[b])) continue; long[] m = M[b];
-            for (int j = 0; j < k; j++) { if ((m[j >> 6] >>> (j & 63) & 1L) != 0) { sEi[j] += g.est[b]; sIi[j] += g.i2[b]; g.nIn[j]++; } else { sEo[j] += g.est[b]; sIo[j] += g.i2[b]; nOut[j]++; } } }
-        for (int j = 0; j < k; j++) { g.estIn[j] = g.nIn[j] > 0 ? sEi[j] / g.nIn[j] : Double.NaN; g.i2In[j] = g.nIn[j] > 0 ? sIi[j] / g.nIn[j] : Double.NaN; g.estOut[j] = nOut[j] > 0 ? sEo[j] / nOut[j] : Double.NaN; g.i2Out[j] = nOut[j] > 0 ? sIo[j] / nOut[j] : Double.NaN; }
+        final Gosh G = g;
+        Par.forRange(k, j -> {   // one study per task; the subsets are visited in the same order as before, so the sums (and the results) are identical
+            double sEi = 0, sEo = 0, sIi = 0, sIo = 0; int ni = 0, no = 0;
+            for (int b = 0; b < n; b++) { if (Double.isNaN(G.est[b]) || Double.isNaN(G.i2[b])) continue;
+                if ((M[b][j >> 6] >>> (j & 63) & 1L) != 0) { sEi += G.est[b]; sIi += G.i2[b]; ni++; } else { sEo += G.est[b]; sIo += G.i2[b]; no++; } }
+            G.nIn[j] = ni; G.estIn[j] = ni > 0 ? sEi / ni : Double.NaN; G.i2In[j] = ni > 0 ? sIi / ni : Double.NaN; G.estOut[j] = no > 0 ? sEo / no : Double.NaN; G.i2Out[j] = no > 0 ? sIo / no : Double.NaN;
+        });
         return g;
     }
 
     /** Detects clusters among the (estimate, I^2) points of the valid subsets; the result is kept in {@link #clusters}. */
-    public GoshCluster detectClusters() {
+    public GoshCluster detectClusters() { return detectClusters(GoshCluster.MIN_SILHOUETTE); }
+    /** @param minSil smallest silhouette width a cluster needs in the effects (the estimate / the coefficients) to be reported; heterogeneity route with its default thresholds, see {@link GoshCluster} */
+    public GoshCluster detectClusters(double minSil) { return detectClusters(minSil, GoshCluster.HET_MIN_SILHOUETTE, GoshCluster.HET_MIN_SHARE); }
+    /**
+     * @param minSil smallest silhouette width a cluster needs in the effects (the estimate / the coefficients) to be reported
+     * @param hetMinSil smallest silhouette width in ln(Q_E/df) for a cluster that is accepted through the heterogeneity instead
+     * @param hetMinShare smallest share of the valid subsets such a cluster must contain; see {@link GoshCluster}
+     */
+    public GoshCluster detectClusters(double minSil, double hetMinSil, double hetMinShare) {
         double[][] X = new double[nSub][]; for (int b = 0; b < nSub; b++) X[b] = new double[]{est[b], i2[b]};
-        clusters = GoshCluster.detect(X, new String[]{"estimate", "I^2"}, mask, k, size, seed); return clusters;
+        double[] hf = new double[nSub]; for (int b = 0; b < nSub; b++) hf[b] = GoshCluster.logQ(q[b], size[b] - 1);
+        clusters = GoshCluster.detect(X, new String[]{"estimate", "I^2"}, mask, k, size, seed, 1, minSil, GoshCluster.MIN_SHARE, hf, hetMinSil, hetMinShare); return clusters;
     }
 
     public boolean includes(int b, int j) { return (mask[b][j >> 6] >>> (j & 63) & 1L) != 0; }
