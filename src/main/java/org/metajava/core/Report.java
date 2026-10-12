@@ -366,6 +366,10 @@ public final class Report {
         boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false; right[head.size() - 1] = false;
         b.append(table(head, rows, right)).append(NL);
         b.append("Flagged (*) as in metafor::influence: |dffits| > 3*sqrt(p/(k-p)), pchisq(cook.d, p) > 0.5, hat > 3p/k, any |dfbs| > 1 (rstudent and cov.r are shown but not used)").append(NL);
+        b.append("Note on rstudent (not used for flagging):").append(NL);
+        b.append("  (a) The dotted lines at +/-").append(Fmt.num(Dist.qnorm(0.975), 2)).append(" in the plot are unadjusted per-study limits: each study is compared with them separately, with no correction for looking at all k studies.").append(NL);
+        b.append("  (b) The simulations in the CHANGELOG used a different, family-wise criterion: at least one of the k studies beyond the normal Bonferroni limit qnorm(1 - 0.025/k), intended to be 5% over all k studies. That limit is not drawn in the plot and is not applied here.").append(NL);
+        b.append("  In simulated data sets without any outlier (empirical results of the tested scenarios), random-effects residuals with tau^2 > 0 exceeded +/-").append(Fmt.num(Dist.qnorm(0.975), 2)).append(" in about 6-8% of the studies (5% expected), and at least one of 12-30 studies passed the Bonferroni limit in about 12-23% of the data sets (5% intended; more with skewed random effects), because tau^2 is estimated. Use rstudent as a screening aid, not as a formal outlier test.").append(NL);
         for (int i = 0; i < in.k; i++) if (in.flagged[i]) b.append("  ").append(in.labels[i]).append(": ").append(in.flagReason[i]).append(NL);
         return b.toString();
     }

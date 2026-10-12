@@ -53,8 +53,9 @@ automatically).
 
 Optional columns: **study label**, **subgroup variable** (subgroup analysis), **order** (cumulative analysis), and
 any numeric or categorical column used as a **covariate / factor** in meta-regression.
-The bundled example (`Example data`) is `src/main/resources/examples/HR_meta.xlsx` (20 hazard ratios, with
-`Ethnicity` and `Age` columns).
+**Example data** opens a menu of the bundled examples in `src/main/resources/examples/`; the chosen file is loaded, the matching analysis type is selected and its columns are assigned automatically:
+`HR_meta.xlsx` (20 hazard ratios, generic effect sizes), `Binary_outcome.xlsx` (23 studies, events and totals), `Mean_difference.xlsx` (30 studies, means, SDs and sizes),
+`Pearson_Correlation.xlsx` (20 correlations) and `Single_proportion.xlsx` (33 proportions). To add an example, put the .xlsx file in that folder and add a line to `gui/Examples.java`.
 
 ## Options
 
@@ -180,7 +181,7 @@ restricted likelihood for REML (BIC and AICc then use k - p), the ordinary likel
   (estimate or coefficients; silhouette width ≥ 0.60) or, through a stricter route, in the heterogeneity measured by ln(Q<sub>E</sub>/df)
   (silhouette width ≥ 0.70), and each holds at least 5 % of the valid subsets, because many subsets have I² = 0 exactly even for homogeneous studies and this spike alone is never evidence of a cluster;
   otherwise the output says "No meaningful clusters". The thresholds are heuristics, checked on simulated data with and without
-  structure (see the CHANGELOG). The output lists the clusters (size, mean estimate and I²), the studies that are almost always in or out of a
+  structure (see the CHANGELOG; the detection and false-cluster rates there are empirical results of the tested scenarios, from few data sets per scenario, not performance guarantees). The output lists the clusters (size, mean estimate and I²), the studies that are almost always in or out of a
   cluster, and the plot is coloured by cluster. Limits: two balanced subgroups of studies form a continuous ridge of subsets and are not
   resolved, and a group of more than about four studies cannot be isolated. **GOSH for meta-regression** (option, output right below the ordinary GOSH analysis):
   the meta-regression model of section 6 (covariates / factors) is fitted to subsets of the studies (at least *p* studies, *p* =

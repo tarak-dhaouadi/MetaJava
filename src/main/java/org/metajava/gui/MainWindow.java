@@ -127,7 +127,7 @@ public class MainWindow extends JFrame {
         // data
         Ui.Section d = new Ui.Section("1. Data", true);
         JPanel btns = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0)); btns.setOpaque(false);
-        JButton open = Ui.button("Open file\u2026", true), ex = Ui.button("Example data", false); open.addActionListener(e -> openFile()); ex.addActionListener(e -> loadExample());
+        JButton open = Ui.button("Open file\u2026", true), ex = Ui.button("Example data", false); open.addActionListener(e -> openFile()); ex.addActionListener(e -> showExampleMenu(ex));
         btns.add(open); btns.add(ex); d.row(null, btns); d.row(null, fileLabel); d.row("Sheet", sheetBox); sheetBox.addActionListener(e -> { if (file != null && sheetBox.getSelectedIndex() >= 0 && !loading) load(file, sheetBox.getSelectedIndex()); });
         preview.setFillsViewportHeight(true); preview.setFont(Ui.BASE.deriveFont(11f)); preview.setRowHeight(20); preview.getTableHeader().setFont(Ui.BOLD.deriveFont(11f));
         JScrollPane ps = new JScrollPane(preview); ps.setPreferredSize(new Dimension(380, 140)); d.row(null, ps);
@@ -300,11 +300,11 @@ public class MainWindow extends JFrame {
     static void fill(JComboBox<String> c, List<String> items) { c.removeAllItems(); for (String s : items) c.addItem(s); }
     static String norm(String s) { return s.toLowerCase().replaceAll("[^a-z0-9]", ""); }
     String guessAny(List<String> cols, String... keys) { for (String k : keys) for (String c : cols) if (norm(c).contains(k)) return c; return "(none)"; }
-    String guess(String key, List<String> cols) {
+    static String guess(String key, List<String> cols) {
         String[][] alias = {
             {"event.e", "eventse", "eventsexp", "eventstreat", "eventstreatment", "eventsintervention", "eventsexperimental", "events1", "evente", "ae"}, {"n.e", "ne", "ntreat", "ntreatment", "nexp", "nexperimental", "ntotal1", "totalexp", "totaltreatment", "n1", "totalexperimental"},
             {"event.c", "eventsc", "eventscontrol", "eventscontrols", "eventsctrl", "events2", "eventc", "ce"}, {"n.c", "nc", "ncontrol", "ncontrols", "nctrl", "ntotal2", "totalcontrol", "n2", "totalcontrols"},
-            {"mean.e", "meane", "meanexp", "meantreatment", "mean1", "meanexperimental"}, {"sd.e", "sde", "sdexp", "sdtreatment", "sd1", "sdexperimental"}, {"mean.c", "meanc", "meancontrol", "mean2"}, {"sd.c", "sdc", "sdcontrol", "sd2"},
+            {"mean.e", "meane", "meanexp", "meantreatment", "mean1", "meanexperimental"}, {"sd.e", "sde", "sdexp", "sdtreatment", "sd1", "sdexperimental"}, {"mean.c", "meanc", "meancontrol", "meancontrols", "mean2"}, {"sd.c", "sdc", "sdcontrol", "sdcontrols", "sd2"},
             {"TE", "loghr", "logor", "logrr", "te", "effect", "logeffect", "estimate"}, {"seTE", "stderror", "se", "sete", "standarderror"}, {"lower", "lower", "lci", "cilower", "lowerci"}, {"upper", "upper", "uci", "ciupper", "upperci"},
             {"cor", "cor", "r", "correlation"}, {"n", "n", "total", "samplesize", "ntotal"}, {"event", "event", "events", "cases"}, {"time", "time", "persontime", "personyears", "py", "t"}, {"mean", "mean", "average"}, {"sd", "sd", "stdev"},
             {"time.e", "timee", "timeexp", "persontimeexp", "pyexp", "time1"}, {"time.c", "timec", "timecontrol", "persontimecontrol", "pycontrol", "time2"}};
@@ -319,9 +319,20 @@ public class MainWindow extends JFrame {
     }
 
     void openFile() { JFileChooser fc = new JFileChooser(); fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Excel / CSV", "xlsx", "csv", "tsv", "txt")); if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) { file = fc.getSelectedFile(); try { loading = true; sheets = TableReader.sheetNames(file); sheetBox.removeAllItems(); for (String s : sheets) sheetBox.addItem(s); loading = false; load(file, 0); } catch (Exception ex) { loading = false; error(ex); } } }
-    void loadExample() {
-        try (InputStream in = getClass().getResourceAsStream("/examples/HR_meta.xlsx")) { File t = File.createTempFile("HR_meta", ".xlsx"); t.deleteOnExit(); java.nio.file.Files.copy(in, t.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING); file = t;
-            loading = true; sheets = TableReader.sheetNames(t); sheetBox.removeAllItems(); for (String s : sheets) sheetBox.addItem(s); loading = false; load(t, 0); typeBox.setSelectedIndex(3); fileLabel.setText("Example: HR_meta.xlsx"); } catch (Exception ex) { loading = false; error(ex); }
+    /** "Example data": a menu under the button lists the bundled example data sets; the chosen one is loaded and the matching analysis type selected. */
+    void showExampleMenu(Component anchor) {
+        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+        for (Examples.Item it : Examples.ALL) { javax.swing.JMenuItem mi = new javax.swing.JMenuItem(it.title + "  \u2013  " + it.file); mi.addActionListener(e -> loadExample(it)); menu.add(mi); }
+        menu.show(anchor, 0, anchor.getHeight());
+    }
+    void loadExample(Examples.Item it) {
+        try (InputStream in = getClass().getResourceAsStream("/examples/" + it.file)) {
+            if (in == null) throw new IOException("Example file not found: " + it.file);
+            String base = it.file.substring(0, it.file.lastIndexOf('.')); File t = File.createTempFile(base.length() < 3 ? base + "___" : base, ".xlsx"); t.deleteOnExit(); java.nio.file.Files.copy(in, t.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING); file = t;
+            loading = true; sheets = TableReader.sheetNames(t); sheetBox.removeAllItems(); for (String s : sheets) sheetBox.addItem(s); loading = false; load(t, 0);
+            int ti = 0; for (int i = 0; i < TYPES.length; i++) if (TYPES[i][0].equals(it.type)) ti = i; typeBox.setSelectedIndex(ti);
+            fileLabel.setText("Example: " + it.file + " \u2013 " + table.nrow + " rows, " + table.names.size() + " columns"); status.setText("Loaded example " + it.file);
+        } catch (Exception ex) { loading = false; error(ex); }
     }
     void load(File f, int sheet) {
         try { table = TableReader.read(f, sheet); fileLabel.setText(f.getName() + " \u2013 " + table.nrow + " rows, " + table.names.size() + " columns");

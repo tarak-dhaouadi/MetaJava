@@ -163,7 +163,34 @@ public class SelfTest {
         check(out2O >= 4 && out2R >= 4, "two outlier studies (+2, standard errors 0.08-0.33): found in at least 4 of " + n + " data sets (ordinary " + out2O + ", meta-regression " + out2R + ")");
         check(sepN > 0 && sepOk == sepN, "when clusters are found for the two outlier studies, one of the outliers is among the separating studies (" + sepOk + " of " + sepN + ")");
         check(out1O >= 5 && out1R >= 5, "one clear outlier study (+2.5): found in at least 5 of " + n + " data sets (ordinary " + out1O + ", meta-regression " + out1R + ")");
+        // the note and the report give the real silhouette widths and the adjusted score, with labels
+        { GoshCluster f = null; for (long sd = 1; sd <= n && f == null; sd++) { GoshCluster[] q = robustPair(sd, 15, 0, 2, 2.0, GoshCluster.HET_MIN_SILHOUETTE); if (q[1].found()) f = q[1]; else if (q[0].found()) f = q[0]; }
+          check(f != null && f.silEffCluster != null && f.silEffCluster.length == f.G && f.silHetCluster.length == f.G && f.silCluster.length == f.G, "silhouette: real values in both spaces are kept per cluster next to the adjusted score");
+          if (f != null) { double delta = f.hetMinSil - f.minSil; boolean consistent = true, viaHet = false, lower = true; for (int g = 0; g < f.G; g++) { double e = f.silEffCluster[g], h = f.silHetCluster[g], adj = Math.max(Double.isNaN(e) ? Double.NEGATIVE_INFINITY : e, Double.isNaN(h) ? Double.NEGATIVE_INFINITY : h - delta);
+                if (Math.abs(adj - f.silCluster[g]) > 1e-9) consistent = false; if (!(e >= f.minSil) && h >= f.hetMinSil) { viaHet = true; if (!(f.silCluster[g] < h)) lower = false; } }
+            check(consistent, "silhouette: the adjusted score of every cluster is the better of the effects value and the heterogeneity value minus " + Fmt.num(delta, 2));
+            check(!viaHet || lower, "silhouette: for a cluster accepted through the heterogeneity the real value is higher than the adjusted score by " + Fmt.num(delta, 2));
+            String[] lb = new String[15]; for (int i = 0; i < 15; i++) lb[i] = "S" + (i + 1); String ct = RegReport.clusterText(f, lb, null, f.varNames);
+            check(f.note.contains("real values: effects") && f.note.contains("adjusted score used for the threshold") && f.note.contains("minus " + Fmt.num(delta, 2)), "silhouette: the note prints the real averages and the adjusted score, labelled");
+            check(ct.contains("Effects (real)") && ct.contains("Heterogeneity (real)") && ct.contains("Adjusted score") && ct.contains("Accepted through") && ct.contains(Fmt.num(f.silEffCluster[0], 2)), "silhouette: the report lists the real and the adjusted values per cluster and the route"); } }
         GoshCluster[] c = robustPair(1, 15, 0, 1, 2.5, GoshCluster.HET_MIN_SILHOUETTE); check(c[0].hetMinSil == GoshCluster.HET_MIN_SILHOUETTE && GoshCluster.HET_MIN_SILHOUETTE == 0.70 && c[0].minShare == GoshCluster.MIN_SHARE, "the thresholds of the two routes are recorded in the result");
+    }
+
+    /** The example data sets of the "Example data" button: each is bundled, readable, its columns are assigned automatically and the analysis runs. */
+    static void exampleDataTests() {
+        check(org.metajava.gui.Examples.ALL.size() == 5, "example data: five example data sets are offered");
+        for (org.metajava.gui.Examples.Item it : org.metajava.gui.Examples.ALL) {
+            try (java.io.InputStream in = SelfTest.class.getResourceAsStream("/examples/" + it.file)) {
+                check(in != null, "example data: " + it.file + " is bundled"); if (in == null) continue;
+                java.io.File tmp = java.io.File.createTempFile("mjex", ".xlsx"); tmp.deleteOnExit(); java.nio.file.Files.copy(in, tmp.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                DataTable tb = org.metajava.io.TableReader.read(tmp, 0); check(tb.nrow >= 10 && tb.names.size() >= 4, "example data: " + it.file + " is read (" + tb.nrow + " rows, " + tb.names.size() + " columns)");
+                MetaSpec sp = new MetaSpec(); sp.type = it.type; sp.sm = it.sm; sp.prediction = false; MetaData md = new MetaData(); boolean all = true; StringBuilder miss = new StringBuilder();
+                for (String key : org.metajava.gui.Examples.parameterKeys(it.type)) { String col = org.metajava.gui.Examples.guessColumn(key, tb.names); if (col.equals("(none)")) { all = false; miss.append(key).append(' '); } else md.put(key, tb.num(col)); }
+                check(all, "example data: " + it.file + " - every column of the " + it.type + " analysis is assigned automatically" + (all ? "" : " (missing: " + miss + ")")); if (!all) continue;
+                String[] lab = tb.strings("Study"); md.n = tb.nrow; md.studlab = lab; MetaResult r = Meta.run(sp, md);
+                check(r.overall != null && !Double.isNaN(r.overall.teRandom) && !Double.isNaN(r.overall.teCommon) && r.kAll >= 10, "example data: " + it.file + " - the analysis runs (k = " + r.kAll + ", random-effects estimate " + Fmt.num(r.overall.teRandom, 4) + ")");
+            } catch (Exception e) { e.printStackTrace(); check(false, "example data: " + it.file + " threw " + e); }
+        }
     }
 
     /** The likelihood of the ML / REML estimators can have two maxima with few, very unequal studies: the estimate is unchanged (as in metafor), a higher mode is reported. */
@@ -231,6 +258,9 @@ public class SelfTest {
         Influence in = Influence.run(y, v, null, "REML", lab, new String[]{"intrcpt"}); boolean any = false; for (boolean f : in.flagged) any |= f;
         check(any, "influence diagnostics flag at least one study in simulated data");
         check(countColour(Plots.influence(in, new Plots.Opts()), 0xFF0000) > 0, "flagged studies are drawn in red in the diagnostics plot");
+        { String infTxt = Report.influenceText(in);
+          check(infTxt.contains("Note on rstudent (not used for flagging)") && infTxt.contains("unadjusted per-study limits") && infTxt.contains("+/-1.96") && infTxt.contains("family-wise criterion") && infTxt.contains("Bonferroni limit qnorm(1 - 0.025/k)") && infTxt.contains("not drawn in the plot and is not applied") && infTxt.contains("screening aid") && infTxt.contains("empirical"),
+              "the influence report states that rstudent is not a flagging rule, that the +/-1.96 plot limits are unadjusted per-study limits, that the Bonferroni family-wise criterion is a simulation criterion that is not drawn or applied, and that the calibration is empirical"); }
 
         // ---- 5b. metafor compatibility of the classification rule: rstudent / cov.r never flag a study on their own
         for (int i = 0; i < in.k; i++) {
@@ -612,6 +642,7 @@ public class SelfTest {
               GoshCluster c1 = GoshCluster.detect(X1, new String[]{"a", "b"}, mk, kk, szs, 1); check(c1.G == 1 && !c1.found(), "cluster detection: one Gaussian cloud gives a single cluster (G = " + c1.G + ")"); }
             clusterGateTests();
             remlModeTests();
+            exampleDataTests();
             clusterRobustnessTests();
             gs.detectClusters(); gr.detectClusters(); GoshReg gq2 = s1; gq2.detectClusters();
             check(gr.clusters != null && gr.clusters.nUsed == gr.nValid, "cluster detection uses the valid subsets of the meta-regression GOSH");

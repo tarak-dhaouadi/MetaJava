@@ -21,11 +21,11 @@ import java.util.*;
  * {@link #MIN_SHARE} of the valid subsets (an average over all subsets is not enough: a few
  * far-away tail subsets make the bulk look well separated). The heterogeneity route is stricter because taking the better of two spaces gives every cluster two
  * chances to pass: with the same threshold (0.60) it let through 4-21% of homogeneous or heterogeneous-without-outliers data sets; at 0.70 that fell to 0-8%
- * while two outlier studies (+2) were still found in 88-96% (see the CHANGELOG for the simulation, including the weaker signals that are missed). Otherwise the worst cluster is merged with the one whose centre is closest and the check is
+ * while two outlier studies (+2) were still found in 88-96% of the simulated data sets (24 per scenario, so these rates are imprecise and apply to the tested scenarios only; see the CHANGELOG for the simulation, including the weaker signals that are missed). Otherwise the worst cluster is merged with the one whose centre is closest and the check is
  * repeated, until it is met or one cluster is left ("no meaningful clusters"). A group of subsets at I^2 = 0 is thus never a cluster on its own.
  * The thresholds are heuristics (Kaufman and Rousseeuw: 0.51-0.70 reasonable, above 0.70 strong). They were chosen on simulated data sets with and
- * without structure (see the self-test and the CHANGELOG): homogeneous data, heterogeneity without outliers and skewed effects should give one cluster;
- * one or two clear outlier studies and a small subgroup of studies should give several. Limits: a pair of balanced subgroups of studies gives a continuous
+ * without structure (see the self-test and the CHANGELOG; the rates are empirical results of those scenarios, not performance guarantees): homogeneous data, heterogeneity without outliers and skewed effects are meant to give one cluster;
+ * one or two clear outlier studies and a small subgroup of studies are meant to give several. Limits: a pair of balanced subgroups of studies gives a continuous
  * ridge of subsets, not separate clouds, and is not resolved; a cluster defined by m studies holds about 2^-m of the subsets, so groups of more than about
  * four studies cannot be isolated. The thresholds can be changed by the caller.</p>
  */
@@ -50,7 +50,9 @@ public final class GoshCluster {
     public double[][] rateIn, rateOut;
     public double[] meanSize;   // mean number of studies of the subsets in each cluster
     /** Separation check: components proposed by ICL, average silhouette width of that partition and of the reported one (per cluster in silCluster), threshold used, share of the subsets at I^2 = 0. */
-    public int iclG; public double silIcl = Double.NaN, sil = Double.NaN, minSil = MIN_SILHOUETTE, minShare = MIN_SHARE, hetMinSil = HET_MIN_SILHOUETTE, hetMinShare = HET_MIN_SHARE, spike = Double.NaN; public double[] silCluster; public int nMerged;
+    public int iclG; public double silIcl = Double.NaN, sil = Double.NaN, minSil = MIN_SILHOUETTE, minShare = MIN_SHARE, hetMinSil = HET_MIN_SILHOUETTE, hetMinShare = HET_MIN_SHARE, spike = Double.NaN; public double[] silCluster;
+    /** Real (unadjusted) average silhouette widths over the subsets, in the effects and in ln(Q_E/df), for the partition proposed by ICL (silIclEff / silIclHet) and for the reported one (silEff / silHet); per cluster of the reported partition in silEffCluster / silHetCluster. sil, silIcl and silCluster are the adjusted scores used for the threshold: the better of the effects value and the heterogeneity value minus (hetMinSil - minSil), only when the cluster has at least hetMinShare of the subsets. NaN when a space is not available. */
+    public double silIclEff = Double.NaN, silIclHet = Double.NaN, silEff = Double.NaN, silHet = Double.NaN; public double[] silEffCluster, silHetCluster; public int nMerged;
 
     public boolean found() { return G >= 2; }
 
@@ -135,6 +137,7 @@ public final class GoshCluster {
             int[] smp = Arrays.copyOf(sp, S); int cur = bestG, G0 = bestG; r.nMerged = 0; double sv; double[] per; int D2 = eff.size() + (useH ? 1 : 0);
             double[][] P = new double[S][D2]; final int nE = eff.size(); double[][] PE = new double[S][nE], PH = new double[S][useH ? 1 : 0]; for (int i = 0; i < S; i++) { for (int e = 0; e < eff.size(); e++) P[i][e] = Z[smp[i]][eff.get(e)]; if (useH) { double hv = hetFree[ok.get(smp[i])]; P[i][D2 - 1] = Double.isFinite(hv) ? (hv - hmu) / hsd : 0; } }
             for (int i = 0; i < S; i++) { for (int e = 0; e < nE; e++) PE[i][e] = P[i][e]; if (useH) PH[i][0] = P[i][D2 - 1]; }
+            double[] rE = null, rH = null; double aE = Double.NaN, aH = Double.NaN;
             while (true) {
                 int[] sl = new int[S]; for (int i = 0; i < S; i++) sl[i] = lab[smp[i]];
                 double[][] sres = silhouette(P, sl, G0); sv = sres[0][0]; per = sres[1];
@@ -144,8 +147,10 @@ public final class GoshCluster {
                     for (int g = 0; g < G0; g++) { double bst = Double.NaN; if (sE != null && !(sE[1][g] <= bst)) bst = sE[1][g];
                         // heterogeneity route: stricter threshold (put on the scale of the effects threshold) and its own minimum share
                         double hv = sH != null && fl[g] >= hetMinShare * r.nUsed ? sH[1][g] - (hetMinSil - minSil) : Double.NaN; if (!Double.isNaN(hv) && !(hv <= bst)) bst = hv; pc[g] = bst; tot += (Double.isNaN(bst) ? 0 : bst) * ns[g]; }
-                    per = pc; sv = tot / S; }
-                if (r.nMerged == 0) r.silIcl = sv;
+                    per = pc; sv = tot / S;
+                    rE = new double[G0]; rH = new double[G0]; double te = 0, th = 0; for (int g = 0; g < G0; g++) { rE[g] = sE != null ? sE[1][g] : Double.NaN; rH[g] = sH != null ? sH[1][g] : Double.NaN; te += (Double.isNaN(rE[g]) ? 0 : rE[g]) * ns[g]; th += (Double.isNaN(rH[g]) ? 0 : rH[g]) * ns[g]; }
+                    aE = sE != null ? te / S : Double.NaN; aH = sH != null ? th / S : Double.NaN; }
+                if (r.nMerged == 0) { r.silIcl = sv; r.silIclEff = aE; r.silIclHet = aH; }
                 int[] full = new int[G0]; for (int v : lab) full[v]++;
                 // every cluster must be separated from the others (own average silhouette width) and hold a minimum share of the subsets;
                 // an average over all subsets alone is not enough: a few far-away tail subsets raise the width of the bulk
@@ -164,20 +169,28 @@ public final class GoshCluster {
             }
             if (cur < 2) { Arrays.fill(lab, 0); finalG = 1; per = null; sv = Double.NaN; } else finalG = cur;
             cnt = new int[finalG]; for (int i = 0; i < lab.length; i++) cnt[lab[i]]++;
-            r.sil = sv; r.silCluster = per;
+            r.sil = sv; r.silCluster = per; r.silEff = aE; r.silHet = aH; r.silEffCluster = finalG >= 2 ? rE : null; r.silHetCluster = finalG >= 2 ? rH : null;
         }
         r.G = finalG;
         // order by decreasing size
         Integer[] ord = new Integer[r.G]; for (int g = 0; g < r.G; g++) ord[g] = g; final int[] cc = cnt; Arrays.sort(ord, (x, y) -> cc[y] - cc[x]); int[] inv = new int[r.G]; for (int g = 0; g < r.G; g++) inv[ord[g]] = g;
         for (int i = 0; i < r.nUsed; i++) r.label[ok.get(i)] = inv[lab[i]];
         if (r.silCluster != null) { double[] ps = new double[r.G]; for (int g = 0; g < r.G; g++) ps[inv[g]] = r.silCluster[g]; r.silCluster = ps; }
+        if (r.silEffCluster != null) { double[] pe = new double[r.G], ph = new double[r.G]; for (int g = 0; g < r.G; g++) { pe[inv[g]] = r.silEffCluster[g]; ph[inv[g]] = r.silHetCluster[g]; } r.silEffCluster = pe; r.silHetCluster = ph; }
+        final String dl = Fmt.num(hetMinSil - minSil, 2);
         r.fillSummary(X, masks, k, sizes, ok);
         String spk = !Double.isNaN(r.spike) && r.spike >= 0.05 ? " " + Math.round(100 * r.spike) + "% of the subsets have I^2 = 0 exactly (a boundary value that occurs even when the studies are homogeneous); a group of subsets at I^2 = 0 is not counted as a cluster on its own." : "";
-        if (r.iclG >= 2 && r.G == 1) r.note = "ICL proposed " + r.iclG + " components, but they are not separated in the effects or in the heterogeneity (average silhouette width " + Fmt.num(r.silIcl, 2) + " for the proposed partition; every cluster needs a silhouette width of at least " + Fmt.num(minSil, 2) + " in the effects (or " + Fmt.num(hetMinSil, 2) + " in the heterogeneity) and at least " + Math.round(100 * minShare) + "% of the subsets, and merging the worst clusters did not help). No meaningful clusters: the subsets form one cloud." + spk;
-        else if (r.iclG >= 2 && r.nMerged > 0) r.note = "ICL proposed " + r.iclG + " components; " + r.nMerged + " cluster" + (r.nMerged > 1 ? "s were" : " was") + " merged with the closest one because it was too small or not separated enough in the effects or in the heterogeneity (average silhouette width " + Fmt.num(r.silIcl, 2) + " before merging, " + Fmt.num(r.sil, 2) + " after; every cluster needs at least " + Fmt.num(minSil, 2) + " in the effects (or " + Fmt.num(hetMinSil, 2) + " in the heterogeneity) and " + Math.round(100 * minShare) + "% of the subsets)." + spk;
+        final String need = "every cluster needs a silhouette width of at least " + Fmt.num(minSil, 2) + " in the effects, or " + Fmt.num(hetMinSil, 2) + " in the heterogeneity ln(Q_E/df), and at least " + Math.round(100 * minShare) + "% of the subsets";
+        if (r.iclG >= 2 && r.G == 1) r.note = "ICL proposed " + r.iclG + " components, but they are not separated enough (average silhouette width of the proposed partition: " + silText(r.silIclEff, r.silIclHet, r.silIcl, dl) + "; " + need + ", and merging the worst clusters did not help). No meaningful clusters: the subsets form one cloud." + spk;
+        else if (r.iclG >= 2 && r.nMerged > 0) r.note = "ICL proposed " + r.iclG + " components; " + r.nMerged + " cluster" + (r.nMerged > 1 ? "s were" : " was") + " merged with the closest one because it was too small or not separated enough (average silhouette width before merging: " + silText(r.silIclEff, r.silIclHet, r.silIcl, dl) + "; after merging: " + silText(r.silEff, r.silHet, r.sil, dl) + "; " + need + ")." + spk;
         else if (r.G == 1) r.note = "No clear clusters: the subsets form one cloud (ICL selects a single component)." + spk;
-        else r.note = (r.G >= MAX_G ? "Note: the maximum number of clusters (" + MAX_G + ") was reached; the cloud is skewed or heavy-tailed, so the clusters may be finer than the real structure. Read them together with the studies that separate them. " : "") + "Separation of the clusters in the space of the effects: average silhouette width " + Fmt.num(r.sil, 2) + " (every cluster needs at least " + Fmt.num(minSil, 2) + " in the effects (or " + Fmt.num(hetMinSil, 2) + " in the heterogeneity) and " + Math.round(100 * minShare) + "% of the subsets)." + spk;
+        else r.note = (r.G >= MAX_G ? "Note: the maximum number of clusters (" + MAX_G + ") was reached; the cloud is skewed or heavy-tailed, so the clusters may be finer than the real structure. Read them together with the studies that separate them. " : "") + "Separation of the clusters (average silhouette width over the subsets: " + silText(r.silEff, r.silHet, r.sil, dl) + "; " + need + "). Per-cluster values are given below." + spk;
         return r;
+    }
+
+    /** The real average silhouette widths and the adjusted score, with labels. */
+    static String silText(double eff, double het, double adj, String delta) {
+        return "real values: effects " + Fmt.num(eff, 2) + ", heterogeneity ln(Q_E/df) " + Fmt.num(het, 2) + "; adjusted score used for the threshold " + Fmt.num(adj, 2) + " = the better of the effects value and the heterogeneity value minus " + delta + ", which puts the stricter heterogeneity threshold on the scale of the effects threshold";
     }
 
     /** Spike-free heterogeneity coordinate for the separation check: ln(QE / df) (continuous, unlike I^2, which is exactly 0 for many subsets). NaN when it cannot be computed. */
