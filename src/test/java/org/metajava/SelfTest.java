@@ -33,6 +33,9 @@ public class SelfTest {
     static MetaSpec genSpec(String sm) { MetaSpec s = new MetaSpec(); s.type = "gen"; s.sm = sm; s.prediction = true; return s; }
     static MetaSpec refSpec(String sm) { MetaSpec s = genSpec(sm); s.methodTau = "DL"; s.methodPredict = "S"; return s; }
 
+    /** Pixels close to the colour rgb in the top (top = true) or right marginal panel of an ordinary GOSH plot drawn at scale 1 (frame x 72..600, y 112..548). */
+    static int marg(BufferedImage im, int[] rgb, boolean top) { int n = 0, x0 = top ? 72 : 604, x1 = top ? 600 : im.getWidth(), y0 = top ? 0 : 112, y1 = top ? 108 : 548;
+        for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) { int c = im.getRGB(x, y); if (Math.abs(((c >> 16) & 255) - rgb[0]) + Math.abs(((c >> 8) & 255) - rgb[1]) + Math.abs((c & 255) - rgb[2]) < 40) n++; } return n; }
     static int countColour(BufferedImage im, int rgb) { int n = 0; for (int y = 0; y < im.getHeight(); y++) for (int x = 0; x < im.getWidth(); x++) if ((im.getRGB(x, y) & 0xFFFFFF) == rgb) n++; return n; }
 
     // ------------------------------------------------------------------ cluster detection: separation criterion, tests on data with and without structure
@@ -607,6 +610,12 @@ public class SelfTest {
             Plots.Opts po = new Plots.Opts(); po.scale = 1; MetaSpec ss = bs.clone(); ss.prediction = true; ss.predictionSubgroup = true; MetaData sd = new MetaData(); sd.put("TE", by); sd.put("seTE", bse); sd.n = K; sd.subgroup = alloc; MetaResult sr = Meta.run(ss, sd);
             java.awt.image.BufferedImage[] imgs = {org.metajava.plot.ExtraPlots.gosh(gs, br, po, false), org.metajava.plot.ExtraPlots.gosh(a1, br, po, true), org.metajava.plot.ExtraPlots.orchard(sr, po), org.metajava.plot.ExtraPlots.caterpillar(sr, po)}; String[] nm2 = {"GOSH plot", "GOSH plot (highlight)", "orchard plot", "caterpillar plot"};
             for (int i = 0; i < imgs.length; i++) { int dark = 0; for (int yy = 0; yy < imgs[i].getHeight(); yy += 2) for (int xx = 0; xx < imgs[i].getWidth(); xx += 2) if ((imgs[i].getRGB(xx, yy) & 0xFFFFFF) != 0xFFFFFF) dark++; check(dark > 400, nm2[i] + " is drawn (" + dark + " non-white samples)"); }
+            { // marginal densities: highlight mode draws one colour-matched curve per group (includes = blue, excludes = orange) in BOTH marginal panels; the plain plot draws a single blue curve
+                java.awt.image.BufferedImage hi = imgs[1], pl = imgs[0]; int[] blue = {0x1F, 0x4E, 0x8C}, orange = {0xD9, 0x82, 0x2B};
+                int[] hb = {marg(hi, blue, true), marg(hi, orange, true), marg(hi, blue, false), marg(hi, orange, false)}, pb = {marg(pl, blue, true), marg(pl, orange, true), marg(pl, blue, false), marg(pl, orange, false)};
+                check(hb[0] > 20 && hb[1] > 20, "GOSH highlight: the top marginal panel has a blue (includes) and an orange (excludes) density curve (" + hb[0] + " / " + hb[1] + " px)");
+                check(hb[2] > 20 && hb[3] > 20, "GOSH highlight: the right marginal panel has a blue (includes) and an orange (excludes) density curve (" + hb[2] + " / " + hb[3] + " px)");
+                check(pb[0] > 20 && pb[2] > 20 && pb[1] == 0 && pb[3] == 0, "GOSH without highlight: a single blue density curve in each marginal panel, no orange"); }
             org.metajava.plot.VectorGraphics vg = org.metajava.plot.Canvas.record(sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return org.metajava.plot.ExtraPlots.orchard(sr, q); }, 1.0); check(vg != null, "orchard plot can be recorded as vector graphics (SVG / PDF)");
             check(RegReport.goshText(gs, br).contains("247 subsets") && RegReport.compareText(mc, br).contains("* ~ ablat") && RegReport.permText(g, r1, br).contains("p-val*"), "report texts for GOSH, model comparison and permutest");
             // ---- GOSH for meta-regression (reference values from an independent numpy implementation: REML, rank check by SVD, itertools subsets)

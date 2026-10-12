@@ -90,16 +90,25 @@ public final class ExtraPlots {
         drawXAxis(c, a, fy1, Plots.xlabFor(s), false, fy0);
         for (double t : Canvas.pretty(yl, yh, 5)) { if (t < yl - 1e-9 || t > yh + 1e-9) continue; double yy = Y.applyAsDouble(t); c.line(fx0 - 5, yy, fx0, yy); c.textRot(Canvas.tick(t), fx0 - 10, yy, 10); }
         c.textRot("I² (%)", 16, (fy0 + fy1) / 2, 11);
-        // marginal densities
-        int nb = 50; double[] hx = new double[nb], hy = new double[nb];
-        for (int b = 0; b < n; b++) { if (Double.isNaN(xs[b]) || Double.isNaN(gs.i2[b]) || xs[b] < a.xl || xs[b] > a.xh) continue; hx[(int) Math.min(nb - 1, Math.max(0, (xs[b] - a.xl) / (a.xh - a.xl) * nb))]++; hy[(int) Math.min(nb - 1, Math.max(0, (gs.i2[b] - yl) / (yh - yl) * nb))]++; }
-        hx = smooth(hx); hy = smooth(hy); double mx = 0, my = 0; for (double v : hx) mx = Math.max(mx, v); for (double v : hy) my = Math.max(my, v);
-        Path2D top = new Path2D.Double(); top.moveTo(fx0, fy0 - 4);
-        for (int i = 0; i < nb; i++) { double xx = fx0 + (i + 0.5) / nb * (fx1 - fx0); top.lineTo(xx, fy0 - 4 - (mx > 0 ? hx[i] / mx : 0) * 58); } top.lineTo(fx1, fy0 - 4); top.closePath();
-        g.setColor(new Color(0xD9, 0xE2, 0xF0)); g.fill(top); g.setColor(BLUE); g.setStroke(new BasicStroke(1f)); g.draw(top);
-        Path2D rt = new Path2D.Double(); rt.moveTo(fx1 + 4, fy1);
-        for (int i = 0; i < nb; i++) { double yy = fy1 - (i + 0.5) / nb * (fy1 - fy0); rt.lineTo(fx1 + 4 + (my > 0 ? hy[i] / my : 0) * 62, yy); } rt.lineTo(fx1 + 4, fy0); rt.closePath();
-        g.setColor(new Color(0xD9, 0xE2, 0xF0)); g.fill(rt); g.setColor(BLUE); g.draw(rt);
+        // marginal densities: one curve per group (includes / excludes the highlighted study, or one per cluster), colour-matched to the points and each scaled to unit area,
+        // so the shapes can be compared even when the groups differ in size; a single curve for all subsets when the points are not grouped
+        final int nb = 50; final int ng = highlight ? 2 : clus ? cl.G : 1;
+        double[][] hx = new double[ng][nb], hy = new double[ng][nb]; int[] cnt = new int[ng];
+        for (int b = 0; b < n; b++) { if (Double.isNaN(xs[b]) || Double.isNaN(gs.i2[b]) || xs[b] < a.xl || xs[b] > a.xh) continue;
+            int q = highlight ? (gs.includes(b, hl) ? 0 : 1) : clus ? cl.label[b] : 0; if (q < 0 || q >= ng) continue; cnt[q]++;
+            hx[q][(int) Math.min(nb - 1, Math.max(0, (xs[b] - a.xl) / (a.xh - a.xl) * nb))]++; hy[q][(int) Math.min(nb - 1, Math.max(0, (gs.i2[b] - yl) / (yh - yl) * nb))]++; }
+        double mx = 0, my = 0;
+        for (int q = 0; q < ng; q++) { hx[q] = smooth(hx[q]); hy[q] = smooth(hy[q]); if (cnt[q] > 0) { for (int i2 = 0; i2 < nb; i2++) { hx[q][i2] /= cnt[q]; hy[q][i2] /= cnt[q]; mx = Math.max(mx, hx[q][i2]); my = Math.max(my, hy[q][i2]); } } }
+        for (int q = 0; q < ng; q++) { if (cnt[q] == 0) continue;
+            Color line = ng == 1 ? BLUE : highlight ? (q == 0 ? BLUE : ORANGE) : clusterColor(q, 255), fill = ng == 1 ? new Color(0xD9, 0xE2, 0xF0) : new Color(line.getRed(), line.getGreen(), line.getBlue(), 70);
+            Path2D top = new Path2D.Double(); top.moveTo(fx0, fy0 - 4);
+            for (int i2 = 0; i2 < nb; i2++) { double xx = fx0 + (i2 + 0.5) / nb * (fx1 - fx0); top.lineTo(xx, fy0 - 4 - (mx > 0 ? hx[q][i2] / mx : 0) * 58); } top.lineTo(fx1, fy0 - 4); top.closePath();
+            g.setColor(fill); g.fill(top); g.setColor(line); g.setStroke(new BasicStroke(ng == 1 ? 1f : 1.6f)); g.draw(top);
+            Path2D rt = new Path2D.Double(); rt.moveTo(fx1 + 4, fy1);
+            for (int i2 = 0; i2 < nb; i2++) { double yy = fy1 - (i2 + 0.5) / nb * (fy1 - fy0); rt.lineTo(fx1 + 4 + (my > 0 ? hy[q][i2] / my : 0) * 62, yy); } rt.lineTo(fx1 + 4, fy0); rt.closePath();
+            g.setColor(fill); g.fill(rt); g.setColor(line); g.draw(rt); }
+        g.setStroke(new BasicStroke(1f));
+        if (ng > 1) { g.setColor(Color.DARK_GRAY); c.text(highlight ? "Marginal curves: density of the subsets that include / exclude " + gs.labels[hl] + " (each curve has equal area)" : "Marginal curves: density within each cluster (each curve has equal area)", fx0, 22, 9, 0, false); }
         g.setColor(Color.BLACK);
         // legend / notes
         String note = String.format(Locale.ROOT, "%,d %ssubsets", n, gs.exhaustive ? "(all) " : "random ");

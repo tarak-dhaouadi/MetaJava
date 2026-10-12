@@ -1,5 +1,10 @@
 # Changelog
 
+### Changed - GOSH plot: colour-matched marginal densities for the groups of subsets
+- When the plot highlights one study (subsets that include it in blue, subsets that exclude it in orange), the top and the right marginal panels now show **two density curves**, one per group, in the colours of the points, instead of one curve for all subsets. When the points are coloured by cluster, each marginal shows one curve per cluster in the cluster colours. Without highlight or clusters the single blue curve is unchanged.
+- Each curve is scaled to the same area (its own density within the group), so the shapes and the shift between the groups can be compared even when the groups differ much in size; a note above the plot says so. The curves use the same binned and smoothed estimate as before. Points, axes, estimates and all numbers are unchanged; vector export (SVG / PDF) uses the same drawing code.
+- Self-tests (396 checks): in highlight mode both marginal panels contain a blue and an orange curve, without highlight only a blue one.
+
 ### Investigated - leave-one-out studentized residual (rstudent): the normal reference is liberal when tau^2 > 0 (no change to any number)
 - **Question.** In the earlier meta-regression GOSH simulation the studentized residual (leave-one-out, REML) flagged at least one study in 8-63% of the data sets that had heterogeneity but no planted outlier. This was investigated separately from the clustering, which is unchanged.
 - **What the app does.** `rstudent` is shown in the table and plot but is **not** a flagging rule: only dffits, Cook's distance, hat and DFBETAS flag a study (as in metafor::influence). The dotted +/-1.96 lines in the plot are unadjusted per-study limits. The 8-63% figures come from the simulation's own rule "any study beyond the normal Bonferroni limit". Intended family-wise error rate of that rule: 5% over the k studies, i.e. |z| > qnorm(1 - 0.025/k).
