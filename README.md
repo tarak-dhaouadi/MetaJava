@@ -188,7 +188,7 @@ restricted likelihood for REML (BIC and AICc then use k - p), the ordinary likel
   Before each run the data are checked and every problem (non-numeric cells, events > n, duplicate study labels, ...) is explained with its row number.
 * **Diagnostics:** outlier and influence diagnostics (rstudent, dffits, Cook's distance, cov.r, tau2.del, QE.del,
   hat, weight, dfbetas); studies flagged as influential/outliers are drawn as **red points** in the eight-panel
-  plot, as in metafor. Baujat plot, radial (Galbraith) plot, L'Abbé plot (binary outcomes). Publication bias also offers the Doi plot with the LFK index.
+  plot, as in metafor. Baujat plot, radial (Galbraith) plot, L'Abbé plot (binary outcomes; Default or ggplot2 style with 95% confidence and prediction areas and a legend, plus colour options). Publication bias also offers the Doi plot with the LFK index.
 * **GOSH plot** (graphical display of study heterogeneity; Olkin et al., 2012; `metafor::gosh`): the random-effects model is fitted to
   all subsets of at least two studies (up to 18 studies) or to many random subsets (number and seed settable); pooled estimate
   against I² (as selected for the main analysis) with marginal densities and dashed lines for the analysis of all studies. Dense

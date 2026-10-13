@@ -16,6 +16,8 @@ import java.awt.image.BufferedImage;
 public class SelfTest {
     static int failures = 0, checks = 0;
 
+    static boolean same(BufferedImage a, BufferedImage b) { if (a.getWidth() != b.getWidth() || a.getHeight() != b.getHeight()) return false; for (int y = 0; y < a.getHeight(); y++) for (int x = 0; x < a.getWidth(); x++) if (a.getRGB(x, y) != b.getRGB(x, y)) return false; return true; }
+    static int darkCount(BufferedImage im, int x0, int y0, int x1, int y1) { int n = 0; for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) { int rgb = im.getRGB(x, y); if ((rgb >> 16 & 255) < 60 && (rgb >> 8 & 255) < 60 && (rgb & 255) < 60) n++; } return n; }
     static void check(boolean ok, String what) { checks++; if (!ok) { failures++; System.out.println("FAIL: " + what); } else System.out.println("ok:   " + what); }
     static void near(double got, double want, double tol, String what) { check(Math.abs(got - want) <= tol, what + " (got " + got + ", expected " + want + " +/- " + tol + ")"); }
 
@@ -471,6 +473,24 @@ public class SelfTest {
             MetaSpec bs = new MetaSpec(); bs.type = "bin"; bs.sm = "RR"; bs.method = "Inverse"; bs.common = true; bs.random = true; MetaResult br = Meta.run(bs, bd); Lfk bl = Lfk.compute(br.TE, br.seTE, br.studlab);
             java.util.function.DoubleFunction<BufferedImage> labF = sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return Plots.labbe(br, q); }, doiF = sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return Plots.doi(bl, br, q); };
             check(Report.lfkText(bl, br).contains("LFK index: ") && labF.apply(1.0).getWidth() == 520 && doiF.apply(1.0).getWidth() == 620, "Doi plot and L'Abbe plot render and the LFK report is produced");
+            // L'Abbe themes and colours: Default is unchanged by the new options, ggplot2 style draws, colours reach the pixels, legend moves to the lower right when the effect line is above the no-effect line
+            { Plots.Opts d0 = new Plots.Opts(); d0.studyLabels = false; BufferedImage dflt = Plots.labbe(br, d0); Plots.Opts d1 = new Plots.Opts(); d1.studyLabels = false; d1.labbeTheme = org.metajava.plot.LabbePlot.DEFAULT;
+              check(same(dflt, Plots.labbe(br, d1)), "L'Abbe Default theme with every colour on 'Theme default' draws the same plot");
+              Plots.Opts g1 = new Plots.Opts(); g1.studyLabels = false; g1.labbeTheme = org.metajava.plot.LabbePlot.GG; BufferedImage gi = Plots.labbe(br, g1);
+              check(gi.getWidth() > 0 && !same(gi, dflt), "L'Abbe ggplot2 style renders and differs from the Default theme");
+              Plots.Opts c1 = new Plots.Opts(); c1.studyLabels = false; c1.labbeCI = "Red"; BufferedImage ci1 = Plots.labbe(br, c1); int reds = 0, greens = 0;
+              Plots.Opts c2 = new Plots.Opts(); c2.studyLabels = false; c2.labbePI = "Green"; BufferedImage pi1 = Plots.labbe(br, c2);   // alone, so that the (narrow) confidence area does not hide it
+              for (int yy = 0; yy < ci1.getHeight(); yy++) for (int xx = 0; xx < ci1.getWidth(); xx++) { int rgb = ci1.getRGB(xx, yy), rr = rgb >> 16 & 255, gg2 = rgb >> 8 & 255, bb = rgb & 255; if (rr > 200 && gg2 < 60 && bb < 60) reds++;
+                  rgb = pi1.getRGB(xx, yy); rr = rgb >> 16 & 255; gg2 = rgb >> 8 & 255; bb = rgb & 255; if (gg2 > 100 && rr < 60 && bb < 60) greens++; }
+              check(reds > 200 && greens > 50, "L'Abbe confidence / prediction area colours are drawn in the Default theme (" + reds + " / " + greens + " pixels)");
+              Plots.Opts b1 = new Plots.Opts(); b1.studyLabels = false; b1.labbeBack = "White"; check(same(Plots.labbe(br, b1), dflt), "L'Abbe background colour White equals the Default background");
+              Plots.Opts b2 = new Plots.Opts(); b2.studyLabels = false; b2.labbeBack = "Light grey"; check(!same(Plots.labbe(br, b2), dflt), "L'Abbe background colour changes the plot");
+              // legend: effect line below the no-effect line (RR < 1) -> top left, above (arms swapped) -> lower right; legend box is the only black frame region in the corner
+              MetaData sw = new MetaData(); sw.put("event.e", bd.get("event.c")); sw.put("n.e", bd.get("n.c")); sw.put("event.c", bd.get("event.e")); sw.put("n.c", bd.get("n.e")); sw.n = 6; MetaResult brHigh = Meta.run(bs, sw);
+              BufferedImage lo = Plots.labbe(br, g1), up = Plots.labbe(brHigh, g1); int W = lo.getWidth(), H = lo.getHeight();
+              check(darkCount(lo, 0, 0, W / 2, H / 3) > darkCount(lo, W / 2, 2 * H / 3, W, H) && darkCount(up, W / 2, 2 * H / 3, W, H) > darkCount(up, 0, 0, W / 2, H / 3), "L'Abbe ggplot2 legend: top left when the estimated line is below the diagonal, lower right when above");
+              Plots.Opts g2 = new Plots.Opts(); g2.labbeTheme = org.metajava.plot.LabbePlot.GG; g2.studyLabels = false; MetaSpec bc = bs.clone(); bc.random = false; bc.common = true; check(Plots.labbe(Meta.run(bc, bd), g2).getWidth() > 0, "L'Abbe ggplot2 style with a common-effect model only (no prediction interval) renders");
+            }
             try { for (java.util.function.DoubleFunction<BufferedImage> f : java.util.List.of(labF, doiF)) {
                 org.metajava.plot.VectorGraphics vg = org.metajava.plot.Canvas.record(f, 300 / 96.0); java.io.ByteArrayOutputStream sv = new java.io.ByteArrayOutputStream(), pf = new java.io.ByteArrayOutputStream();
                 org.metajava.plot.VectorExport.svg(vg, sv); org.metajava.plot.VectorExport.pdf(vg, pf); String x = sv.toString("UTF-8"); int w = f.apply(300 / 96.0).getWidth();

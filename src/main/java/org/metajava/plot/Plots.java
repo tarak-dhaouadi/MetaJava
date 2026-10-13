@@ -19,6 +19,8 @@ public final class Plots {
         /** Overrides of the forest-plot theme ("Theme default" keeps what the theme prescribes). */
         public boolean confInt = false; public String bubbleStyle = RegPlots.DEFAULT_STYLE, colPoints = RegPlots.POINTS_DEFAULT, colLine = RegPlots.LINE_DEFAULT, colBand = RegPlots.BAND_DEFAULT, colBandLine = RegPlots.BANDLINE_DEFAULT;   // regression plots
         public boolean predInt = false; public String colPred = RegPlots.PRED_DEFAULT, colPredLine = RegPlots.PREDLINE_DEFAULT, symbol = RegPlots.SYM_DEFAULT; public double symSize = 1.0;   // prediction interval, study symbol
+        public String baujatTheme = BaujatPlot.DEFAULT, baujatSymbol = BaujatPlot.AUTO, baujatBack = BaujatPlot.AUTO;   // Baujat plot: theme, symbol colour, background colour
+        public String labbeTheme = LabbePlot.DEFAULT, labbeSymbol = LabbePlot.AUTO, labbeBack = LabbePlot.AUTO, labbeCircle = LabbePlot.AUTO, labbeRef = LabbePlot.AUTO, labbeEst = LabbePlot.AUTO, labbeCI = LabbePlot.AUTO, labbePI = LabbePlot.AUTO;   // L'Abbe plot: theme, symbol (circle border) colour, background, circle fill, reference line, estimated-effect line, confidence area, prediction area
         public String funnelTheme = FunnelThemes.DEFAULT;   // funnel plot and trim-and-fill funnel plot: Default, MetaWin style, STATA style
         public String squareColour = ForestTheme.AUTO, diamondFill = ForestTheme.AUTO, diamondBorder = ForestTheme.AUTO, nullColour = ForestTheme.AUTO, nullStyle = ForestTheme.AUTO, pooledColour = ForestTheme.AUTO, pooledStyle = ForestTheme.AUTO; }
 
@@ -583,7 +585,7 @@ public final class Plots {
         org.metajava.core.Par.forRange(xy.length, q -> {
             int i = use.get(q); double w = 1 / (r.seTE[i] * r.seTE[i]); double x = w * Math.pow(r.TE[i] - p.teCommon, 2);
             int[] sub = new int[n - 1]; int cc = 0; for (int j = 0; j < n; j++) if (j != i) sub[cc++] = j; Pool qq = Pool.compute(s2, r.TE, r.seTE, sub, r.commonFn);
-            xy[q] = new double[]{x, Math.pow(p.teCommon - qq.teCommon, 2) / (qq.seCommon * qq.seCommon)};
+            xy[q] = new double[]{x, Math.pow(p.teCommon - qq.teCommon, 2) / (qq.seCommon * qq.seCommon), w};
         });
         List<double[]> pts = new ArrayList<>(); List<String> labs = new ArrayList<>(); for (int q = 0; q < xy.length; q++) { pts.add(xy[q]); labs.add(r.studlab[use.get(q)]); }
         r.baujatLabs = labs; r.baujatPts = pts;
@@ -591,10 +593,13 @@ public final class Plots {
 
     public static BufferedImage baujat(MetaResult r, Opts o) {
         baujatPoints(r); List<double[]> pts = r.baujatPts; List<String> labs = r.baujatLabs;
+        if (BaujatPlot.isGg(o)) return BaujatPlot.gg(pts, labs, o);
         Canvas c = new Canvas(560, 520, o.scale); double xm = 0, ym = 0; for (double[] q : pts) { xm = Math.max(xm, q[0]); ym = Math.max(ym, q[1]); }
+        c.g.setColor(BaujatPlot.backColour(o, false)); c.g.fill(new Rectangle2D.Double(70, 40, c.w / c.scaleF() - 100, c.h / c.scaleF() - 100));   // panel background (the frame is drawn on top)
         Axes a = axes(c, 0, xm * 1.08, 0, ym * 1.08, false, "Contribution to overall heterogeneity", "Influence on overall result", false, "");
-        for (int i = 0; i < pts.size(); i++) { double xx = a.X(pts.get(i)[0]), yy = a.Y(pts.get(i)[1]); c.g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) c.text(labs.get(i), xx + 4, yy - 3, 8, 0, false); }
-        return c.img;
+        Color sym = BaujatPlot.symbolColour(o, false);
+        for (int i = 0; i < pts.size(); i++) { double xx = a.X(pts.get(i)[0]), yy = a.Y(pts.get(i)[1]); c.g.setColor(sym); c.g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) { c.g.setColor(Color.BLACK); c.text(labs.get(i), xx + 4, yy - 3, 8, 0, false); } }
+        c.g.setColor(Color.BLACK); return c.img;
     }
 
     public static BufferedImage radial(MetaResult r, Opts o) {
@@ -631,16 +636,20 @@ public final class Plots {
         double[] w = labbeMetaforPsize(s, ee, ne, ec, nc, r.TE);
         double hi = 0; for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && !Double.isNaN(w[i]) && ne[i] > 0 && nc[i] > 0) hi = Math.max(hi, Math.max(ee[i] / ne[i], ec[i] / nc[i]));
         double[] tk = Canvas.pretty(0, Math.max(hi * 1.05, 0.05), 5); double lim = Math.min(1, tk[tk.length - 1]);   // same limits on both axes, as metafor::labbe
+        if (LabbePlot.isGg(o)) return LabbePlot.gg(r, o, w, lim, ee, ne, ec, nc);
+        Graphics2D g0 = c.g; g0.setColor(LabbePlot.pick(o.labbeBack, Color.WHITE)); g0.fill(new Rectangle2D.Double(70, 40, c.w / c.scaleF() - 100, c.h / c.scaleF() - 100));   // panel background (the frame is drawn on top)
         Axes a = axes(c, 0, lim, 0, lim, false, "Event rate (" + s.labelC + ")", "Event rate (" + s.labelE + ")", false, ""); Graphics2D g = c.g;
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
-        g.setColor(new Color(211, 211, 211)); g.setStroke(new BasicStroke(1f)); c.line(a.X(0), a.Y(0), a.X(lim), a.Y(lim));   // no effect (lightgray)
-        g.setColor(Color.BLACK);
+        { LabbePlot.Model mo = LabbePlot.model(r); Color pc = LabbePlot.chosen(o.labbePI), cc = LabbePlot.chosen(o.labbeCI);   // confidence / prediction areas: only when a colour was chosen (the current meta / metafor plot has none)
+          if (pc != null && mo.hasPi()) LabbePlot.area(a, s, mo.piLo, mo.piUp, lim, pc); if (cc != null && mo.hasCi()) LabbePlot.area(a, s, mo.ciLo, mo.ciUp, lim, cc); }
+        g.setColor(LabbePlot.pick(o.labbeRef, new Color(211, 211, 211))); g.setStroke(new BasicStroke(1f)); c.line(a.X(0), a.Y(0), a.X(lim), a.Y(lim));   // no effect (lightgray)
+        g.setColor(LabbePlot.pick(o.labbeEst, Color.BLACK));
         if (s.common) labbeLine(c, a, s, r.overall.teCommon, false, lim); if (s.random) labbeLine(c, a, s, r.overall.teRandom, true, lim);
         g.setClip(clip);
         for (int i = 0; i < n; i++) { if (Double.isNaN(r.TE[i]) || Double.isNaN(w[i]) || ne[i] <= 0 || nc[i] <= 0) continue;
             double xx = a.X(ec[i] / nc[i]), yy = a.Y(ee[i] / ne[i]), dia = 4 * w[i], rad = dia / 2;   // metafor: cex = psize in [0.5, 3.5] -> diameter 2 to 14 px
-            g.setColor(new Color(211, 211, 211)); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia)); g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia));
-            if (o.studyLabels) c.text(r.studlab[i], xx - rad - 3, yy + 3, 8, 2, false); }
+            g.setColor(LabbePlot.pick(o.labbeCircle, LabbePlot.DEF_CIRCLE)); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia)); g.setColor(LabbePlot.pick(o.labbeSymbol, Color.BLACK)); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia));
+            if (o.studyLabels) { g.setColor(Color.BLACK); c.text(r.studlab[i], xx - rad - 3, yy + 3, 8, 2, false); } }
         g.setColor(Color.BLACK); return c.img;
     }
     /** Symbol sizes of metafor::labbe.rma (plim = c(0.5, 3.5)): wi = sqrt(1/vi) with vi the sum of the arm-level sampling variances (escalc measures PLN for RR, PLO for OR, PR for RD, PAS for ASD, continuity correction as add/to of the model), rescaled linearly to [0.5, 3.5]; all 1 when every wi is equal. */
@@ -665,10 +674,8 @@ public final class Plots {
     /** Line of the pooled effect in the L'Abbe plot: event rate in the experimental group implied by a control rate x. */
     private static void labbeLine(Canvas c, Axes a, MetaSpec s, double te, boolean random, double lim) {
         if (Double.isNaN(te)) return; double[] xs = new double[101], ys = new double[101]; boolean ok = true;
-        for (int i = 0; i <= 100; i++) { double x = lim * i / 100.0, y;
-            switch (s.sm) { case "RR": y = Math.exp(te) * x; break; case "OR": { double e = Math.exp(te); y = e * x / (1 - x + e * x); break; } case "RD": y = x + te; break;
-                case "ASD": y = Math.pow(Math.sin(Math.max(0, Math.min(Math.PI / 2, Math.asin(Math.sqrt(x)) + te))), 2); break; default: ok = false; y = x; }
-            xs[i] = x; ys[i] = Math.max(0, Math.min(1, y)); }
+        for (int i = 0; i <= 100; i++) { double x = lim * i / 100.0, y = LabbePlot.lineY(s.sm, te, x); if (Double.isNaN(y)) { ok = false; y = x; }
+            xs[i] = x; ys[i] = y; }
         if (!ok) return; Graphics2D g = c.g; Stroke old = g.getStroke();
         g.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, random ? new float[]{9, 3} : new float[]{5, 4}, 0));
         Path2D p = new Path2D.Double(); for (int i = 0; i <= 100; i++) { if (i == 0) p.moveTo(a.X(xs[i]), a.Y(ys[i])); else p.lineTo(a.X(xs[i]), a.Y(ys[i])); } g.draw(p); g.setStroke(old);
