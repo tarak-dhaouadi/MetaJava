@@ -36,6 +36,9 @@ public class SelfTest {
     /** Pixels close to the colour rgb in the top (top = true) or right marginal panel of an ordinary GOSH plot drawn at scale 1 (frame x 72..600, y 112..548). */
     static int marg(BufferedImage im, int[] rgb, boolean top) { int n = 0, x0 = top ? 72 : 604, x1 = top ? 600 : im.getWidth(), y0 = top ? 0 : 112, y1 = top ? 108 : 548;
         for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) { int c = im.getRGB(x, y); if (Math.abs(((c >> 16) & 255) - rgb[0]) + Math.abs(((c >> 8) & 255) - rgb[1]) + Math.abs((c & 255) - rgb[2]) < 40) n++; } return n; }
+    /** Pixels within a small distance of the colour rgb (anti-aliased lines never hit the exact colour). */
+    static int near(BufferedImage im, int rgb) { int n = 0, r0 = (rgb >> 16) & 255, g0 = (rgb >> 8) & 255, b0 = rgb & 255; for (int y = 0; y < im.getHeight(); y++) for (int x = 0; x < im.getWidth(); x++) { int c = im.getRGB(x, y); if (Math.abs(((c >> 16) & 255) - r0) + Math.abs(((c >> 8) & 255) - g0) + Math.abs((c & 255) - b0) < 30) n++; } return n; }
+    static boolean sameImage(BufferedImage a, BufferedImage b) { if (a.getWidth() != b.getWidth() || a.getHeight() != b.getHeight()) return false; for (int y = 0; y < a.getHeight(); y++) for (int x = 0; x < a.getWidth(); x++) if (a.getRGB(x, y) != b.getRGB(x, y)) return false; return true; }
     static int countColour(BufferedImage im, int rgb) { int n = 0; for (int y = 0; y < im.getHeight(); y++) for (int x = 0; x < im.getWidth(); x++) if ((im.getRGB(x, y) & 0xFFFFFF) == rgb) n++; return n; }
 
     // ------------------------------------------------------------------ cluster detection: separation criterion, tests on data with and without structure
@@ -216,6 +219,66 @@ public class SelfTest {
         double[] y2 = {0.1, 0.35, 0.22, 0.4, 0.05, 0.3, 0.18, 0.27}, v2 = {0.02, 0.03, 0.025, 0.04, 0.02, 0.05, 0.03, 0.02};
         check(Double.isNaN(Rma.fit(y2, v2, null, "REML").higherMode()) && Double.isNaN(Rma.fit(y2, v2, null, "ML").higherMode()), "an ordinary data set has a single mode: nothing is reported");
         check(!Report.summary(Meta.run(sp, gen(LNHR, SEHR, true))).contains("second, higher maximum"), "no warning in the reference data sets");
+    }
+
+    /** Funnel plot themes (Default, MetaWin style, STATA style) for the main and the trim-and-fill funnel plot. */
+    static void funnelThemes() {
+        try {
+            double[] te = {0.07, -0.02, -0.06, 0.03, 0.12, 0.30, -0.18, -0.14, -0.07, 0.27, -0.32, 0.18, 0.80, -0.02, 0.23, 0.54, 0.26, 1.18, -0.06, 0.06}, se = {0.094, 0.103, 0.102, 0.125, 0.147, 0.140, 0.160, 0.167, 0.175, 0.165, 0.222, 0.224, 0.252, 0.290, 0.291, 0.302, 0.370, 0.374, 0.168, 0.095};
+            MetaSpec fs = new MetaSpec(); fs.type = "gen"; fs.sm = "SMD"; fs.methodTau = "REML"; MetaData fd = new MetaData(); fd.put("TE", te); fd.put("seTE", se); fd.studlab = new String[te.length]; for (int i = 0; i < te.length; i++) fd.studlab[i] = "S" + (i + 1);
+            MetaResult fr = Meta.run(fs, fd); TrimFill tf = TrimFill.run(fr, null, true, "L0", true, true);
+            for (String th : org.metajava.plot.FunnelThemes.NAMES) for (int v = 0; v < 4; v++) {
+                Plots.Opts q = new Plots.Opts(); q.funnelTheme = th; q.scale = 1; q.contour = (v & 1) == 1; q.studyLabels = false; BufferedImage im = Plots.funnel(fr, q, (v & 2) != 0 ? tf : null);
+                check(im.getWidth() > 300 && im.getHeight() > 300, "funnel theme '" + th + "' (contour " + q.contour + ", trim-and-fill " + ((v & 2) != 0) + ") is drawn");
+            }
+            Plots.Opts q = new Plots.Opts(); q.scale = 1; q.funnelTheme = "MetaWin style"; BufferedImage mw = Plots.funnel(fr, q, null), mwTf = Plots.funnel(fr, q, tf);
+            check(near(mw, 0x006837) > 20 && near(mw, 0xA50026) > 20, "MetaWin funnel has the power colour bar (dark green to dark red)");
+            check(near(mwTf, 0xFF7F0E) > 20 && near(mw, 0xFF7F0E) == 0, "MetaWin trim-and-fill funnel draws the imputed studies in orange, the plain funnel has none");
+            q = new Plots.Opts(); q.scale = 1; q.funnelTheme = "STATA style"; BufferedImage st = Plots.funnel(fr, q, null), stTf = Plots.funnel(fr, q, tf);
+            check(near(st, 0xEAF2F3) > 1000 && near(st, 0x1A476F) > 50, "STATA funnel has the pale-blue frame and the navy points / title");
+            check(near(stTf, 0xDE7D00) > 20 && near(st, 0xDE7D00) == 0, "STATA trim-and-fill funnel draws the imputed studies in orange");
+            q.contour = true; BufferedImage stc = Plots.funnel(fr, q, null); check(near(stc, 0x696969) > 5000 && near(stc, 0x696969) > 5 * near(st, 0x696969), "STATA contour-enhanced funnel draws the grey bands");
+            for (String th : new String[]{"Default", "MetaWin style", "STATA style"}) { Plots.Opts a = new Plots.Opts(), b = new Plots.Opts(); a.funnelTheme = th; b.funnelTheme = th; a.scale = 1; b.scale = 1; a.studyLabels = false; b.studyLabels = true;
+                check(!sameImage(Plots.funnel(fr, a, null), Plots.funnel(fr, b, null)) && !sameImage(Plots.funnel(fr, a, tf), Plots.funnel(fr, b, tf)), "study labels work in the '" + th + "' funnel plot and trim-and-fill funnel plot"); }
+            org.metajava.plot.VectorGraphics vg = org.metajava.plot.Canvas.record(sc -> { Plots.Opts z = new Plots.Opts(); z.funnelTheme = "MetaWin style"; z.scale = sc; return Plots.funnel(fr, z, tf); }, 1.0); check(vg != null, "themed funnel plot can be recorded as vector graphics (SVG / PDF)");
+        } catch (Exception e) { e.printStackTrace(); check(false, "funnel theme tests threw " + e); }
+    }
+
+    /** Forest-plot themes (Default, RevMan 5, BMJ, STATA) and the overrides of colour and line style, for the main, subgroup, leave-one-out and cumulative plots. */
+    static void forestThemes() {
+        try {
+            double[] e1 = {220, 180, 200, 230, 200, 240}, n1 = {1000, 800, 780, 750, 900, 850}, e2 = {440, 348, 420, 380, 460, 370}, n2 = n1;
+            MetaSpec bs = new MetaSpec(); bs.type = "bin"; bs.sm = "OR"; bs.methodTau = "DL"; bs.prediction = true; bs.subgroupName = "Group";
+            MetaData bd = new MetaData(); bd.put("event.e", e1); bd.put("n.e", n1); bd.put("event.c", e2); bd.put("n.c", n2); bd.subgroup = new String[]{"A", "B", "A", "B", "A", "B"};
+            MetaResult br = Meta.run(bs, bd); Meta.leaveOneOut(br); Meta.cumulative(br, null);
+            java.util.function.Function<String, Plots.Opts> opt = th -> { Plots.Opts q = new Plots.Opts(); q.theme = th; q.scale = 1; return q; };
+            java.util.Map<String, int[]> size = new java.util.HashMap<>();
+            for (String th : org.metajava.plot.ForestTheme.THEMES) {
+                BufferedImage main = Plots.forest(br, opt.apply(th)), loo = Plots.forestSeries(br, br.loo, br.looLabels, opt.apply(th), "loo"), cum = Plots.forestSeries(br, br.cum, br.cumLabels, opt.apply(th), "cum");
+                check(main.getWidth() > 300 && loo.getWidth() > 300 && cum.getWidth() > 300, "forest theme '" + th + "': main, leave-one-out and cumulative forest plots are drawn");
+                size.put(th, new int[]{main.getWidth(), main.getHeight()});
+            }
+            { BufferedImage a1 = Plots.forest(br, opt.apply("Default")), a2 = Plots.forest(br, opt.apply("RevMan 5 style")), a3 = Plots.forest(br, opt.apply("BMJ style")), a4 = Plots.forest(br, opt.apply("STATA style"));
+              check(!sameImage(a1, a2) && !sameImage(a1, a3) && !sameImage(a1, a4) && !sameImage(a2, a3) && !sameImage(a3, a4), "the four forest themes give four different plots"); }
+            // theme colours: RevMan blue squares, BMJ purple, STATA pale-blue frame
+            int blue = countColour(Plots.forest(br, opt.apply("RevMan 5 style")), 0x0000FF), purple = countColour(Plots.forest(br, opt.apply("BMJ style")), 0x7060A8), frame = countColour(Plots.forest(br, opt.apply("STATA style")), 0xEAF2F3);
+            check(blue > 100, "RevMan 5 theme draws blue study squares"); check(purple > 50, "BMJ theme draws purple study diamonds"); check(frame > 500, "STATA theme draws the pale-blue frame");
+            check(countColour(Plots.forest(br, opt.apply("Default")), 0x0000FF) == 0, "Default theme has no blue square");
+            // overrides (drawn at scale 3 and counted with a tolerance: thin lines are anti-aliased)
+            java.util.function.BiFunction<Plots.Opts, Integer, Integer> cnt = (z, rgb) -> { z.scale = 3; return near(Plots.forest(br, z), rgb); };
+            Plots.Opts q = opt.apply("Default"); q.squareColour = "Red"; check(cnt.apply(q, 0xCD0000) > 500, "square fill colour override (red) applies to the default theme");
+            q = opt.apply("RevMan 5 style"); q.squareColour = "Green"; check(cnt.apply(q, 0x009600) > 500 && cnt.apply(q, 0x0000FF) == 0, "square fill colour override replaces the RevMan 5 blue");
+            q = opt.apply("Default"); q.diamondFill = "Orange"; q.diamondBorder = "Dark green"; check(cnt.apply(q, 0xF08200) > 100 && cnt.apply(q, 0x006400) > 40, "diamond fill and border overrides apply");
+            Plots.Opts d0 = opt.apply("Default"); q = opt.apply("Default"); q.diamondFill = "None"; q.diamondBorder = "None"; check(cnt.apply(q, 0xC0C0C0) < cnt.apply(d0, 0xC0C0C0), "diamond fill 'None' leaves the diamond hollow");
+            q = opt.apply("Default"); q.nullColour = "Blue"; q.pooledColour = "Green"; check(cnt.apply(q, 0x0000FF) > 200 && cnt.apply(q, 0x009600) > 100, "null-effect and pooled-effect line colour overrides apply");
+            Plots.Opts qs = opt.apply("Default"), qd = opt.apply("Default"); qs.nullColour = "Blue"; qs.nullStyle = "Solid"; qd.nullColour = "Blue"; qd.nullStyle = "Dashed";
+            check(cnt.apply(qs, 0x0000FF) > cnt.apply(qd, 0x0000FF) + 100, "null-effect line style: dashed has fewer pixels than solid");
+            qs = opt.apply("Default"); qd = opt.apply("Default"); qs.pooledColour = "Red"; qs.pooledStyle = "Solid"; qd.pooledColour = "Red"; qd.pooledStyle = "Dotted";
+            check(cnt.apply(qs, 0xCD0000) > cnt.apply(qd, 0xCD0000) + 50, "pooled-effect line style: dotted has fewer pixels than solid");
+            q = opt.apply("STATA style"); q.nullStyle = "Dotted"; q.pooledStyle = "Solid"; check(Plots.forest(br, q).getWidth() > 300, "overrides also apply on top of the STATA theme");
+            // vector export of a themed plot
+            q = opt.apply("BMJ style"); org.metajava.plot.VectorGraphics vg = org.metajava.plot.Canvas.record(sc -> { Plots.Opts z = opt.apply("BMJ style"); z.scale = sc; return Plots.forest(br, z); }, 1.0); check(vg != null, "themed forest plot can be recorded as vector graphics (SVG / PDF)");
+        } catch (Exception e) { e.printStackTrace(); check(false, "forest theme tests threw " + e); }
     }
 
     public static void main(String[] args) {
@@ -661,6 +724,8 @@ public class SelfTest {
             String gtx = RegReport.goshRegText(gr, br), gtf = RegReport.goshRegText(s1, br); check(gtx.contains("8,100") && gtx.contains("exhaustive") && gtf.contains("random sample of 3,000 subsets"), "report text of the meta-regression GOSH states the number of valid subsets and whether all subsets or a sample were analysed");
             check(RegReport.goshText(gs, br).contains("Cluster detection"), "report text of the ordinary GOSH includes the cluster detection when requested");
         } catch (Exception e) { e.printStackTrace(); check(false, "permutest / model comparison / GOSH tests threw " + e); }
+
+        forestThemes(); funnelThemes();
 
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);

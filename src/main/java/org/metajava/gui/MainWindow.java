@@ -3,6 +3,7 @@ package org.metajava.gui;
 import org.metajava.core.*;
 import org.metajava.io.TableReader;
 import org.metajava.plot.Plots;
+import org.metajava.plot.ForestTheme;
 import org.metajava.plot.ExtraPlots;
 import org.metajava.plot.Canvas;
 import org.metajava.plot.VectorExport;
@@ -59,6 +60,10 @@ public class MainWindow extends JFrame {
     // forest options
     JCheckBox forestChk = Ui.check("Forest plot", true), fDetails = Ui.check("Analysis details", false), fOverallTest = Ui.check("Overall effect test", true), fHet = Ui.check("Heterogeneity statistics", true), fCiI2 = Ui.check("I\u00B2 confidence interval", false), fCiTau = Ui.check("Tau\u00B2 confidence interval", false);
     JComboBox<String> sortBox = Ui.combo("Original order", "Effect size", "Standard error", "Weight", "Study label"), sortDir = Ui.combo("Ascending", "Descending");
+    // forest theme and the options that override it
+    JComboBox<String> themeBox = Ui.combo(ForestTheme.THEMES), squareColBox = Ui.combo(ForestTheme.COLOURS), diamondFillBox = Ui.combo(ForestTheme.FILL_COLOURS), diamondBorderBox = Ui.combo(ForestTheme.FILL_COLOURS),
+        nullColBox = Ui.combo(ForestTheme.COLOURS), nullStyleBox = Ui.combo(ForestTheme.LINE_STYLES), pooledColBox = Ui.combo(ForestTheme.COLOURS), pooledStyleBox = Ui.combo(ForestTheme.LINE_STYLES);
+    JComboBox<String> funnelThemeBox = Ui.combo(org.metajava.plot.FunnelThemes.NAMES);   // Default / MetaWin style / STATA style
     JTextField xLeft = new JTextField(10), xRight = new JTextField(10); JSpinner digitsSp = new JSpinner(new SpinnerNumberModel(2, 0, 6, 1)), spacingSp = new JSpinner(new SpinnerNumberModel(1.0, 0.6, 2.5, 0.1));
     // other analyses
     JCheckBox sgChk = Ui.check("Subgroup analysis (uses the subgroup column)", false), sgPred = Ui.check("Subgroup prediction interval", false), sgTestEffect = Ui.check("Test for effect in subgroup", false), sgDetails = Ui.check("Details of meta-analysis methods", false), regChk = Ui.check("Meta-regression", false), bubbleChk = Ui.check("Bubble plot", true), regLine = Ui.check("Regression line", true), regIntercept = Ui.check("Intercept", true),
@@ -75,7 +80,7 @@ public class MainWindow extends JFrame {
     JTextField permSeedF = new JTextField("1", 6), goshSeedF = new JTextField("1", 6);
     JComboBox<String> biasMethod = Ui.combo("Default", "Egger", "Begg", "Thompson", "Harbord", "Peters", "Macaskill", "Deeks", "Pustejovsky", "Schwarzer");
     JComboBox<String> tfSide = Ui.combo("Auto", "Left", "Right"), tfEst = Ui.combo("L0", "R0");
-    JSpinner dpiSp = new JSpinner(new SpinnerNumberModel(300, 72, 1200, 100)); JComboBox<String> fmtBox = Ui.combo("PNG", "TIFF", "JPG", "SVG", "PDF");
+    JSpinner dpiSp = new JSpinner(new SpinnerNumberModel(300, 72, 1200, 100)); JComboBox<String> fmtBox = Ui.combo("PNG", "TIFF", "JPG", "SVG", "PDF"); JComboBox<String> goshPalBox = Ui.combo(ExtraPlots.PALETTE_NAMES);
     final List<Object[]> plots = new ArrayList<>(); // {title, DoubleFunction<BufferedImage>}
     final JLabel status = Ui.muted("Ready");
     final ProgressStrip strip = new ProgressStrip();
@@ -89,11 +94,11 @@ public class MainWindow extends JFrame {
         setDefaultCloseOperation(EXIT_ON_CLOSE); setSize(1500, 900); setLocationRelativeTo(null);
         getContentPane().setBackground(Ui.BG); setLayout(new BorderLayout());
         JPanel north = new JPanel(new BorderLayout()); north.setOpaque(false); north.add(header(), BorderLayout.NORTH); north.add(strip, BorderLayout.CENTER); add(north, BorderLayout.NORTH);
-        JPanel left = leftPanel(); JScrollPane ls = new JScrollPane(left); ls.setBorder(null); ls.getVerticalScrollBar().setUnitIncrement(16); ls.setPreferredSize(new Dimension(470, 800));
+        JPanel left = leftPanel(); JScrollPane ls = new JScrollPane(left); ls.setBorder(null); ls.getVerticalScrollBar().setUnitIncrement(16); ls.setPreferredSize(new Dimension(520, 800));
         results.setLayout(new BoxLayout(results, BoxLayout.Y_AXIS)); results.setBackground(Color.WHITE); results.setBorder(new EmptyBorder(14, 18, 14, 18));
         resScroll = new JScrollPane(results); resScroll.getVerticalScrollBar().setUnitIncrement(24); resScroll.setBorder(new LineBorder(Ui.BORDER));
         resScroll.getViewport().addComponentListener(new java.awt.event.ComponentAdapter() { public void componentResized(java.awt.event.ComponentEvent e) { rewrap(); } });   // long lines are re-wrapped to the window width, so no sideways scrolling is needed
-        JSplitPane sp = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, ls, resScroll); sp.setDividerLocation(470); sp.setBorder(new EmptyBorder(8, 8, 0, 8)); sp.setOpaque(false);
+        JSplitPane sp = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, ls, resScroll); sp.setDividerLocation(520); sp.setBorder(new EmptyBorder(8, 8, 0, 8)); sp.setOpaque(false);
         add(sp, BorderLayout.CENTER);
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 5)); bar.setBackground(Ui.BG); bar.add(status); busy.setPreferredSize(new Dimension(160, 12)); busy.setVisible(false); bar.add(busy); add(bar, BorderLayout.SOUTH);
         autoTimer.setRepeats(false); typeBox.addActionListener(e -> typeChanged()); typeChanged(); hook(left);
@@ -145,7 +150,17 @@ public class MainWindow extends JFrame {
         m.row("Continuity correction (incr)", incrF); m.row("Apply correction", incrBox); m.row(null, mhExact); m.row(null, allStudies); m.row("SMD method", smdBox); m.row(null, pooledvar); m.row("Scale factor (proportions/rates)", pscaleF); m.row("Title", titleF);
         p.add(m); p.add(Box.createVerticalStrut(8));
         Ui.Section f = new Ui.Section("4. Forest plot", false);
-        f.row(null, forestChk); f.row("Sort by", sortBox); f.row("Order", sortDir); f.row(null, fOverallTest); f.row(null, fHet); f.row(null, fCiI2); f.row(null, fCiTau); f.row(null, fDetails); f.row("X-axis left label", xLeft); f.row("X-axis right label", xRight); f.row("Digits", digitsSp); f.row("Row spacing", spacingSp);
+        f.row(null, forestChk);
+        themeBox.setToolTipText("Look of every forest plot (main, subgroup, leave-one-out and cumulative). Default = meta (R) style; RevMan 5 = Cochrane Review Manager 5; BMJ = BMJ journal style; STATA = Stata metan style");
+        squareColBox.setToolTipText("Fill colour of the study squares (diamonds in the BMJ style). Theme default keeps the colour of the selected theme");
+        diamondFillBox.setToolTipText("Fill colour of the pooled-effect diamonds. None leaves the diamond hollow"); diamondBorderBox.setToolTipText("Border colour of the pooled-effect diamonds. None draws no border");
+        nullColBox.setToolTipText("Colour of the vertical line at the null effect"); nullStyleBox.setToolTipText("Line style of the vertical line at the null effect");
+        pooledColBox.setToolTipText("Colour of the vertical line at the pooled effect"); pooledStyleBox.setToolTipText("Line style of the vertical line at the pooled effect");
+        f.row("Theme", themeBox); f.row("Study-square fill colour", squareColBox);
+        f.row(null, pairRow("Diamond fill", diamondFillBox, "Diamond border", diamondBorderBox));
+        f.row(null, pairRow("Null-effect line color", nullColBox, "Null-effect line style", nullStyleBox));
+        f.row(null, pairRow("Pooled-effect line color", pooledColBox, "Pooled-effect line style", pooledStyleBox));
+        f.row("Sort by", sortBox); f.row("Order", sortDir); f.row(null, fOverallTest); f.row(null, fHet); f.row(null, fCiI2); f.row(null, fCiTau); f.row(null, fDetails); f.row("X-axis left label", xLeft); f.row("X-axis right label", xRight); f.row("Digits", digitsSp); f.row("Row spacing", spacingSp);
         p.add(f); p.add(Box.createVerticalStrut(8));
         Ui.Section sg = new Ui.Section("5. Subgroup analysis", false); sg.row("Subgroup variable", subgroupBox); sg.row(null, sgChk); sg.row(null, tauCommon); sg.row(null, sgPred); sg.row(null, sgTestEffect); sg.row(null, sgDetails); sg.row(null, orchardChk); sg.row(null, caterChk); p.add(sg); p.add(Box.createVerticalStrut(8));
         Ui.Section rg = new Ui.Section("6. Meta-regression", false); rg.row(null, regChk); rg.row("Covariates (numeric)", new JScrollPane(covList)); rg.row("Factors (categorical)", new JScrollPane(facList)); rg.row(null, buildRefPanel()); rg.row(null, regIntercept); regIntercept.addActionListener(e -> updateRefPanel()); rg.row(null, bubbleChk); rg.row(null, regLine);
@@ -155,7 +170,9 @@ public class MainWindow extends JFrame {
         rg.row(null, permChk); rg.row("Permutations", permIterSp); rg.row("Random seed (permutations)", permSeedF); rg.row(null, permExactChk); rg.row(null, cmpChk); p.add(rg); p.add(Box.createVerticalStrut(8));
         Ui.Section lo = new Ui.Section("7. Leave-one-out analysis", false); lo.row(null, looChk); lo.row(null, looForest); p.add(lo); p.add(Box.createVerticalStrut(8));
         Ui.Section cu = new Ui.Section("8. Cumulative meta-analysis", false); cu.row(null, cumChk); cu.row(null, cumForest); p.add(cu); p.add(Box.createVerticalStrut(8));
-        Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
+funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill funnel plot. Default = meta style; MetaWin style = power-enhanced (sunset) funnel with contour bands, always contour-enhanced; STATA style = Stata look (pale-blue frame, grey pseudo 95% limits or contour bands, framed legend). Imputed studies of the trim-and-fill plot are orange in the MetaWin and STATA styles");
+        funnelThemeBox.addActionListener(e -> contourChk.setEnabled(!org.metajava.plot.FunnelThemes.METAWIN.equals(funnelThemeBox.getSelectedItem())));   // MetaWin style is always contour-enhanced
+        Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row("Funnel plot themes", funnelThemeBox); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
         pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row(null, doiChk); pb.row(null, doiApexChk);
         petChk.setToolTipText("Precision-effect test (PET) and precision-effect estimate with standard error (PEESE): regression-based effect corrected for small-study effects (Stanley & Doucouliagos, 2014)");
         selChk.setToolTipText("Vevea-Hedges three-parameter selection model: adjusted effect when non-significant results are less likely to be published (works best with 20-30 or more studies)");
@@ -170,8 +187,12 @@ public class MainWindow extends JFrame {
         goshSubSp.setToolTipText("All subsets are used when there are at most this many possible subsets; otherwise this many random subsets (as metafor::gosh). Also used for the meta-regression GOSH");
         goshTrimChk.setToolTipText("A few extreme subsets (for example nearly collinear ones) can give coefficients far outside the bulk and flatten the plots. When this is on, an axis is limited to the central 99% of the subsets if that is clearly narrower than the full range; the displayed range and the number of subsets outside it are stated below the plot. No subset is removed from the analysis, the tables or the cluster detection.");
         goshTrimOrdChk.setToolTipText("A few extreme subsets can give estimates far outside the bulk and flatten the plot. When this is on, the estimate axis is limited to the central 99% of the subsets if that is more than 25% narrower than the full range; the displayed range and the number of subsets outside it are stated below the plot. No subset is removed from the analysis or from the tables.");
-        java.awt.event.ItemListener goshEn = e -> { boolean on = goshChk.isSelected(); goshClChk.setEnabled(on); goshRegChk.setEnabled(on); goshTrimChk.setEnabled(on); goshTrimOrdChk.setEnabled(on); }; goshChk.addItemListener(goshEn); goshEn.itemStateChanged(null);
-        dg.row(null, goshChk); dg.row("GOSH subsets", goshSubSp); dg.row("Random seed (GOSH)", goshSeedF); dg.row(null, goshTrimOrdChk); dg.row(null, goshHlChk); dg.row(null, goshClChk); dg.row(null, goshRegChk); dg.row(null, goshTrimChk); p.add(dg); p.add(Box.createVerticalStrut(8));
+        java.awt.event.ItemListener goshEn = e -> { boolean on = goshChk.isSelected(); goshClChk.setEnabled(on); goshRegChk.setEnabled(on); goshTrimChk.setEnabled(on); goshTrimOrdChk.setEnabled(on); goshPalBox.setEnabled(on); }; goshChk.addItemListener(goshEn); goshEn.itemStateChanged(null);
+        dg.row(null, goshChk); dg.row("GOSH subsets", goshSubSp); dg.row("Random seed (GOSH)", goshSeedF); dg.row(null, goshTrimOrdChk); goshPalBox.setToolTipText("Colours of all GOSH plots (ordinary GOSH and GOSH for meta-regression): points, marginal curves, the two groups of the most-influential-study highlight, the clusters and the density map. Default = current palette; Classic = pure blue / red as in the usual GOSH figures; Okabe-Ito and Viridis are colour-blind safe; NPG follows the Nature Publishing Group style; Greyscale is for black-and-white print");
+        goshPalBox.setPreferredSize(new Dimension(104, goshPalBox.getPreferredSize().height)); JLabel palLbl = Ui.muted("Colour palette"); palLbl.setBorder(new EmptyBorder(0, 0, 0, 4));
+        JPanel palRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0)); palRow.setOpaque(false); palRow.add(palLbl); palRow.add(goshPalBox);
+        JPanel hlRow = new JPanel(new BorderLayout(10, 0)); hlRow.setOpaque(false); hlRow.add(goshHlChk, BorderLayout.WEST); hlRow.add(palRow, BorderLayout.EAST);
+        dg.row(null, hlRow); dg.row(null, goshClChk); dg.row(null, goshRegChk); dg.row(null, goshTrimChk); p.add(dg); p.add(Box.createVerticalStrut(8));
         Ui.Section ou = new Ui.Section("11. Export", false); JButton sa = Ui.button("Save all plots\u2026", false), st = Ui.button("Save results (.txt)\u2026", false), sx = Ui.button("Save tables (.xlsx)\u2026", false), sw = Ui.button("Save full report (.docx)\u2026", false); sa.addActionListener(e -> savePlots()); st.addActionListener(e -> saveText()); sx.addActionListener(e -> saveExcel()); sw.addActionListener(e -> saveWord());
         sx.setToolTipText("Excel workbook with the results tables: one sheet per analysis section"); sw.setToolTipText("Word document with the whole output (paragraphs, tables and figures) in the order of the results panel");
         dpiSp.setToolTipText("Resolution of PNG, TIFF and JPG files. SVG and PDF are resolution independent and ignore it."); fmtBox.addActionListener(e -> dpiSp.setEnabled(RasterWriter.isRaster((String) fmtBox.getSelectedItem()))); dpiSp.setEnabled(RasterWriter.isRaster((String) fmtBox.getSelectedItem()));
@@ -179,6 +200,15 @@ public class MainWindow extends JFrame {
         p.add(Box.createVerticalGlue());
         modelBox.setSelectedIndex(0); return p;
     }
+
+    /** Two drop-down lists side by side, each with its label above it (compact layout of the forest-plot overrides). */
+    static JPanel pairRow(String l1, JComboBox<String> c1, String l2, JComboBox<String> c2) {
+        JPanel p = new JPanel(new GridLayout(1, 2, 12, 0)); p.setOpaque(false);
+        p.add(cell(l1, c1)); p.add(cell(l2, c2));
+        return p;
+    }
+
+    private static JPanel cell(String label, JComboBox<String> c) { JPanel cell = new JPanel(new BorderLayout(0, 3)); cell.setOpaque(false); cell.add(Ui.label(label), BorderLayout.NORTH); cell.add(c, BorderLayout.CENTER); return cell; }
 
     boolean loading = false;
     void schedule() { if (!suppress && table != null) autoTimer.restart(); }
@@ -410,7 +440,7 @@ public class MainWindow extends JFrame {
     /** Everything the background code needs, captured on the UI thread (Swing components are never read from worker threads). */
     static final class Snap {
         MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; Map<String, String> refs = new HashMap<>(); String biasMethod, tfSide, tfEst, selDir; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
-        boolean perm, permExact, cmp, orchard, cater, gosh, goshHl, goshCl, goshReg, goshTrim, goshTrimOrd; int permIter, goshSub; long permSeed, goshSeed;
+        String goshPal = "Default"; boolean perm, permExact, cmp, orchard, cater, gosh, goshHl, goshCl, goshReg, goshTrim, goshTrimOrd; int permIter, goshSub; long permSeed, goshSeed;
         boolean doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, loo, looForest, cum, cumForest, funnel, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
     }
     private final ThreadLocal<List<Item>> sink = new ThreadLocal<>();
@@ -440,7 +470,7 @@ public class MainWindow extends JFrame {
             n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
             n.o.contour = n.funnel && n.contour; n.o.studyLabels = n.labels;
             n.perm = permChk.isSelected(); n.permExact = permExactChk.isSelected(); n.cmp = cmpChk.isSelected(); n.permIter = (Integer) permIterSp.getValue(); n.permSeed = lng(permSeedF, 1);
-            n.orchard = orchardChk.isSelected(); n.cater = caterChk.isSelected(); n.gosh = goshChk.isSelected(); n.goshHl = goshHlChk.isSelected(); n.goshCl = goshClChk.isSelected(); n.goshReg = goshRegChk.isSelected(); n.goshTrim = goshTrimChk.isSelected(); n.goshTrimOrd = goshTrimOrdChk.isSelected(); n.goshSub = (Integer) goshSubSp.getValue(); n.goshSeed = lng(goshSeedF, 1);
+            n.orchard = orchardChk.isSelected(); n.cater = caterChk.isSelected(); n.gosh = goshChk.isSelected(); n.goshHl = goshHlChk.isSelected(); n.goshPal = (String) goshPalBox.getSelectedItem(); n.goshCl = goshClChk.isSelected(); n.goshReg = goshRegChk.isSelected(); n.goshTrim = goshTrimChk.isSelected(); n.goshTrimOrd = goshTrimOrdChk.isSelected(); n.goshSub = (Integer) goshSubSp.getValue(); n.goshSeed = lng(goshSeedF, 1);
             n.pet = petChk.isSelected(); n.petPlot = petPlotChk.isSelected(); n.sel = selChk.isSelected(); n.selDir = (String) selDir.getSelectedItem(); n.fail = failChk.isSelected();
         } catch (Validate.Failed ex) { showValidation(ex); return;
         } catch (Exception ex) { if (auto) softError(ex); else error(ex); return; }
@@ -489,7 +519,7 @@ public class MainWindow extends JFrame {
                 if (!java.util.Arrays.asList("RR", "OR", "RD", "ASD").contains(s.sm)) addText("L\u2019Abb\u00E9 Plot", "Note: the line of the pooled effect is only drawn for RR, OR, RD and ASD;\nthe study event rates are shown without it.");
                 addPlot("L\u2019Abb\u00E9 Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.labbe(r, q); }); }, false});
             if (n.gosh) secs.add(new Object[]{(Runnable) () -> { Gosh gs = Gosh.run(r, n.goshSub, n.goshSeed); final GoshCluster gc = n.goshCl ? gs.detectClusters() : null; addText("GOSH Analysis", RegReport.goshText(gs, r));
-                addPlot("GOSH Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.gosh(gs, r, q, n.goshHl, gc, n.goshTrimOrd); });
+                addPlot("GOSH Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.goshPalette = n.goshPal; return ExtraPlots.gosh(gs, r, q, n.goshHl, gc, n.goshTrimOrd); });
                 if (n.goshReg) goshRegression(r, n); }, true});
             final int total = secs.size();
             for (Object[] sc : secs) {
@@ -534,7 +564,9 @@ public class MainWindow extends JFrame {
     }
 
     Plots.Opts forestOpts() { Plots.Opts o = new Plots.Opts(); o.sortBy = (String) sortBox.getSelectedItem(); o.ascending = sortDir.getSelectedIndex() == 0; o.analysisDetails = fDetails.isSelected(); o.testOverall = fOverallTest.isSelected(); o.hetStats = fHet.isSelected(); o.ciI2 = fCiI2.isSelected(); o.ciTau = fCiTau.isSelected();
-        o.xLeft = xLeft.getText(); o.xRight = xRight.getText(); o.digits = (Integer) digitsSp.getValue(); o.spacing = (Double) spacingSp.getValue(); o.studyLabels = labChk.isSelected(); o.regLine = regLine.isSelected(); return o; }
+        o.theme = (String) themeBox.getSelectedItem(); o.squareColour = (String) squareColBox.getSelectedItem(); o.diamondFill = (String) diamondFillBox.getSelectedItem(); o.diamondBorder = (String) diamondBorderBox.getSelectedItem();
+        o.nullColour = (String) nullColBox.getSelectedItem(); o.nullStyle = (String) nullStyleBox.getSelectedItem(); o.pooledColour = (String) pooledColBox.getSelectedItem(); o.pooledStyle = (String) pooledStyleBox.getSelectedItem();
+        o.funnelTheme = (String) funnelThemeBox.getSelectedItem(); o.xLeft = xLeft.getText(); o.xRight = xRight.getText(); o.digits = (Integer) digitsSp.getValue(); o.spacing = (Double) spacingSp.getValue(); o.studyLabels = labChk.isSelected(); o.regLine = regLine.isSelected(); return o; }
     static Plots.Opts copy(Plots.Opts a) { Plots.Opts o = new Plots.Opts(); for (java.lang.reflect.Field f : Plots.Opts.class.getFields()) try { f.set(o, f.get(a)); } catch (Exception e) { } return o; }
 
     void regression(MetaResult r, Snap n) {
@@ -561,8 +593,8 @@ public class MainWindow extends JFrame {
         catch (IllegalArgumentException ex) { addText(title + ": ~ " + String.join(" + ", terms), "GOSH for meta-regression: " + ex.getMessage()); return; }
         if (n.goshCl) gr.detectClusters();
         addText(title + ": ~ " + String.join(" + ", terms), RegReport.goshRegText(gr, r));
-        addPlot("GOSH Meta-Regression: Coefficients versus Residual Heterogeneity", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; return ExtraPlots.goshRegCoef(gr, q, n.goshTrim, n.goshHl); });
-        addPlot("GOSH Meta-Regression: Scatterplot Matrix", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; return ExtraPlots.goshRegMatrix(gr, q, n.goshTrim, n.goshHl); });
+        addPlot("GOSH Meta-Regression: Coefficients versus Residual Heterogeneity", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.goshPalette = n.goshPal; return ExtraPlots.goshRegCoef(gr, q, n.goshTrim, n.goshHl); });
+        addPlot("GOSH Meta-Regression: Scatterplot Matrix", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.goshPalette = n.goshPal; return ExtraPlots.goshRegMatrix(gr, q, n.goshTrim, n.goshHl); });
     }
 
     void influence(MetaResult r, MetaSpec s, Snap n) {

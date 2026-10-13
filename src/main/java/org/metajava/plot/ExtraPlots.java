@@ -12,6 +12,47 @@ public final class ExtraPlots {
     private ExtraPlots() {}
     static final Color BLUE = new Color(0x1F, 0x4E, 0x8C), ORANGE = new Color(0xD9, 0x82, 0x2B), INK = new Color(60, 60, 60), GRID = new Color(150, 150, 150);
 
+    /** Colour-blind-safe qualitative palette (Okabe and Ito). */
+    static final int[][] CL = {{0, 114, 178}, {230, 159, 0}, {0, 158, 115}, {213, 94, 0}, {204, 121, 167}, {110, 110, 110}};
+    // ------------------------------------------------------------------ GOSH colour palettes
+    /** Colour palette of the GOSH plots (ordinary and meta-regression): the points / marginal curves, the two groups of the "most influential study" highlight, the clusters and the density ramp. */
+    public static final class GoshPalette {
+        public final String name; final Color single, in, out, histFill; final int[][] cl; final int[][] ramp; final double alphaMul;
+        GoshPalette(String name, Color single, Color in, Color out, Color histFill, int[][] cl, int[][] ramp, double alphaMul) { this.name = name; this.single = single; this.in = in; this.out = out; this.histFill = histFill; this.cl = cl; this.ramp = ramp; this.alphaMul = alphaMul; }
+        /** Colour with the given opacity (0-255) scaled by the palette's point transparency (used for the points of the plots). */
+        Color col(Color c, int alpha) { return new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.max(1, Math.min(255, (int) Math.round(alpha * alphaMul)))); }
+        /** Colour with the given opacity, not scaled (legend symbols and curves). */
+        Color solid(Color c, int alpha) { return new Color(c.getRed(), c.getGreen(), c.getBlue(), alpha); }
+        Color cluster(int g, int alpha) { int[] q = cl[Math.floorMod(g, cl.length)]; return new Color(q[0], q[1], q[2], alpha); }
+        Color clusterSolid(int g, int alpha) { int[] q = cl[Math.floorMod(g, cl.length)]; return new Color(q[0], q[1], q[2], alpha); }
+        /** Sequential ramp (light = few subsets, dark = many) through the palette's stops. */
+        Color ramp(double t) {
+            t = Math.max(0, Math.min(1, t)); int m = ramp.length - 1; double u = t * m; int i = Math.min(m - 1, (int) Math.floor(u)); double f = u - i; int[] a = ramp[i], b = ramp[i + 1];
+            return new Color((int) Math.round(a[0] + (b[0] - a[0]) * f), (int) Math.round(a[1] + (b[1] - a[1]) * f), (int) Math.round(a[2] + (b[2] - a[2]) * f));
+        }
+    }
+    static final String DEFAULT_PALETTE = "Default";
+    /** Names shown in the "Colour palette" drop-down of the GUI (first = default). */
+    public static final String[] PALETTE_NAMES = {DEFAULT_PALETTE, "Classic (blue/red)", "Okabe-Ito", "Viridis", "NPG (Nature)", "Greyscale"};
+    static final Map<String, GoshPalette> PALETTES = new LinkedHashMap<>();
+    static {
+        PALETTES.put(DEFAULT_PALETTE, new GoshPalette(DEFAULT_PALETTE, BLUE, BLUE, ORANGE, new Color(0xD9, 0xE2, 0xF0), CL0(), new int[][]{{0xE3, 0xEC, 0xF7}, {0x0B, 0x2D, 0x63}}, 1.0));
+        // colours of the classic GOSH figure (metafor / dmetar style): pure blue and red, very transparent points, translucent marginal histograms
+        PALETTES.put(PALETTE_NAMES[1], new GoshPalette(PALETTE_NAMES[1], new Color(0, 0, 255), new Color(0, 0, 255), new Color(255, 0, 0), new Color(176, 176, 255),
+            new int[][]{{0, 0, 255}, {255, 0, 0}, {0, 150, 0}, {148, 0, 211}, {255, 140, 0}, {110, 110, 110}}, new int[][]{{0xE6, 0xE6, 0xFF}, {0, 0, 0xC8}}, 0.6));
+        PALETTES.put(PALETTE_NAMES[2], new GoshPalette(PALETTE_NAMES[2], new Color(0, 114, 178), new Color(0, 114, 178), new Color(213, 94, 0), new Color(204, 228, 244),
+            CL0(), new int[][]{{0xE1, 0xEF, 0xF8}, {0, 60, 110}}, 1.0));
+        PALETTES.put(PALETTE_NAMES[3], new GoshPalette(PALETTE_NAMES[3], new Color(49, 104, 142), new Color(68, 1, 84), new Color(33, 145, 140), new Color(215, 226, 236),
+            new int[][]{{68, 1, 84}, {33, 145, 140}, {122, 209, 81}, {49, 104, 142}, {215, 180, 0}, {110, 110, 110}}, new int[][]{{250, 232, 110}, {33, 145, 140}, {68, 1, 84}}, 1.0));
+        PALETTES.put(PALETTE_NAMES[4], new GoshPalette(PALETTE_NAMES[4], new Color(60, 84, 136), new Color(60, 84, 136), new Color(230, 75, 53), new Color(221, 226, 240),
+            new int[][]{{60, 84, 136}, {230, 75, 53}, {0, 160, 135}, {77, 187, 213}, {243, 155, 127}, {132, 145, 180}}, new int[][]{{0xE1, 0xE6, 0xF3}, {30, 45, 90}}, 1.0));
+        PALETTES.put(PALETTE_NAMES[5], new GoshPalette(PALETTE_NAMES[5], new Color(40, 40, 40), new Color(30, 30, 30), new Color(150, 150, 150), new Color(215, 215, 215),
+            new int[][]{{20, 20, 20}, {150, 150, 150}, {85, 85, 85}, {190, 190, 190}, {50, 50, 50}, {120, 120, 120}}, new int[][]{{0xF0, 0xF0, 0xF0}, {20, 20, 20}}, 1.0));
+    }
+    static int[][] CL0() { return CL; }
+    /** Palette by name (unknown or empty names give the default palette). */
+    public static GoshPalette palette(String name) { GoshPalette p = name == null ? null : PALETTES.get(name); return p != null ? p : PALETTES.get(DEFAULT_PALETTE); }
+
     /** Horizontal value axis in "axis space": the working scale for ratio measures drawn on a log axis, the back-transformed scale otherwise. */
     static final class Ax {
         double x0, x1, xl, xh; boolean log;
@@ -46,7 +87,7 @@ public final class ExtraPlots {
      *             the displayed range and the number of subsets outside it are stated below the plot, and no subset is removed from the analysis
      */
     public static BufferedImage gosh(Gosh gs, MetaResult r, Plots.Opts o, boolean highlight0, GoshCluster cl, boolean trim) {
-        final boolean clus = cl != null && cl.found(); final boolean highlight = highlight0 && !clus;
+        final boolean clus = cl != null && cl.found(); final boolean highlight = highlight0 && !clus; final GoshPalette P = palette(o.goshPalette);
         MetaSpec s = r.spec; boolean log = isLog(s);
         final double fx0 = 72, fx1 = 600, fy0 = 112, fy1 = 548;
         int n = gs.nSub; double[] xs = new double[n]; double xmin = Double.POSITIVE_INFINITY, xmax = Double.NEGATIVE_INFINITY;
@@ -74,13 +115,13 @@ public final class ExtraPlots {
             for (int b = 0; b < n; b++) { if (Double.isNaN(xs[b]) || Double.isNaN(gs.i2[b]) || xs[b] < a.xl || xs[b] > a.xh) continue; int ix = (int) Math.min(nx - 1, Math.max(0, (xs[b] - a.xl) / (a.xh - a.xl) * nx)), iy = (int) Math.min(ny - 1, Math.max(0, (gs.i2[b] - yl) / (yh - yl) * ny)); int v = ++counts[iy * nx + ix]; if (v > mx) mx = v; }
             double cw = (fx1 - fx0) / nx, ch = (fy1 - fy0) / ny;
             for (int iy = 0; iy < ny; iy++) for (int ix = 0; ix < nx; ix++) { int v = counts[iy * nx + ix]; if (v == 0) continue; double t = Math.log1p(v) / Math.log1p(mx);
-                g.setColor(ramp(t)); g.fill(new Rectangle2D.Double(fx0 + ix * cw - 0.3, fy1 - (iy + 1) * ch - 0.3, cw + 0.6, ch + 0.6)); }
+                g.setColor(P.ramp(t)); g.fill(new Rectangle2D.Double(fx0 + ix * cw - 0.3, fy1 - (iy + 1) * ch - 0.3, cw + 0.6, ch + 0.6)); }
         } else {
             int step = Math.max(1, (int) Math.ceil(n / 8000.0));
             for (int pass = 0; pass < (highlight ? 2 : 1); pass++) for (int b = 0; b < n; b += step) { if (Double.isNaN(xs[b]) || Double.isNaN(gs.i2[b])) continue;
                 boolean in = highlight && gs.includes(b, hl); if (highlight && (pass == 0) == in) continue;
                 if (clus && cl.label[b] < 0) continue;
-                g.setColor(clus ? clusterColor(cl.label[b], 95) : !highlight ? new Color(BLUE.getRed(), BLUE.getGreen(), BLUE.getBlue(), 70) : in ? new Color(BLUE.getRed(), BLUE.getGreen(), BLUE.getBlue(), 80) : new Color(ORANGE.getRed(), ORANGE.getGreen(), ORANGE.getBlue(), 90));
+                g.setColor(clus ? P.cluster(cl.label[b], (int) Math.round(95 * P.alphaMul)) : !highlight ? P.col(P.single, 70) : in ? P.col(P.in, 80) : P.col(P.out, 90));
                 double xx = a.X(xs[b]), yy = Y.applyAsDouble(gs.i2[b]); g.fill(new Ellipse2D.Double(xx - 2.2, yy - 2.2, 4.4, 4.4)); }
         }
         g.setStroke(new BasicStroke(1f)); g.setColor(GRID); c.dashed(a.X(full), fy0, a.X(full), fy1); c.dashed(fx0, Y.applyAsDouble(gs.fullI2), fx1, Y.applyAsDouble(gs.fullI2));
@@ -100,7 +141,7 @@ public final class ExtraPlots {
         double mx = 0, my = 0;
         for (int q = 0; q < ng; q++) { hx[q] = smooth(hx[q]); hy[q] = smooth(hy[q]); if (cnt[q] > 0) { for (int i2 = 0; i2 < nb; i2++) { hx[q][i2] /= cnt[q]; hy[q][i2] /= cnt[q]; mx = Math.max(mx, hx[q][i2]); my = Math.max(my, hy[q][i2]); } } }
         for (int q = 0; q < ng; q++) { if (cnt[q] == 0) continue;
-            Color line = ng == 1 ? BLUE : highlight ? (q == 0 ? BLUE : ORANGE) : clusterColor(q, 255), fill = ng == 1 ? new Color(0xD9, 0xE2, 0xF0) : new Color(line.getRed(), line.getGreen(), line.getBlue(), 70);
+            Color line = ng == 1 ? P.single : highlight ? (q == 0 ? P.in : P.out) : P.cluster(q, 255), fill = ng == 1 ? P.histFill : new Color(line.getRed(), line.getGreen(), line.getBlue(), 70);
             Path2D top = new Path2D.Double(); top.moveTo(fx0, fy0 - 4);
             for (int i2 = 0; i2 < nb; i2++) { double xx = fx0 + (i2 + 0.5) / nb * (fx1 - fx0); top.lineTo(xx, fy0 - 4 - (mx > 0 ? hx[q][i2] / mx : 0) * 58); } top.lineTo(fx1, fy0 - 4); top.closePath();
             g.setColor(fill); g.fill(top); g.setColor(line); g.setStroke(new BasicStroke(ng == 1 ? 1f : 1.6f)); g.draw(top);
@@ -113,9 +154,9 @@ public final class ExtraPlots {
         // legend / notes
         String note = String.format(Locale.ROOT, "%,d %ssubsets", n, gs.exhaustive ? "(all) " : "random ");
         c.text(note, fx0 + 8, fy0 + 16, 10, 0, false);
-        if (highlight) { double ly = fy0 + 32; g.setColor(new Color(BLUE.getRed(), BLUE.getGreen(), BLUE.getBlue(), 160)); g.fill(new Ellipse2D.Double(fx0 + 8, ly - 7, 8, 8)); g.setColor(Color.BLACK); c.text("includes " + gs.labels[hl], fx0 + 22, ly, 10, 0, false);
-            ly += 15; g.setColor(new Color(ORANGE.getRed(), ORANGE.getGreen(), ORANGE.getBlue(), 190)); g.fill(new Ellipse2D.Double(fx0 + 8, ly - 7, 8, 8)); g.setColor(Color.BLACK); c.text("excludes " + gs.labels[hl], fx0 + 22, ly, 10, 0, false); }
-        if (clus) clusterLegend(c, cl, fx0 + 8, fy0 + 32);
+        if (highlight) { double ly = fy0 + 32; g.setColor(P.solid(P.in, 160)); g.fill(new Ellipse2D.Double(fx0 + 8, ly - 7, 8, 8)); g.setColor(Color.BLACK); c.text("includes " + gs.labels[hl], fx0 + 22, ly, 10, 0, false);
+            ly += 15; g.setColor(P.solid(P.out, 190)); g.fill(new Ellipse2D.Double(fx0 + 8, ly - 7, 8, 8)); g.setColor(Color.BLACK); c.text("excludes " + gs.labels[hl], fx0 + 22, ly, 10, 0, false); }
+        if (clus) clusterLegend(c, cl, fx0 + 8, fy0 + 32, P);
         c.text("dashed lines: all " + gs.k + " studies", fx1 - 6, fy1 - 8, 9, 2, false);
         return c.img;
     }
@@ -129,12 +170,10 @@ public final class ExtraPlots {
 
 
     // ------------------------------------------------------------------ cluster colours
-    /** Colour-blind-safe qualitative palette (Okabe and Ito). */
-    static final int[][] CL = {{0, 114, 178}, {230, 159, 0}, {0, 158, 115}, {213, 94, 0}, {204, 121, 167}, {110, 110, 110}};
     static Color clusterColor(int g, int alpha) { int[] q = CL[Math.floorMod(g, CL.length)]; return new Color(q[0], q[1], q[2], alpha); }
-    static void clusterLegend(Canvas c, GoshCluster cl, double x, double y) {
+    static void clusterLegend(Canvas c, GoshCluster cl, double x, double y, GoshPalette P) {
         Graphics2D g = c.g;
-        for (int q = 0; q < cl.G; q++) { g.setColor(clusterColor(q, 220)); g.fill(new Ellipse2D.Double(x, y - 7, 8, 8)); g.setColor(Color.BLACK);
+        for (int q = 0; q < cl.G; q++) { g.setColor(P.cluster(q, 220)); g.fill(new Ellipse2D.Double(x, y - 7, 8, 8)); g.setColor(Color.BLACK);
             c.text(String.format(Locale.ROOT, "cluster %d (%.0f%%)", q + 1, cl.share[q]), x + 14, y, 10, 0, false); y += 15; }
     }
 
@@ -186,19 +225,19 @@ public final class ExtraPlots {
     }
 
     /** One scatter panel (x against y) in the box [x0,x1] x [y0,y1]: density map for large clouds, points (coloured by cluster) otherwise. */
-    static void panel(Canvas c, GoshReg gs, double[] xv, double[] yv, double[] xr, double[] yr, double x0, double x1, double y0, double y1, GoshCluster cl, int hl, double refX, double refY, float ptSize) {
+    static void panel(Canvas c, GoshReg gs, double[] xv, double[] yv, double[] xr, double[] yr, double x0, double x1, double y0, double y1, GoshCluster cl, int hl, double refX, double refY, float ptSize, GoshPalette P) {
         Graphics2D g = c.g; boolean clus = cl != null && cl.found(); final boolean hlOn = !clus && hl >= 0; int nv = gs.nValid; boolean dens = !clus && !hlOn && nv > 4000;
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0));
         if (dens) {
             int nx = Math.max(8, (int) Math.round((x1 - x0) / 3)), ny = Math.max(8, (int) Math.round((y1 - y0) / 3)); int[] cnt = new int[nx * ny]; int mx = 0;
             for (int b = 0; b < gs.nSub; b++) { if (!gs.valid(b) || xv[b] < xr[0] || xv[b] > xr[1] || yv[b] < yr[0] || yv[b] > yr[1]) continue; int ix = (int) Math.min(nx - 1, Math.max(0, (xv[b] - xr[0]) / (xr[1] - xr[0]) * nx)), iy = (int) Math.min(ny - 1, Math.max(0, (yv[b] - yr[0]) / (yr[1] - yr[0]) * ny)); int v = ++cnt[iy * nx + ix]; if (v > mx) mx = v; }
             double cw = (x1 - x0) / nx, ch = (y1 - y0) / ny;
-            for (int iy = 0; iy < ny; iy++) for (int ix = 0; ix < nx; ix++) { int v = cnt[iy * nx + ix]; if (v == 0) continue; g.setColor(ramp(Math.log1p(v) / Math.log1p(mx))); g.fill(new Rectangle2D.Double(x0 + ix * cw - 0.3, y1 - (iy + 1) * ch - 0.3, cw + 0.6, ch + 0.6)); }
+            for (int iy = 0; iy < ny; iy++) for (int ix = 0; ix < nx; ix++) { int v = cnt[iy * nx + ix]; if (v == 0) continue; g.setColor(P.ramp(Math.log1p(v) / Math.log1p(mx))); g.fill(new Rectangle2D.Double(x0 + ix * cw - 0.3, y1 - (iy + 1) * ch - 0.3, cw + 0.6, ch + 0.6)); }
         } else {
             int[] idx = validIdx(gs, clus ? 2500 : 4000); double r = ptSize / 2;
             for (int pass = 0; pass < (hlOn ? 2 : 1); pass++) for (int b : idx) { if (clus && cl.label[b] < 0) continue;
                 boolean in = hlOn && gs.includes(b, hl); if (hlOn && (pass == 0) == in) continue;   // subsets without the study first, then those with it (as in the ordinary GOSH plot)
-                g.setColor(clus ? clusterColor(cl.label[b], 100) : !hlOn ? new Color(BLUE.getRed(), BLUE.getGreen(), BLUE.getBlue(), nv > 1500 ? 60 : 90) : in ? new Color(BLUE.getRed(), BLUE.getGreen(), BLUE.getBlue(), 80) : new Color(ORANGE.getRed(), ORANGE.getGreen(), ORANGE.getBlue(), 90));
+                g.setColor(clus ? P.cluster(cl.label[b], (int) Math.round(100 * P.alphaMul)) : !hlOn ? P.col(P.single, nv > 1500 ? 60 : 90) : in ? P.col(P.in, 80) : P.col(P.out, 90));
                 g.fill(new Ellipse2D.Double(x0 + (xv[b] - xr[0]) / (xr[1] - xr[0]) * (x1 - x0) - r, y1 - (yv[b] - yr[0]) / (yr[1] - yr[0]) * (y1 - y0) - r, ptSize, ptSize)); }
         }
         g.setStroke(new BasicStroke(1f)); g.setColor(GRID);
@@ -222,11 +261,11 @@ public final class ExtraPlots {
         return trimNotes(gs.coefNames, xrs, outN, gs.nValid, 100);
     }
     /** Colour legend of the regression GOSH plots: clusters, or inclusion of the most influential study, or a note that no meaningful clusters were found (the cluster detection was asked for). */
-    static void goshRegLegend(Canvas c, GoshReg gs, GoshCluster cl, int hl, double x, double yDot) {
+    static void goshRegLegend(Canvas c, GoshReg gs, GoshCluster cl, int hl, double x, double yDot, GoshPalette P) {
         Graphics2D g = c.g; boolean clus = cl != null && cl.found();
-        if (clus) { double lx = x; for (int q = 0; q < cl.G; q++) { g.setColor(clusterColor(q, 220)); g.fill(new Ellipse2D.Double(lx, yDot, 8, 8)); g.setColor(Color.BLACK); c.text(String.format(Locale.ROOT, "cluster %d", q + 1), lx + 12, yDot + 8, 10, 0, false); lx += 80; } }
-        else if (hl >= 0) { String nm = gs.labels[hl]; g.setColor(new Color(BLUE.getRed(), BLUE.getGreen(), BLUE.getBlue(), 200)); g.fill(new Ellipse2D.Double(x, yDot, 8, 8)); g.setColor(Color.BLACK); c.text("subsets that include " + nm, x + 12, yDot + 8, 10, 0, false);
-            double lx = x + 40 + 6.2 * ("subsets that include " + nm).length(); g.setColor(new Color(ORANGE.getRed(), ORANGE.getGreen(), ORANGE.getBlue(), 220)); g.fill(new Ellipse2D.Double(lx, yDot, 8, 8)); g.setColor(Color.BLACK); c.text("subsets that exclude " + nm, lx + 12, yDot + 8, 10, 0, false); }
+        if (clus) { double lx = x; for (int q = 0; q < cl.G; q++) { g.setColor(P.cluster(q, 220)); g.fill(new Ellipse2D.Double(lx, yDot, 8, 8)); g.setColor(Color.BLACK); c.text(String.format(Locale.ROOT, "cluster %d", q + 1), lx + 12, yDot + 8, 10, 0, false); lx += 80; } }
+        else if (hl >= 0) { String nm = gs.labels[hl]; g.setColor(P.solid(P.in, 200)); g.fill(new Ellipse2D.Double(x, yDot, 8, 8)); g.setColor(Color.BLACK); c.text("subsets that include " + nm, x + 12, yDot + 8, 10, 0, false);
+            double lx = x + 40 + 6.2 * ("subsets that include " + nm).length(); g.setColor(P.solid(P.out, 220)); g.fill(new Ellipse2D.Double(lx, yDot, 8, 8)); g.setColor(Color.BLACK); c.text("subsets that exclude " + nm, lx + 12, yDot + 8, 10, 0, false); }
         else if (cl != null) { g.setColor(INK); c.text("no meaningful clusters: the subsets are not coloured by cluster", x, yDot + 8, 10, 0, false); g.setColor(Color.BLACK); }
     }
     /** Study used to colour the subsets by inclusion (the most influential one), or -1 when the highlight is off or clusters are shown instead. */
@@ -241,15 +280,15 @@ public final class ExtraPlots {
         int[] all = validIdx(gs, Integer.MAX_VALUE); double[] yr = {0, 100}; double[][] xrs = new double[p][]; int[] outN = new int[p]; int[] tmp = new int[1];
         for (int a = 0; a < p; a++) { xrs[a] = range(gs.coef[a], all, gs.fullCoef[a], trim, tmp); outN[a] = tmp[0]; }
         List<String> notes = trimNotes(gs.coefNames, xrs, outN, gs.nValid, Math.max(60, (Math.max(W, 560) - 24) * 10 / 52)); if (!notes.isEmpty()) { W = Math.max(W, 560); H += 12 * notes.size() + 4; }
-        Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g; GoshCluster cl = gs.clusters; boolean clus = cl != null && cl.found(); final int hl = highlightStudy(gs, highlight);
+        Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g; GoshCluster cl = gs.clusters; boolean clus = cl != null && cl.found(); final int hl = highlightStudy(gs, highlight); final GoshPalette P = palette(o.goshPalette);
         for (int l = 0; l < notes.size(); l++) c.text(notes.get(l), 20, 50 + nrow * chh + 8 + 12 * l, 9, 0, false);
         c.text(String.format(Locale.ROOT, "%,d valid of %,d %ssubsets", gs.nValid, gs.nSub, gs.exhaustive ? "(all) " : "random "), 20, 18, 11, 0, true);
-        goshRegLegend(c, gs, cl, hl, 20, 29);
+        goshRegLegend(c, gs, cl, hl, 20, 29, P);
         for (int a = 0; a < p; a++) {
             int rI = a / ncol, cI = a % ncol; double x0 = 20 + cI * cw + 52, x1 = 20 + cI * cw + cw - 18, y0 = 50 + rI * chh + 22, y1 = 50 + rI * chh + chh - 52;
             double[] xr = xrs[a];
             c.text(gs.coefNames[a], (x0 + x1) / 2, y0 - 8, 11, 1, true);
-            panel(c, gs, gs.coef[a], gs.i2, xr, yr, x0, x1, y0, y1, cl, hl, gs.fullCoef[a], gs.fullI2, 4.0f);
+            panel(c, gs, gs.coef[a], gs.i2, xr, yr, x0, x1, y0, y1, cl, hl, gs.fullCoef[a], gs.fullI2, 4.0f, P);
             g.setColor(Color.BLACK); xTicks(c, xr, x0, x1, y1, 5, true); yTicks(c, yr, y0, y1, x0, 5, true);
             c.text("coefficient", (x0 + x1) / 2, y1 + 32, 10, 1, false); if (cI == 0) c.textRot("residual I\u00B2 (%)", 14, (y0 + y1) / 2, 10);
         }
@@ -269,19 +308,19 @@ public final class ExtraPlots {
         int[] all = validIdx(gs, Integer.MAX_VALUE); double[][] rg = new double[m][]; int[] outN = new int[m]; int[] tmp = new int[1];
         for (int a = 0; a < m; a++) { if (a == 0) rg[a] = new double[]{0, 100}; else { rg[a] = range(v[a], all, ref[a], trim, tmp); outN[a] = tmp[0]; } }
         List<String> notes = trimNotes(nm, rg, outN, gs.nValid, Math.max(60, (Math.max(W, 560) - 24) * 10 / 52)); if (!notes.isEmpty()) { W = Math.max(W, 560); H += 12 * notes.size() + 4; }
-        Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g; GoshCluster cl = gs.clusters; boolean clus = cl != null && cl.found(); final int hl = highlightStudy(gs, highlight);
+        Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g; GoshCluster cl = gs.clusters; boolean clus = cl != null && cl.found(); final int hl = highlightStudy(gs, highlight); final GoshPalette P = palette(o.goshPalette);
         for (int l = 0; l < notes.size(); l++) c.text(notes.get(l), 20, top + m * cell + bottom + 8 + 12 * l, 9, 0, false);
         c.text(String.format(Locale.ROOT, "%,d valid of %,d %ssubsets", gs.nValid, gs.nSub, gs.exhaustive ? "(all) " : "random ") + (p > nc ? "; first " + nc + " of " + p + " coefficients shown" : ""), left, 18, 11, 0, true);
-        goshRegLegend(c, gs, cl, hl, left, 27);
+        goshRegLegend(c, gs, cl, hl, left, 27, P);
         for (int i = 0; i < m; i++) for (int j = 0; j < m; j++) {
             double x0 = left + j * cell + 4, x1 = left + (j + 1) * cell - 4, y0 = top + i * cell + 4, y1 = top + (i + 1) * cell - 4;
             if (i == j) {   // histogram of the variable
                 int nb = 20; double[] h = new double[nb]; for (int b : all) { double q = v[i][b]; if (Double.isFinite(q) && q >= rg[i][0] && q <= rg[i][1]) h[(int) Math.min(nb - 1, Math.max(0, (q - rg[i][0]) / (rg[i][1] - rg[i][0]) * nb))]++; } double mx = 0; for (double q : h) mx = Math.max(mx, q);
-                g.setColor(new Color(0xD9, 0xE2, 0xF0)); for (int q = 0; q < nb; q++) { double hh = mx > 0 ? h[q] / mx * (y1 - y0 - 18) : 0; g.fill(new Rectangle2D.Double(x0 + q * (x1 - x0) / nb, y1 - hh, (x1 - x0) / nb, hh)); }
-                g.setColor(BLUE); for (int q = 0; q < nb; q++) { double hh = mx > 0 ? h[q] / mx * (y1 - y0 - 18) : 0; g.draw(new Rectangle2D.Double(x0 + q * (x1 - x0) / nb, y1 - hh, (x1 - x0) / nb, hh)); }
+                g.setColor(P.histFill); for (int q = 0; q < nb; q++) { double hh = mx > 0 ? h[q] / mx * (y1 - y0 - 18) : 0; g.fill(new Rectangle2D.Double(x0 + q * (x1 - x0) / nb, y1 - hh, (x1 - x0) / nb, hh)); }
+                g.setColor(P.single); for (int q = 0; q < nb; q++) { double hh = mx > 0 ? h[q] / mx * (y1 - y0 - 18) : 0; g.draw(new Rectangle2D.Double(x0 + q * (x1 - x0) / nb, y1 - hh, (x1 - x0) / nb, hh)); }
                 g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0)); c.text(nm[i], (x0 + x1) / 2, y0 + 12, 11, 1, true);
                 g.setColor(GRID); double xx = x0 + (ref[i] - rg[i][0]) / (rg[i][1] - rg[i][0]) * (x1 - x0); c.dashed(xx, y0 + 16, xx, y1); g.setColor(Color.BLACK);
-            } else if (i > j) panel(c, gs, v[j], v[i], rg[j], rg[i], x0, x1, y0, y1, cl, hl, ref[j], ref[i], 3.0f);
+            } else if (i > j) panel(c, gs, v[j], v[i], rg[j], rg[i], x0, x1, y0, y1, cl, hl, ref[j], ref[i], 3.0f, P);
             else {   // correlation
                 double r = corr(v[i], v[j], all); g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0));
                 c.text(Double.isNaN(r) ? "NA" : Fmt.num(r, 2), (x0 + x1) / 2, (y0 + y1) / 2 + 5, (float) (10 + 8 * (Double.isNaN(r) ? 0 : Math.abs(r))), 1, false); c.text("r", x0 + 8, y0 + 12, 9, 0, false);

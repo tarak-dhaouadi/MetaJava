@@ -1,5 +1,23 @@
 # Changelog
 
+### Added - funnel plot themes (Default, MetaWin style, STATA style)
+- New drop-down **Funnel plot themes** (section 9, Publication bias, directly under *Study labels*). It applies to the funnel plot and to the trim-and-fill funnel plot. **Default** is the current meta style (unchanged).
+- **MetaWin style:** sunset (power-enhanced) funnel, always contour-enhanced (the *Contour-enhanced* check box is disabled): red-yellow-green power map (power of a study with that standard error to detect the pooled effect, two-sided 5%), contour bands at p = 10%, 5% and 1% around the null value, dashed pseudo 95% limits and dotted line at the pooled effect, blue study points, "Power" colour bar, "standard error" axis and "ln <measure>" x label for ratio measures.
+- **STATA style:** pale-blue frame with a navy title ("Funnel plot" / "Contour-enhanced funnel plot"), light grid, SE axis from 0 at the top with Stata tick labels, grey pseudo 95% limits (or the three grey contour bands when *Contour-enhanced* is on), crimson estimate line, navy points and a framed legend (Pseudo 95% CI / Studies / Estimated theta with the estimator as subscript).
+- In both new themes the **imputed studies of the trim-and-fill funnel plot are orange**, distinct from the observed (blue / navy) studies. *Study labels* works in every theme. Saved in project files; works with SVG / PDF export.
+- Self-tests (435 checks): 21 new checks.
+
+### Added - forest plot themes (Default, RevMan 5, BMJ, STATA) and colour / line-style overrides
+- New drop-down **Theme** (section 4, Forest plot) applies to **all** forest plots: main, subgroup, leave-one-out and cumulative, and to every export format. **Default** is the current meta style (unchanged); **RevMan 5 style**, **BMJ style** and **STATA style** reproduce the layout, columns, number formats, fonts, colours, header rules, axis, footer text and pooled-row labels of the corresponding reference figures (see the README table).
+- Seven override drop-downs below it (Diamond fill / border, null-effect line colour / style and pooled-effect line colour / style are laid out in side-by-side pairs), each with **Theme default** as first entry: **Study-square fill colour**, **Diamond fill**, **Diamond border** (also **None**), **Null-effect line color** / **style** and **Pooled-effect line color** / **style** (Solid, Dotted, Dashed). A colour list of 18 publication-friendly colours (black, greys, blue, navy, light blue, teal, red, dark red, orange, gold, green, dark green, purple, pink, brown, white).
+- No number changes; the Default theme draws exactly what it drew before. New settings are saved in project files (older project files open with the defaults).
+- Self-tests (414 checks): 18 new checks on the four themes, the overrides, and SVG / PDF recording of a themed plot.
+
+### Added - GOSH plots: "Colour palette" option
+- New drop-down **Colour palette**, to the right of "Colour subsets by the most influential study" (section 10, Diagnostics). It applies to the ordinary GOSH plot and to both GOSH meta-regression plots (coefficients versus residual I^2, scatterplot matrix), including the marginal curves, the highlight of the most influential study, the cluster colours, the density map and the legends. It is saved in project files and works with every export format (PNG, TIFF, JPG, SVG, PDF).
+- Palettes: **Default** (unchanged, the current colours), **Classic (blue/red)** (pure blue and red with very transparent points, as in the usual GOSH figures), **Okabe-Ito** and **Viridis** (colour-blind safe), **NPG (Nature)**, **Greyscale** (black-and-white print).
+- No number, table or report text changes; only colours. The left panel is 50 px wider so that the new control fits next to the check box.
+
 ### Changed - GOSH plot: colour-matched marginal densities for the groups of subsets
 - When the plot highlights one study (subsets that include it in blue, subsets that exclude it in orange), the top and the right marginal panels now show **two density curves**, one per group, in the colours of the points, instead of one curve for all subsets. When the points are coloured by cluster, each marginal shows one curve per cluster in the cluster colours. Without highlight or clusters the single blue curve is unchanged.
 - Each curve is scaled to the same area (its own density within the group), so the shapes and the shift between the groups can be compared even when the groups differ much in size; a note above the plot says so. The curves use the same binned and smoothed estimate as before. Points, axes, estimates and all numbers are unchanged; vector export (SVG / PDF) uses the same drawing code.

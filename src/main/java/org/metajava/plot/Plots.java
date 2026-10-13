@@ -15,10 +15,14 @@ public final class Plots {
     public static class Opts { public double scale = 1; public int width = 900; public String theme = "Default"; public String sortBy = "Original order"; public boolean ascending = true;
         public boolean overall = true, analysisDetails = false, testOverall = true, hetStats = true, studyLabels = true, regLine = true, contour = false, ciI2 = false, ciTau = false;
         public String xLeft = "", xRight = "", xlab = ""; public boolean showSubgroupName = true, testSubgroup = true, testEffectSubgroup = false; public boolean overallResults = true;
-        public boolean weightsCol = true, effectCol = true, seCol = true, teCol = true; public double spacing = 1.0; public int digits = 2; public boolean predictionLine = true; public boolean apexLine = false; }
+        public boolean weightsCol = true, effectCol = true, seCol = true, teCol = true; public double spacing = 1.0; public int digits = 2; public boolean predictionLine = true; public boolean apexLine = false; public String goshPalette = "Default";
+        /** Overrides of the forest-plot theme ("Theme default" keeps what the theme prescribes). */
+        public String funnelTheme = FunnelThemes.DEFAULT;   // funnel plot and trim-and-fill funnel plot: Default, MetaWin style, STATA style
+        public String squareColour = ForestTheme.AUTO, diamondFill = ForestTheme.AUTO, diamondBorder = ForestTheme.AUTO, nullColour = ForestTheme.AUTO, nullStyle = ForestTheme.AUTO, pooledColour = ForestTheme.AUTO, pooledStyle = ForestTheme.AUTO; }
 
     static class Row { String label; double te, lo, up, w, se; int type; // 0 study,1 diamond,2 header,3 PI,4 blank,5 text
-        String[] lcols = new String[0]; String rcol1 = "", rcol2 = "", wtxt = ""; String text = ""; double predLo, predUp; boolean hasPred;
+        String[] lcols = new String[0]; String rcol1 = "", rcol2 = "", wtxt = ""; String sEst = "", sLo = "", sUp = "";   // sEst / sLo / sUp: estimate and CI limits as separate strings (RevMan 5 / BMJ / STATA print them in one column)
+        String text = ""; double predLo, predUp; boolean hasPred;
         double n = Double.NaN;       // n (proportions) / person-time (rates) used to back-transform Freeman-Tukey values
         double ptBack = Double.NaN;  // study estimate on the original scale (event / n), if shown instead of back(TE)
     }
@@ -31,7 +35,7 @@ public final class Plots {
         Integer[] ord = new Integer[n]; for (int i = 0; i < n; i++) ord[i] = i;
         sortStudies(ord, r, o);
         String smL = Report.smLabel(s); int dg = o.digits;
-        boolean hasSg = r.hasSubgroups();
+        boolean hasSg = r.hasSubgroups(); final int K = ForestTheme.of(o).kind;   // theme: 0 Default, 1 RevMan 5, 2 BMJ, 3 STATA
         double sc = 0, sr = 0; for (int i = 0; i < n; i++) { if (!Double.isNaN(r.wCommonFull[i])) sc += r.wCommonFull[i]; if (!Double.isNaN(r.wRandomFull[i])) sr += r.wRandomFull[i]; }
         boolean useRandom = s.random, useCommon = s.common;
         List<String> hl = new ArrayList<>();
@@ -41,23 +45,24 @@ public final class Plots {
                 int[] idx = r.sgIdx.get(g); List<Integer> ids = new ArrayList<>(); for (int i : ord) for (int j : idx) if (i == j) ids.add(i);
                 for (int i : ids) rows.add(studyRow(r, i, sc, sr, dg, log));
                 Pool p = r.sgPools.get(g); double wsum = 0; for (int i : idx) { double w = useRandom ? r.wRandomFull[i] : r.wCommonFull[i]; if (!Double.isNaN(w)) wsum += w; }
-                if (useCommon) rows.add(poolRow(r, s, p, s.textCommon, true, dg, 100 * wsumFor(r, idx, true) / sc, idx));
-                if (useRandom) rows.add(poolRow(r, s, p, s.textRandom + p.randomLabelSuffix, false, dg, 100 * wsumFor(r, idx, false) / sr, idx));
+                if (useCommon) rows.add(themed(K, poolRow(r, s, p, s.textCommon, true, dg, 100 * wsumFor(r, idx, true) / sc, idx), p, s, o, true, useRandom, true));
+                if (useRandom) rows.add(themed(K, poolRow(r, s, p, s.textRandom + p.randomLabelSuffix, false, dg, 100 * wsumFor(r, idx, false) / sr, idx), p, s, o, true, useCommon, false));
                 if (s.predictionSubgroup && !Double.isNaN(p.loPred)) rows.add(piRow(s, p, dg));
-                if (o.hetStats) { Row t = new Row(); t.type = 5; t.text = hetLine(p, s, true, o); rows.add(t); }
-                if (o.testEffectSubgroup) { Row t = new Row(); t.type = 5; t.text = "Test for effect in subgroup: " + IT + (p.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(s.random ? p.statRandom : p.statCommon, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? p.pRandom : p.pCommon, 4) + ")"; rows.add(t); }
+                if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(p, s, true, o) : hetThemed(p, s, K); rows.add(t); }
+                if (o.testEffectSubgroup) { Row t = new Row(); t.type = 5; t.text = K == 1 || K == 2 ? testThemed(p, s, true, K) : "Test for effect in subgroup: " + IT + (p.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(s.random ? p.statRandom : p.statCommon, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? p.pRandom : p.pCommon, 4) + ")"; rows.add(t); }
                 rows.add(blank());
             }
         } else for (int i : ord) rows.add(studyRow(r, i, sc, sr, dg, log));
         if (!hasSg || o.overallResults) {
-            if (useCommon) rows.add(poolRow(r, s, P, s.textCommon, true, dg, 100, allIdx(n)));
-            if (useRandom) rows.add(poolRow(r, s, P, s.textRandom + P.randomLabelSuffix, false, dg, 100, allIdx(n)));
+            if (useCommon) rows.add(themed(K, poolRow(r, s, P, s.textCommon, true, dg, 100, allIdx(n)), P, s, o, false, useRandom, true));
+            if (useRandom) rows.add(themed(K, poolRow(r, s, P, s.textRandom + P.randomLabelSuffix, false, dg, 100, allIdx(n)), P, s, o, false, useCommon, false));
             if (s.prediction && !Double.isNaN(P.loPred)) rows.add(piRow(s, P, dg));
-            if (o.hetStats) { Row t = new Row(); t.type = 5; t.text = hetLine(P, s, false, o); rows.add(t); }
-            if (o.testOverall) { Row t = new Row(); t.type = 5; t.text = "Test for overall effect: " + IT + (P.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(s.random ? P.statRandom : P.statCommon, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? P.pRandom : P.pCommon, 4) + ")"; rows.add(t); }
+            if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(P, s, false, o) : hetThemed(P, s, K); rows.add(t); }
+            if (o.testOverall) { Row t = new Row(); t.type = 5; t.text = K == 1 || K == 2 ? testThemed(P, s, false, K) : "Test for overall effect: " + IT + (P.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(s.random ? P.statRandom : P.statCommon, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? P.pRandom : P.pCommon, 4) + ")"; rows.add(t); }
             if (hasSg && o.testSubgroup) { Row t = new Row(); t.type = 5; double q = s.random && !s.common ? r.qbRandom : r.qbCommon, pv = s.random && !s.common ? r.pQbRandom : r.pQbCommon;
-                t.text = "Test for subgroup differences: \u03C7\u00B2" + sub(r.dfBetween) + " = " + Fmt.num(q, 2) + ", df = " + r.dfBetween + " (" + IT + "p" + IT + " " + Fmt.pvalEq(pv, 4) + ")"; rows.add(t); }
+                t.text = K == 1 || K == 2 ? subgroupThemed(q, r.dfBetween, pv, K) : "Test for subgroup differences: \u03C7\u00B2" + sub(r.dfBetween) + " = " + Fmt.num(q, 2) + ", df = " + r.dfBetween + " (" + IT + "p" + IT + " " + Fmt.pvalEq(pv, 4) + ")"; rows.add(t); }
         }
+        if (K == 3 && !s.noWeights()) { Row t = new Row(); t.type = 5; t.text = "NOTE: Weights are from " + (s.random ? "random" : "common") + " effects analysis"; int at = rows.size(); while (at > 0 && rows.get(at - 1).type == 5) at--; rows.add(at, t); }   // STATA: note under the table, before the test lines
         return drawForest(rows, r, o, log, smL, !s.noWeights(), false);
     }
 
@@ -74,12 +79,36 @@ public final class Plots {
         String pq = Fmt.pval(p.pQ, 4); b.append(", " + IT + "p" + IT + " ").append(pq.startsWith("<") ? pq : "= " + pq); return b.toString();
     }
 
+    /** RevMan 5 / BMJ: pooled row "Total (95% CI)" ("Subtotal (95% CI)" in subgroups). STATA: "Overall (I-squared = 12.3%, p = 0.571)" (or "Subtotal ...") instead of a separate heterogeneity line. */
+    static Row themed(int K, Row w, Pool p, MetaSpec s, Opts o, boolean sub, boolean both, boolean commonRow) {
+        if (K == 1 || K == 2) { if (!both) w.label = (sub ? "Subtotal" : "Total") + " (" + Fmt.num(s.levelMa * 100, 0) + "% CI)"; return w; }   // RevMan 5 / BMJ: "Total (95% CI)"
+        if (K != 3) return w;
+        String base = both ? w.label : sub ? "Subtotal" : "Overall";
+        w.label = !o.hetStats || (both && commonRow) ? base : base + " (I-squared = " + Fmt.num(100 * p.I2, 1) + "%, p = " + Fmt.num(p.pQ, 3) + ")"; return w;
+    }
+    static String tau3(double x) { String t = Fmt.num(x, 3); return t.equals("0.000") && x > 0 ? Fmt.num(x, 4) : t; }
+    static String i2txt(Pool p) { return Double.isNaN(p.I2) ? "NA" : Math.round(100 * p.I2) + "%"; }
+    /** Heterogeneity line of the RevMan 5 (K = 1) and BMJ (K = 2) themes. */
+    static String hetThemed(Pool p, MetaSpec s, int K) {
+        if (K == 1) return "Heterogeneity: " + (s.random ? "Tau\u00B2 = " + tau3(p.tau2) + "; " : "") + "Chi\u00B2 = " + Fmt.num(p.Q, 2) + ", df = " + p.dfQ + " (P " + Fmt.pvalEq(p.pQ, 4) + "); I\u00B2 = " + i2txt(p);
+        return "Test for heterogeneity: " + (s.random ? "\u03C4\u00B2=" + Fmt.num(p.tau2, 2) + "; " : "") + "\u03C7\u00B2=" + Fmt.num(p.Q, 2) + ", df=" + p.dfQ + ", P " + Fmt.pvalEq(p.pQ, 3) + "; I\u00B2=" + i2txt(p);
+    }
+    static String testThemed(Pool p, MetaSpec s, boolean sub, int K) {
+        double st = s.random ? p.statRandom : p.statCommon, pv = s.random ? p.pRandom : p.pCommon; String L = p.testType.equals("t") && s.random ? "t" : "Z", head = sub ? "Test for effect in subgroup: " : "Test for overall effect: ";
+        return K == 1 ? head + L + " = " + Fmt.num(st, 2) + " (P " + Fmt.pvalEq(pv, 4) + ")" : head + L + "=" + Fmt.num(st, 2) + ", P " + Fmt.pvalEq(pv, 3);
+    }
+    static String subgroupThemed(double q, int df, double pv, int K) {
+        if (K == 1) return "Test for subgroup differences: Chi\u00B2 = " + Fmt.num(q, 2) + ", df = " + df + " (P " + Fmt.pvalEq(pv, 4) + "), I\u00B2 = " + Fmt.num(q > df ? 100 * (q - df) / q : 0, 1) + "%";
+        return "Test for subgroup differences: \u03C7\u00B2=" + Fmt.num(q, 2) + ", df=" + df + ", P " + Fmt.pvalEq(pv, 3);
+    }
+
     static Row studyRow(MetaResult r, int i, double sc, double sr, int dg, boolean log) {
         MetaSpec s = r.spec; Row w = new Row(); w.type = 0; w.label = r.studlab[i]; w.te = r.TE[i]; w.se = r.seTE[i]; w.lo = r.lower[i]; w.up = r.upper[i];
         double wt = s.random ? r.wRandomFull[i] : r.wCommonFull[i]; double tot = s.random ? sr : sc; w.w = Double.isNaN(wt) ? 0 : wt / tot;
         if (s.noWeights()) w.w = 1;   // GLMM: no study weights, equally sized squares
         w.n = Report.nOf(s, i); w.lcols = leftCols(r, i, dg); double t = Report.studyEst(r, i); if (s.type.equals("prop") || s.type.equals("rate")) w.ptBack = t;
         w.rcol1 = Double.isNaN(r.TE[i]) ? "NA" : Fmt.num(t, dg); w.rcol2 = Double.isNaN(r.TE[i]) ? "" : Fmt.ci(Report.studyLo(r, i), Report.studyUp(r, i), dg);
+        w.sEst = w.rcol1; if (!Double.isNaN(r.TE[i])) { w.sLo = Fmt.num(Report.studyLo(r, i), dg); w.sUp = Fmt.num(Report.studyUp(r, i), dg); }
         w.wtxt = s.noWeights() ? "" : Fmt.num(100 * w.w, 1) + "%"; return w;
     }
 
@@ -129,9 +158,10 @@ public final class Plots {
     static Row poolRow(MetaResult r, MetaSpec s, Pool p, String label, boolean common, int dg, double wpct, int[] idx) {
         Row w = new Row(); w.type = 1; w.label = forestLabel(label); w.te = common ? p.teCommon : p.teRandom; w.lo = common ? p.loCommon : p.loRandom; w.up = common ? p.upCommon : p.upRandom; w.w = wpct / 100;
         w.n = p.nHarm; w.rcol1 = Fmt.num(Meta.back(s, w.te, w.n), dg); w.rcol2 = Fmt.ci(Meta.back(s, w.lo, w.n), Meta.back(s, w.up, w.n), dg); w.wtxt = s.noWeights() ? "" : Fmt.num(wpct, 1) + "%";
+        w.sEst = w.rcol1; w.sLo = Fmt.num(Meta.back(s, w.lo, w.n), dg); w.sUp = Fmt.num(Meta.back(s, w.up, w.n), dg);
         w.lcols = sums(r, idx); return w;
     }
-    static Row piRow(MetaSpec s, Pool p, int dg) { Row w = new Row(); w.type = 3; w.label = s.textPredict + (Math.abs(s.levelPredict - 0.95) > 1e-9 ? " (" + Report.pct(s.levelPredict) + "%)" : ""); w.te = p.teRandom; w.lo = p.loPred; w.up = p.upPred; w.n = p.nHarm; w.rcol2 = Fmt.ci(Meta.back(s, w.lo, w.n), Meta.back(s, w.up, w.n), dg); return w; }
+    static Row piRow(MetaSpec s, Pool p, int dg) { Row w = new Row(); w.type = 3; w.label = s.textPredict + (Math.abs(s.levelPredict - 0.95) > 1e-9 ? " (" + Report.pct(s.levelPredict) + "%)" : ""); w.te = p.teRandom; w.lo = p.loPred; w.up = p.upPred; w.n = p.nHarm; w.rcol2 = Fmt.ci(Meta.back(s, w.lo, w.n), Meta.back(s, w.up, w.n), dg); w.sLo = Fmt.num(Meta.back(s, w.lo, w.n), dg); w.sUp = Fmt.num(Meta.back(s, w.up, w.n), dg); return w; }
     static Row blank() { Row r = new Row(); r.type = 4; return r; }
 
     static void sortStudies(Integer[] ord, MetaResult r, Opts o) {
@@ -155,34 +185,64 @@ public final class Plots {
         }
     }
 
-    /** Forest plot renderer reproducing the look of meta::forest (layout "meta"). */
+    /** One column of a forest plot that is placed left or right of the plot area (weight, estimate, 95% CI ...). align / hAlign: 0 left, 1 centre, 2 right. */
+    static final class Col {
+        final String h1, h2; final java.util.function.Function<Row, String> val; final int align, hAlign; int w, xl;
+        Col(String h1, String h2, java.util.function.Function<Row, String> val, int align, int hAlign) { this.h1 = h1; this.h2 = h2; this.val = val; this.align = align; this.hAlign = hAlign; }
+        double ax(int al) { return al == 0 ? xl : al == 1 ? xl + w / 2.0 : xl + w; }
+    }
+
+    /** "IV", "M-H", "Peto" ... as RevMan / BMJ print the pooling method. */
+    static String methodTag(MetaSpec s) { switch (s.method) { case "Inverse": return "IV"; case "MH": return "M-H"; default: return s.method; } }
+
+    /** Estimate and CI in one string, as RevMan 5 "0.36 [0.30, 0.44]", BMJ "0.36 (0.30 to 0.44)" and Stata "0.36 (0.30, 0.44)". */
+    static String comb(int K, Row w) {
+        String o = K == 1 ? "[" : "(", sep = K == 2 ? " to " : ", ", c = K == 1 ? "]" : ")";
+        if (w.type == 3) return o + w.sLo + sep + w.sUp + c;
+        if (w.sLo.isEmpty() || w.sEst.equals("NA")) return w.sEst;
+        return w.sEst + " " + o + w.sLo + sep + w.sUp + c;
+    }
+
+    static boolean boldRow(ForestTheme T, Row w) { return w.type == 0 ? false : w.type == 2 ? T.kind != 3 : T.boldPool; }
+
+    /** Forest plot renderer. The look follows the theme in Opts (Default = meta::forest, RevMan 5, BMJ, STATA), then the individual colour / line-style overrides. */
     static BufferedImage drawForest(List<Row> rows, MetaResult r, Opts o, boolean log, String smL, boolean showWeight, boolean loo) {
-        MetaSpec s = r.spec; final float FS = 12f; int rowH = (int) Math.round(20 * o.spacing), M = 14, nrow = rows.size();
-        String[] lh = loo ? new String[]{"P-value", "Tau\u00B2", "Tau", "I\u00B2"} : leftHead(s); int nl = lh.length;
-        Canvas probe = Canvas.probe(); FontMetrics fm = probe.g.getFontMetrics(Canvas.font(FS)), fb = probe.g.getFontMetrics(Canvas.bold(FS));
-        int labW = fb.stringWidth("Study");
-        for (Row w : rows) if (w.type == 0 || w.type == 1 || w.type == 2 || w.type == 3) labW = Math.max(labW, (w.type == 0 ? fm : fb).stringWidth(w.label == null ? "" : w.label));
-        int[] cw = new int[nl]; for (int j = 0; j < nl; j++) { cw[j] = fb.stringWidth(lh[j]); for (Row w : rows) if (j < w.lcols.length) cw[j] = Math.max(cw[j], (w.type == 1 ? fb : fm).stringWidth(w.lcols[j])); }
-        // two-group outcomes (metabin, metacont, metainc): group labels ("Experimental" / "Control") above the column headings, as meta::forest
-        final boolean grp = !loo && (s.type.equals("bin") || s.type.equals("cont") || s.type.equals("inc")) && nl >= 4 && nl % 2 == 0; final int gh = grp ? 18 : 0; final int gn = nl / 2;
-        if (grp) { String[] gl = {s.labelE == null ? "" : s.labelE, s.labelC == null ? "" : s.labelC};
-            for (int g2 = 0; g2 < 2; g2++) { int a0 = g2 * gn, b0 = a0 + gn - 1, span = 0; for (int j = a0; j <= b0; j++) span += cw[j]; span += 14 * (gn - 1); int need = fb.stringWidth(gl[g2]); if (need > span) cw[b0] += need - span; } }
-        int[] xr = new int[nl]; int cur = M + labW + 16; for (int j = 0; j < nl; j++) { cur += cw[j]; xr[j] = cur; cur += 14; }
-        int plotW = 230, px0 = (nl == 0 ? M + labW + 16 : xr[nl - 1] + 14), px1 = px0 + plotW;
-        String ciHead = Fmt.num(s.levelMa * 100, 0) + "% CI";
-        int effW = fb.stringWidth(smL), ciW = fb.stringWidth(ciHead), wW = fb.stringWidth("Weight");
-        for (Row w : rows) { effW = Math.max(effW, (w.type == 1 ? fb : fm).stringWidth(w.rcol1)); ciW = Math.max(ciW, (w.type == 1 || w.type == 3 ? fb : fm).stringWidth(w.rcol2)); wW = Math.max(wW, fb.stringWidth(w.wtxt)); }
-        int rx1 = px1 + 22 + effW, rx2 = rx1 + 12 + ciW, rx3 = rx2 + 10 + wW; int W = (showWeight ? rx3 : rx2) + M;
-        // ---- vertical layout
-        int tail = nrow; while (tail > 0 && rows.get(tail - 1).type == 5) tail--; int lastPool = -1; for (int i = 0; i < tail; i++) if (rows.get(i).type == 1) lastPool = i;
-        double y = 12 + gh + 14 + rowH * 0.9; double[] cy = new double[nrow]; int firstPool = -1;
-        for (int i = 0; i < tail; i++) {
-            Row w = rows.get(i);
-            if (w.type == 1 && firstPool < 0) { firstPool = i; if (i > 0 && rows.get(i - 1).type == 0) y += rowH * 0.6; }
-            double h = w.type == 4 ? rowH * 0.6 : w.type == 5 ? rowH * 0.75 : rowH; cy[i] = y + h / 2; y += h;
+        MetaSpec s = r.spec; final ForestTheme T = ForestTheme.of(o); final int K = T.kind; final float FS = 12f; int rowH = (int) Math.round(T.rowBase * o.spacing), M = 14, nrow = rows.size();
+        final String measure = xlabFor(s), lvl = Fmt.num(s.levelMa * 100, 0) + "% CI", mt = methodTag(s), mdl = s.random ? "Random" : "Fixed";
+        // ---- left-hand data columns (events, totals, means ...). BMJ merges events and total into "e / n"; STATA shows no data columns.
+        String[] lh0 = loo ? new String[]{"P-value", "Tau²", "Tau", "I²"} : leftHead(s);
+        final boolean merge = K == 2 && !loo && (s.type.equals("bin") || s.type.equals("inc") || s.type.equals("prop") || s.type.equals("rate")), noData = T.noDataCols;
+        final String[] lh = noData ? new String[0] : merge ? (s.type.equals("bin") || s.type.equals("inc") ? new String[]{ s.labelE == null ? "" : s.labelE, s.labelC == null ? "" : s.labelC } : new String[]{ "" }) : lh0;
+        final int nl = lh.length;
+        final java.util.function.Function<Row, String[]> LC = w -> { if (noData) return new String[0]; if (!merge) return w.lcols; String[] a = w.lcols, m = new String[a.length / 2];
+            for (int k = 0; k < m.length; k++) m[k] = a[2 * k].isEmpty() && a[2 * k + 1].isEmpty() ? "" : a[2 * k] + " / " + a[2 * k + 1]; return m; };
+        Canvas probe = Canvas.probe(); FontMetrics fm = probe.g.getFontMetrics(Canvas.font(FS)), fb = probe.g.getFontMetrics(Canvas.bold(FS)), fh = T.boldHead ? fb : fm;
+        java.util.function.Function<Row, FontMetrics> FR = w -> boldRow(T, w) ? fb : fm;
+        final String[] sh = K == 2 ? new String[]{"Study or", "subgroup"} : K == 3 ? new String[]{"Study", "ID"} : new String[]{"", "Study"};
+        int labW = Math.max(fh.stringWidth(sh[0]), fh.stringWidth(sh[1]));
+        for (Row w : rows) if (w.type == 0 || w.type == 1 || w.type == 2 || w.type == 3) labW = Math.max(labW, FR.apply(w).stringWidth(w.label == null ? "" : w.label));
+        int[] cw = new int[nl]; for (int j = 0; j < nl; j++) { cw[j] = fh.stringWidth(lh[j]); for (Row w : rows) { String[] lc = LC.apply(w); if (j < lc.length) cw[j] = Math.max(cw[j], FR.apply(w).stringWidth(lc[j])); } }
+        // column groups above the headings: "Experimental" / "Control" (meta, RevMan 5), "No of events / total" (BMJ)
+        final List<Object[]> groups = new ArrayList<>();   // {text, first col, last col}
+        if (merge) groups.add(new Object[]{"No of events / total", 0, nl - 1});
+        else if (!loo && (s.type.equals("bin") || s.type.equals("cont") || s.type.equals("inc")) && nl >= 4 && nl % 2 == 0 && K != 3) { int gn = nl / 2; groups.add(new Object[]{ s.labelE == null ? "" : s.labelE, 0, gn - 1 }); groups.add(new Object[]{ s.labelC == null ? "" : s.labelC, gn, nl - 1 }); }
+        final boolean grp = !groups.isEmpty(); final int gh = grp || T.twoLineHead ? 18 : 0;
+        for (Object[] g2 : groups) { int a0 = (Integer) g2[1], b0 = (Integer) g2[2], span = 0; for (int j = a0; j <= b0; j++) span += cw[j]; span += 14 * (b0 - a0); int need = fb.stringWidth((String) g2[0]); if (need > span) cw[b0] += need - span; }
+        int[] xr = new int[nl]; int cur = M + labW + (K == 3 ? 26 : 16); for (int j = 0; j < nl; j++) { cur += cw[j]; xr[j] = cur; cur += 14; }
+        // ---- columns between the data columns and the plot (RevMan 5) and to the right of the plot (all other themes)
+        final List<Col> pre = new ArrayList<>(), post = new ArrayList<>(); int[] gap;
+        final String measure1 = measure.contains(" ") ? measure.substring(0, measure.indexOf(' ')) : measure, measure2 = measure.contains(" ") ? measure.substring(measure.indexOf(' ') + 1).toLowerCase(Locale.ROOT) + " (" + lvl + ")" : "(" + lvl + ")";
+        final java.util.function.Function<Row, String> CB = w -> comb(K, w);
+        switch (K) {
+            case 1: if (showWeight) pre.add(new Col("", "Weight", w -> w.wtxt, 2, 2)); pre.add(new Col(measure, mt + ", " + mdl + ", " + lvl, CB, 2, 2)); gap = new int[0]; break;
+            case 2: if (showWeight) post.add(new Col("Weight", "(%)", w -> w.wtxt.replace("%", ""), 2, 2)); post.add(new Col(measure + ", " + mt + ",", mdl.toLowerCase(Locale.ROOT) + " (" + lvl + ")", CB, 0, 1)); gap = new int[]{34, 18}; break;
+            case 3: post.add(new Col(measure1, measure2, CB, 0, 0)); if (showWeight) post.add(new Col("%", "Weight", w -> w.wtxt.isEmpty() || (w.type != 0 && w.type != 1) ? "" : Fmt.num(100 * w.w, 2), 0, 0)); gap = new int[]{30, 34}; break;
+            default: post.add(new Col("", smL, w -> w.type == 3 ? "" : w.rcol1, 2, 2)); post.add(new Col("", lvl, w -> w.rcol2, 2, 2)); if (showWeight) post.add(new Col("", "Weight", w -> w.wtxt, 2, 2)); gap = new int[]{22, 12, 10};
         }
-        double yFirstTop = 12 + gh + 14 + rowH * 0.9 - 4, ay = y + rowH * 0.5;
-        String[] dl = o.analysisDetails ? Report.details(r).split("\n") : new String[0];
+        for (Col c : pre) { c.w = Math.max(fh.stringWidth(c.h1), fh.stringWidth(c.h2)); for (Row w : rows) if (w.type == 0 || w.type == 1 || w.type == 3) c.w = Math.max(c.w, FR.apply(w).stringWidth(c.val.apply(w))); c.xl = cur; cur += c.w + 14; }
+        for (Col c : post) { c.w = Math.max(fh.stringWidth(c.h1), fh.stringWidth(c.h2)); for (Row w : rows) if (w.type == 0 || w.type == 1 || w.type == 3) c.w = Math.max(c.w, FR.apply(w).stringWidth(c.val.apply(w))); }
+        int plotW = T.plotW, px0 = cur, px1 = px0 + plotW; { int pc = px1; for (int i = 0; i < post.size(); i++) { post.get(i).xl = pc + gap[i]; pc = post.get(i).xl + post.get(i).w; } }
+        int W = (post.isEmpty() ? px1 : post.get(post.size() - 1).xl + post.get(post.size() - 1).w) + M;
         // ---- axis range
         // For measures with a back-transformation (proportions, correlations, ...) the axis is drawn on the back-transformed (original) scale, as meta::forest does.
         final boolean lin = s.backtransf && linBack(s.sm); final double[] bnd = linBounds(s);
@@ -193,97 +253,143 @@ public final class Plots {
         if (hasRef) { lo = Math.min(lo, ref); hi = Math.max(hi, ref); double half = Math.max(ref - lo, hi - ref); if (lin) half = Math.min(half, Math.min(ref - bnd[0], bnd[1] - ref)); if (half > 0) { lo = ref - half; hi = ref + half; } }   // axis centred on the null value (as meta::forest, xlim = "symmetric")
         if (Double.isInfinite(lo) || Double.isInfinite(hi)) { lo = lin ? bnd[0] : -1; hi = lin ? bnd[1] : 1; }
         double pad = (hi - lo) * 0.04 + 1e-9; lo -= pad; hi += pad; if (lin) { if (hasRef) { double h2 = Math.min(hi - ref, ref - lo); h2 = Math.min(h2, Math.min(ref - bnd[0], bnd[1] - ref)); lo = ref - h2; hi = ref + h2; } else { lo = Math.max(lo, bnd[0]); hi = Math.min(hi, bnd[1]); } }
-        final double lo2 = lo, hi2 = hi; final int fx0 = px0, fw = plotW; final double[] sh = {0}; java.util.function.DoubleUnaryOperator X = v -> fx0 + sh[0] + (v - lo2) / (hi2 - lo2) * fw;
+        final double lo2 = lo, hi2 = hi; final int fx0 = px0, fw = plotW; final double[] sh0 = {0}; java.util.function.DoubleUnaryOperator X = v -> fx0 + sh0[0] + (v - lo2) / (hi2 - lo2) * fw;
         if (wmax <= 0) wmax = 1;
+        // ---- vertical layout of the table
+        int tail = nrow; while (tail > 0 && rows.get(tail - 1).type == 5) tail--; int lastPool = -1; for (int i = 0; i < tail; i++) if (rows.get(i).type == 1) lastPool = i;
+        final double hy = 12 + gh + 12, ruleY = hy + 8;
+        double y = 12 + gh + 14 + rowH * 0.9; double[] cy = new double[nrow]; int firstPool = -1;
+        for (int i = 0; i < tail; i++) {
+            Row w = rows.get(i);
+            if (w.type == 1 && firstPool < 0) { firstPool = i; if (i > 0 && rows.get(i - 1).type == 0) y += rowH * 0.6; }
+            double h = w.type == 4 ? rowH * 0.6 : w.type == 5 ? rowH * 0.75 : rowH; cy[i] = y + h / 2; y += h;
+        }
+        final double yFirstTop = (T.headRule != null ? ruleY : 12 + gh + 14 + rowH * 0.9 - 4), yTableEnd = y;
         // ---- axis ticks (computed up-front: the footer layout depends on the axis extent)
         double[] ticks = log ? logTicks(Math.exp(lo), Math.exp(hi)) : Canvas.pretty(lo, hi, 5); double tmin = Double.POSITIVE_INFINITY, tmax = Double.NEGATIVE_INFINITY;
-        double axL = Double.POSITIVE_INFINITY, axR = Double.NEGATIVE_INFINITY; FontMetrics ft = probe.g.getFontMetrics(Canvas.font(13f));
+        double axL = Double.POSITIVE_INFINITY, axR = Double.NEGATIVE_INFINITY; FontMetrics ft = probe.g.getFontMetrics(Canvas.font(T.tickSize));
+        java.util.function.Function<Double, String> TK = t -> K == 3 ? Canvas.tick(t).replaceFirst("^(-?)0\\.", "$1.") : Canvas.tick(t);
         for (double t : ticks) { double v = log ? Math.log(t) : t; if (v < lo - 1e-9 || v > hi + 1e-9) continue; tmin = Math.min(tmin, v); tmax = Math.max(tmax, v);
-            double xx = X.applyAsDouble(v), hw = ft.stringWidth(Canvas.tick(t)) / 2.0; axL = Math.min(axL, xx - hw); axR = Math.max(axR, xx + hw); }
+            double xx = X.applyAsDouble(v), hw = ft.stringWidth(TK.apply(t)) / 2.0; axL = Math.min(axL, xx - hw); axR = Math.max(axR, xx + hw); }
         boolean xlab2 = !o.xLeft.isEmpty() || !o.xRight.isEmpty();
-        double axTop = ay - 3, axBot = ay + (xlab2 ? 38 : 20) + 5;   // vertical band occupied by the axis, tick labels and optional left/right labels
-        if (xlab2) { FontMetrics f11 = probe.g.getFontMetrics(Canvas.font(11f)); if (!o.xLeft.isEmpty()) axL = Math.min(axL, X.applyAsDouble(tmin) - f11.stringWidth(o.xLeft) / 2.0); if (!o.xRight.isEmpty()) axR = Math.max(axR, X.applyAsDouble(tmax) + f11.stringWidth(o.xRight) / 2.0); }
-        // ---- extra gap between the left columns and the plot: if the heterogeneity / test lines are slightly too long to fit left of the axis,
-        // shift the plot (and the right-hand columns) to the right instead of moving the whole footer below the axis (capped at 140 px).
-        { FontMetrics fq = probe.g.getFontMetrics(Canvas.font(11f)); double need = 0;
-          for (int i = tail; i < nrow; i++) need = Math.max(need, M + fq.stringWidth(rows.get(i).text.replace("\u0001", "")) + 6 + 8);
-          int extra = (int) Math.ceil(need - axL); if (extra > 0 && extra <= 140) { sh[0] = extra; px0 += extra; px1 += extra; rx1 += extra; rx2 += extra; rx3 += extra; W += extra; axL += extra; axR += extra; } }
-        // ---- footer text (heterogeneity, tests, methods): starts directly under the last row, as in meta::forest, and is only pushed
-        // below the axis if a line would actually overlap the axis / tick labels horizontally.
+        // positions of the "Favours ..." labels: under the ends of the axis, or (STATA) centred on each half of the axis
+        double nullPos = hasRef ? ref : (tmin + tmax) / 2; if (!(tmin <= tmax)) { tmin = lo; tmax = hi; }
+        double xlC = K == 3 ? (tmin + nullPos) / 2 : tmin, xrC = K == 3 ? (nullPos + tmax) / 2 : tmax;
+        // ---- footer text (heterogeneity, tests, notes, methods)
+        String[] dl = o.analysisDetails ? Report.details(r).split("\n") : new String[0];
         FontMetrics f11 = probe.g.getFontMetrics(Canvas.font(11f)), f11b = probe.g.getFontMetrics(Canvas.bold(11f));
         java.util.List<String> fTxt = new ArrayList<>(); java.util.List<Boolean> fBold = new ArrayList<>(), fRich = new ArrayList<>(); java.util.List<Double> fGap = new ArrayList<>();
-        for (int i = tail; i < nrow; i++) { fTxt.add(rows.get(i).text); fBold.add(false); fRich.add(true); fGap.add(fTxt.size() == 1 ? 0.0 : 15.0); }
+        for (int i = tail; i < nrow; i++) { fTxt.add(K == 0 ? rows.get(i).text : rows.get(i).text.replace(IT, "")); fBold.add(false); fRich.add(K == 0); fGap.add(fTxt.size() == 1 ? 0.0 : 15.0); }
         if (dl.length > 0) { fTxt.add("Details of meta-analysis methods:"); fBold.add(true); fRich.add(false); fGap.add(fTxt.size() == 1 ? 0.0 : 25.0);
             for (int i = 1; i < dl.length; i++) { fTxt.add(dl[i]); fBold.add(false); fRich.add(false); fGap.add(14.0); } }
-        double[] fy = new double[fTxt.size()]; double ty0 = y + 15, tcur = ty0, tyEnd = y; boolean first = true;
-        for (int i = 0; i < fy.length; i++) {
-            tcur = first ? ty0 : tcur + fGap.get(i); first = false;
-            String plain = fTxt.get(i).replace("\u0001", ""); double right = M + (fBold.get(i) ? f11b : f11).stringWidth(plain) + 6;   // +6: safety margin for italic glyphs
-            if (right > axL - 8 && tcur + 4 > axTop && tcur - 11 < axBot) tcur = axBot + 12;   // would collide with the axis -> move below it
-            fy[i] = tcur; tyEnd = tcur;
-        }
-        double yEnd = Math.max(fy.length > 0 ? tyEnd + 4 : y, Math.max(axBot, y));
+        double ay, ruleNote = -1; double[] fy = new double[fTxt.size()];
+        if (K == 3) {   // STATA: the notes sit inside the frame under a rule, above the axis
+            ruleNote = yTableEnd + 8; double tcur = ruleNote + 20; for (int i = 0; i < fy.length; i++) { tcur += i == 0 ? 0 : fGap.get(i); fy[i] = tcur; }
+            ay = (fy.length > 0 ? fy[fy.length - 1] : ruleNote) + 26;
+        } else ay = y + rowH * 0.5;
+        double axTop = ay - 3, axBot = ay + (xlab2 ? 38 : 20) + 5;   // vertical band occupied by the axis, tick labels and optional left/right labels
+        if (xlab2) { FontMetrics f11x = f11; if (!o.xLeft.isEmpty()) axL = Math.min(axL, X.applyAsDouble(xlC) - f11x.stringWidth(o.xLeft) / 2.0); if (!o.xRight.isEmpty()) axR = Math.max(axR, X.applyAsDouble(xrC) + f11x.stringWidth(o.xRight) / 2.0); }
+        // ---- extra gap between the left columns and the plot: if the heterogeneity / test lines are slightly too long to fit left of the axis,
+        // shift the plot (and the columns right of it) to the right instead of moving the whole footer below the axis (capped at 140 px).
+        if (K != 3) { double need = 0;
+          for (int i = tail; i < nrow; i++) need = Math.max(need, M + f11.stringWidth(rows.get(i).text.replace(IT, "")) + 6 + 8);
+          int extra = (int) Math.ceil(need - axL); if (extra > 0 && extra <= 140) { sh0[0] = extra; px0 += extra; px1 += extra; for (Col c : post) c.xl += extra; W += extra; axL += extra; axR += extra; } }
+        W = Math.max(W, (int) Math.ceil(axR + M));
+        // ---- footer text: starts directly under the last row, as in meta::forest, and is only pushed below the axis if a line would actually overlap the axis / tick labels horizontally.
+        double tyEnd = y;
+        if (K != 3) { double ty0 = y + 15, tcur = ty0; boolean first = true;
+            for (int i = 0; i < fy.length; i++) {
+                tcur = first ? ty0 : tcur + fGap.get(i); first = false;
+                String plain = fTxt.get(i).replace("\u0001", ""); double right = M + (fBold.get(i) ? f11b : f11).stringWidth(plain) + 6;   // +6: safety margin for italic glyphs
+                if (right > axL - 8 && tcur + 4 > axTop && tcur - 11 < axBot) tcur = axBot + 12;   // would collide with the axis -> move below it
+                fy[i] = tcur; tyEnd = tcur;
+            } }
+        double yEnd = K == 3 ? axBot + 4 : Math.max(fy.length > 0 ? tyEnd + 4 : y, Math.max(axBot, y));
         int H = (int) Math.ceil(yEnd + 14);
-        Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g;
+        // ---- STATA: pale frame, navy title, white panel
+        final String title = K != 3 ? null : !s.title.isEmpty() ? s.title : (s.random ? "Random effects" : "Fixed effects") + " Meta-Analysis of " + plural(measure);
+        int ox = 0, oy = 0, oyb = 0, Wt = W, Ht = H;
+        if (K == 3) { ox = 12; oy = 44; oyb = 12; Wt = Math.max(W, probe.g.getFontMetrics(Canvas.font(17f)).stringWidth(title) + 40) + 2 * ox; Ht = H + oy + oyb; if (Wt - 2 * ox > W) { int add = (Wt - 2 * ox - W); W += add; } }
+        Canvas c = new Canvas(Wt, Ht, o.scale); Graphics2D g = c.g;
+        if (K == 3) {
+            g.setColor(T.bgOuter); g.fill(new Rectangle2D.Double(0, 0, Wt, Ht)); g.setColor(T.titleCol); c.text(title, Wt / 2.0, 28, 17f, 1, false);
+            g.setColor(Color.WHITE); g.fill(new Rectangle2D.Double(ox, oy, Wt - 2 * ox, Ht - oy - oyb)); g.setColor(T.boxBorder); g.setStroke(new BasicStroke(1f)); g.draw(new Rectangle2D.Double(ox, oy, Wt - 2 * ox, Ht - oy - oyb));
+            g.translate(ox, oy);
+        }
+        final int Wc = W;
         // ---- header
-        double hy = 12 + gh + 12; g.setColor(Color.BLACK);
-        if (grp) { String[] gl = {s.labelE == null ? "" : s.labelE, s.labelC == null ? "" : s.labelC};
-            for (int g2 = 0; g2 < 2; g2++) { int a0 = g2 * gn, b0 = a0 + gn - 1; double xl = xr[a0] - cw[a0], xrr = xr[b0]; c.text(gl[g2], (xl + xrr) / 2.0, hy - gh, FS, 1, true); } }
-        c.text("Study", M, hy, FS, 0, true); for (int j = 0; j < nl; j++) c.text(lh[j], xr[j], hy, FS, 2, true);
-        c.text(loo ? smL : xlabFor(s), (px0 + px1) / 2.0, hy, FS, 1, true); c.text(smL, rx1, hy, FS, 2, true); c.text(ciHead, rx2, hy, FS, 2, true); if (showWeight) c.text("Weight", rx3, hy, FS, 2, true);
+        g.setColor(Color.BLACK); final boolean hb = T.boldHead;
+        c.text(sh[0], M, hy - gh, FS, 0, hb); c.text(sh[1], M, hy, FS, 0, hb);
+        for (Object[] g2 : groups) { int a0 = (Integer) g2[1], b0 = (Integer) g2[2]; double xl = xr[a0] - cw[a0], xrr = xr[b0]; c.text((String) g2[0], (xl + xrr) / 2.0, hy - gh, FS, 1, true);
+            if (merge) { g.setStroke(new BasicStroke(1f)); c.line(xl, hy - gh + 4, xrr, hy - gh + 4); } }
+        for (int j = 0; j < nl; j++) { if (merge) c.text(lh[j], xr[j] - cw[j] / 2.0, hy, FS, 1, true); else c.text(lh[j], xr[j], hy, FS, 2, hb); }
+        for (Col col : pre) { c.text(col.h1, col.ax(col.hAlign), hy - gh, FS, col.hAlign, hb); c.text(col.h2, col.ax(col.hAlign), hy, FS, col.hAlign, hb); }
+        for (Col col : post) { c.text(col.h1, col.ax(col.hAlign), hy - gh, FS, col.hAlign, hb); c.text(col.h2, col.ax(col.hAlign), hy, FS, col.hAlign, hb); }
+        double pcx = (px0 + px1) / 2.0;
+        if (K == 0) c.text(loo ? smL : measure, pcx, hy, FS, 1, true);
+        else if (K == 1) { c.text(measure, pcx, hy - gh, FS, 1, true); c.text(mt + ", " + mdl + ", " + lvl, pcx, hy, FS, 1, true); }
+        else if (K == 2) { c.text(measure + ", " + mt + ",", pcx, hy - gh, FS, 1, true); c.text(mdl.toLowerCase(Locale.ROOT) + " (" + lvl + ")", pcx, hy, FS, 1, true); }
+        if (T.headRule != null) { g.setColor(T.headRule); g.setStroke(new BasicStroke(K == 1 ? 1f : 1.2f)); c.line(M, ruleY, Wc - M, ruleY); }
+        if (K == 3 && ruleNote >= 0 && fy.length > 0) { g.setColor(T.boxBorder); g.setStroke(new BasicStroke(1f)); c.line(0, ruleNote, Wc, ruleNote); }
         // ---- reference lines
-        Pool P = r.overall; double pooled = s.random ? P.teRandom : P.teCommon; double yRefEnd = ay;
-        g.setStroke(new BasicStroke(1.1f)); if (hasRef) c.line(X.applyAsDouble(ref), yFirstTop, X.applyAsDouble(ref), ay);
-        if (!Double.isNaN(pooled) && firstPool >= 0 && !loo) { double pp = lin ? Meta.back(s, pooled, P.nHarm) : pooled; double yd = cy[lastPool] - 6; g.setStroke(new BasicStroke(0.9f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{1.5f, 2.5f}, 0)); c.line(X.applyAsDouble(pp), yFirstTop, X.applyAsDouble(pp), yd); }
-        g.setStroke(new BasicStroke(1f));
+        Pool P = r.overall; double pooled = s.random ? P.teRandom : P.teCommon;
+        if (hasRef) { g.setColor(T.nullCol); g.setStroke(T.nullStroke()); c.line(X.applyAsDouble(ref), yFirstTop, X.applyAsDouble(ref), ay); }
+        if (!Double.isNaN(pooled) && firstPool >= 0 && !loo) { double pp = lin ? Meta.back(s, pooled, P.nHarm) : pooled; double yd = K == 3 ? ay : cy[lastPool] - 6; g.setColor(T.pooledCol); g.setStroke(T.pooledStroke()); c.line(X.applyAsDouble(pp), yFirstTop, X.applyAsDouble(pp), yd); }
+        g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
         // ---- rows
         for (int i = 0; i < tail; i++) {
             Row w = rows.get(i); double mid = cy[i], base = mid + 4; g.setColor(Color.BLACK);
-            if (w.type == 2) { c.text(w.label, M, base, FS, 0, true); continue; }
+            if (w.type == 2) { c.text(w.label, M, base, FS, 0, boldRow(T, w)); continue; }
             if (w.type == 4) continue;
-            if (w.type == 5) { rich(c, w.text, M, base, 11f, false); continue; }
-            boolean bold = w.type != 0;
+            if (w.type == 5) { String tx = K == 0 ? w.text : w.text.replace(IT, ""); if (K == 0) rich(c, tx, M, base, 11f, false); else c.text(tx, M, base, 11f, 0, false); continue; }
+            boolean bold = boldRow(T, w);
             c.text(w.label == null ? "" : w.label, M, base, FS, 0, bold);
-            for (int j = 0; j < w.lcols.length && j < nl; j++) c.text(w.lcols[j], xr[j], base, FS, 2, bold);
+            String[] lc = LC.apply(w);
+            for (int j = 0; j < lc.length && j < nl; j++) { if (merge) c.text(lc[j], xr[j] - cw[j] / 2.0, base, FS, 1, bold); else c.text(lc[j], xr[j], base, FS, 2, bold); }
             if (w.type == 0) {
                 if (!Double.isNaN(w.te)) {
                     double wl = lin ? P(s, true, w, w.lo) : w.lo, wu = lin ? P(s, true, w, w.up) : w.up;
                     double a = X.applyAsDouble(Math.max(wl, lo)), b = X.applyAsDouble(Math.min(wu, hi)), xm = X.applyAsDouble(ptPos(s, lin, w));
-                    double size = Math.max(3, 15 * Math.sqrt(w.w / wmax)), bl = xm - size / 2, br = xm + size / 2;
-                    g.setColor(new Color(192, 192, 192)); g.fill(new Rectangle2D.Double(bl, mid - size / 2, size, size));
-                    // as meta::forest: the CI line and the vertical tick stay visible on top of the square (solid black);
-                    // if the whole CI fits inside the square, the horizontal line and the vertical tick are white.
-                    final float LW = 1.1f, TW = 1.3f;
-                    if (a >= bl && b <= br) {
-                        g.setColor(Color.WHITE); g.setStroke(new BasicStroke(LW)); c.line(a, mid, b, mid);
-                        g.setStroke(new BasicStroke(TW)); c.line(xm, mid - 2.5, xm, mid + 2.5);
+                    double size = Math.max(K == 3 ? 2 : 3, T.markerMax * Math.sqrt(w.w / wmax)), bl = xm - size / 2, br = xm + size / 2;
+                    final float LW = K == 3 ? 1.3f : K == 2 ? 1f : 1.1f, TW = 1.3f;
+                    if (T.markerDiamond) {   // BMJ: diamonds in the colour of the CI line
+                        g.setColor(T.ciCol); g.setStroke(new BasicStroke(LW)); c.line(a, mid, b, mid);
+                        Path2D d = new Path2D.Double(); double h = size / 2; d.moveTo(xm - h, mid); d.lineTo(xm, mid - h); d.lineTo(xm + h, mid); d.lineTo(xm, mid + h); d.closePath(); g.setColor(T.squareFill); g.fill(d);
                     } else {
-                        g.setColor(Color.BLACK); g.setStroke(new BasicStroke(LW)); c.line(a, mid, b, mid);
-                        g.setStroke(new BasicStroke(TW)); c.line(xm, mid - 2.5, xm, mid + 2.5);
+                        g.setColor(T.squareFill); g.fill(new Rectangle2D.Double(bl, mid - size / 2, size, size));
+                        // as meta::forest: the CI line and the vertical tick stay visible on top of the square (solid black);
+                        // if the whole CI fits inside the square, the horizontal line and the vertical tick are white (Default theme only).
+                        boolean inside = K == 0 && a >= bl && b <= br;
+                        g.setColor(inside ? Color.WHITE : Color.BLACK); g.setStroke(new BasicStroke(LW)); c.line(a, mid, b, mid);
+                        if (K == 3) { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xm - 2, mid - 2, 4, 4)); }
+                        else { g.setStroke(new BasicStroke(TW)); c.line(xm, mid - 2.5, xm, mid + 2.5); }
                     }
                 }
             } else if (w.type == 1) {
                 double a = X.applyAsDouble(lin ? P(s, true, w, w.lo) : w.lo), b = X.applyAsDouble(lin ? P(s, true, w, w.up) : w.up), xm = X.applyAsDouble(lin ? P(s, true, w, w.te) : w.te);
-                Path2D d = new Path2D.Double(); d.moveTo(a, mid); d.lineTo(xm, mid - 5); d.lineTo(b, mid); d.lineTo(xm, mid + 5); d.closePath();
-                g.setColor(new Color(192, 192, 192)); g.fill(d); g.setColor(Color.BLACK); g.setStroke(new BasicStroke(0.9f)); g.draw(d);
+                double hh = K == 3 ? 7 : 5; Path2D d = new Path2D.Double(); d.moveTo(a, mid); d.lineTo(xm, mid - hh); d.lineTo(b, mid); d.lineTo(xm, mid + hh); d.closePath();
+                if (T.diamondFill != null) { g.setColor(T.diamondFill); g.fill(d); }
+                if (T.diamondBorder != null) { g.setColor(T.diamondBorder); g.setStroke(new BasicStroke(K == 3 ? 1.1f : 0.9f)); g.draw(d); }
             } else if (w.type == 3) {
                 double a = X.applyAsDouble(lin ? P(s, true, w, w.lo) : w.lo), b = X.applyAsDouble(lin ? P(s, true, w, w.up) : w.up);
                 g.setColor(new Color(205, 0, 0)); g.fill(new Rectangle2D.Double(a, mid - 2.5, b - a, 5)); g.setColor(new Color(120, 0, 0)); g.setStroke(new BasicStroke(0.7f)); g.draw(new Rectangle2D.Double(a, mid - 2.5, b - a, 5));
             }
             g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
-            if (w.type != 3) c.text(w.rcol1, rx1, base, FS, 2, bold);
-            c.text(w.rcol2, rx2, base, FS, 2, bold); if (showWeight && !loo) c.text(w.wtxt, rx3, base, FS, 2, bold);
+            for (Col col : pre) c.text(col.val.apply(w), col.ax(col.align), base, FS, col.align, bold);
+            for (Col col : post) c.text(col.val.apply(w), col.ax(col.align), base, FS, col.align, bold);
         }
         // ---- axis
-        g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1.1f));
+        g.setColor(T.axisCol); g.setStroke(new BasicStroke(1.1f));
         if (tmin <= tmax) c.line(X.applyAsDouble(tmin), ay, X.applyAsDouble(tmax), ay);
-        for (double t : ticks) { double v = log ? Math.log(t) : t; if (v < lo - 1e-9 || v > hi + 1e-9) continue; double xx = X.applyAsDouble(v); c.line(xx, ay, xx, ay + 5); c.text(Canvas.tick(t), xx, ay + 20, 13f, 1, false); }
-        g.setStroke(new BasicStroke(1f));
-        if (!o.xLeft.isEmpty()) c.text(o.xLeft, X.applyAsDouble(tmin), ay + 38, 11f, 1, false); if (!o.xRight.isEmpty()) c.text(o.xRight, X.applyAsDouble(tmax), ay + 38, 11f, 1, false);
+        for (double t : ticks) { double v = log ? Math.log(t) : t; if (v < lo - 1e-9 || v > hi + 1e-9) continue; double xx = X.applyAsDouble(v); g.setColor(T.axisCol); c.line(xx, ay, xx, ay + 5); g.setColor(Color.BLACK); c.text(TK.apply(t), xx, ay + 20, T.tickSize, 1, false); }
+        g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
+        if (!o.xLeft.isEmpty()) c.text(o.xLeft, X.applyAsDouble(xlC), ay + 38, 11f, 1, false); if (!o.xRight.isEmpty()) c.text(o.xRight, X.applyAsDouble(xrC), ay + 38, 11f, 1, false);
         // ---- footer text
         for (int i = 0; i < fy.length; i++) { if (fRich.get(i)) rich(c, fTxt.get(i), M, fy[i], 11f, false); else c.text(fTxt.get(i), M, fy[i], 11f, 0, fBold.get(i)); }
         return c.img;
     }
+
+    static String plural(String m) { return m.endsWith("s") ? m : m.matches(".*[^aeiou]y") ? m.substring(0, m.length() - 1) + "ies" : m + "s"; }
 
     /** Measures whose forest plot axis is drawn on the back-transformed scale (as in meta::forest). */
     static boolean linBack(String sm) { switch (sm) { case "PLOGIT": case "PAS": case "PFT": case "ZCOR": case "IRS": case "IRFT": return true; default: return false; } }
@@ -311,9 +417,10 @@ public final class Plots {
             Pool p = pools.get(i); Row w = new Row(); w.type = 0; w.label = labels.get(i);
             w.te = s.random ? p.teRandom : p.teCommon; w.lo = s.random ? p.loRandom : p.loCommon; w.up = s.random ? p.upRandom : p.upCommon; w.w = 0.3;
             w.n = p.nHarm; w.rcol1 = Fmt.num(Meta.back(s, w.te, w.n), dg); w.rcol2 = Fmt.ci(Meta.back(s, w.lo, w.n), Meta.back(s, w.up, w.n), dg);
+            w.sEst = w.rcol1; w.sLo = Fmt.num(Meta.back(s, w.lo, w.n), dg); w.sUp = Fmt.num(Meta.back(s, w.up, w.n), dg);
             w.lcols = new String[]{ Fmt.num(s.random ? p.pRandom : p.pCommon, 4).replace("0.0000", "< 0.0001"), Fmt.num(p.tau2, 4), Fmt.num(p.tau, 4), Fmt.num(100 * p.I2, 1) + "%" }; rows.add(w);
             if (s.prediction && s.random && !Double.isNaN(p.loPred)) rows.add(piRow(s, p, dg)); }
-        Pool p = r.overall; Row w = poolRow(r, s, p, s.random ? s.textRandom : s.textCommon, !s.random, dg, 100, null); w.lcols = new String[]{ "", "", "", "" }; rows.add(w);
+        Pool p = r.overall; Row w = themed(ForestTheme.of(o).kind, poolRow(r, s, p, s.random ? s.textRandom : s.textCommon, !s.random, dg, 100, null), p, s, o, false, false, false); w.lcols = new String[]{ "", "", "", "" }; rows.add(w);
         if (s.prediction && s.random) rows.add(piRow(s, p, dg));
         MetaSpec s2 = s; BufferedImage im = drawForest(rows, r, o, log, Report.smLabel(s), false, true); return im;
     }
@@ -334,17 +441,24 @@ public final class Plots {
         if (title != null && !title.isEmpty()) c.text(title, (a.x0 + a.x1) / 2, 24, 13, 1, true);
         return a; }
 
+    /** Funnel-type plots: single-proportion measures are labelled with the transformation used; other measures as in xlabFor. */
+    static String funnelXlab(MetaSpec s) { switch (s.sm) { case "PLOGIT": return "Logit Transformed Proportion"; case "PLN": return "Log Transformed Proportion"; case "PAS": return "Arcsine Transformed Proportion"; case "PFT": return "Freeman-Tukey Double Arcsine Transformed Proportion"; case "PRAW": return "Proportion"; default: return xlabFor(s); } }
+    /** Untransformed proportions (PRAW) live in [0, 1]: the x-axis of a funnel plot is truncated there (the funnel is cut at 0 and 1). */
+    static double[] clampRaw(MetaSpec s, double xl, double xh) { return "PRAW".equals(s.sm) ? new double[]{Math.max(xl, 0), Math.min(xh, 1)} : new double[]{xl, xh}; }
+
     static String xlabFor(MetaSpec s) { switch (s.sm) { case "HR": return "Hazard Ratio"; case "OR": return "Odds Ratio"; case "RR": return "Risk Ratio"; case "RD": return "Risk Difference"; case "MD": return "Mean Difference"; case "SMD": return "Standardised Mean Difference"; case "ROM": return "Ratio of Means";
         case "ZCOR": case "COR": return "Correlation"; case "IRR": return "Incidence Rate Ratio"; case "IRD": return "Incidence Rate Difference"; case "PLOGIT": case "PLN": case "PRAW": case "PAS": case "PFT": return "Proportion"; case "MRAW": case "MLN": return "Mean"; case "IR": case "IRLN": case "IRS": case "IRFT": return "Incidence Rate"; case "DOR": return "Diagnostic Odds Ratio"; case "ASD": return "Arcsine Difference"; case "VE": return "Vaccine Efficacy"; default: return Report.smLabel(s); } }
 
     public static BufferedImage funnel(MetaResult r, Opts o, TrimFill tf) {
+        if (FunnelThemes.METAWIN.equals(o.funnelTheme)) return FunnelThemes.metawin(r, o, tf);
+        if (FunnelThemes.STATA.equals(o.funnelTheme)) return FunnelThemes.stata(r, o, tf);
         MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); Canvas c = new Canvas(620, 520, o.scale);
         double[] te = tf != null ? tf.TE : r.TE, se = tf != null ? tf.seTE : r.seTE; String[] lab = tf != null ? tf.studlab : r.studlab; boolean[] fl = tf != null ? tf.filled : null;
         double center = tf != null ? (s.random ? tf.pool.teRandom : tf.pool.teCommon) : (s.random ? r.overall.teRandom : r.overall.teCommon);
         double maxse = 0, mn = 1e300, mx = -1e300; for (int i = 0; i < te.length; i++) if (!Double.isNaN(te[i])) { maxse = Math.max(maxse, se[i]); mn = Math.min(mn, te[i]); mx = Math.max(mx, te[i]); }
         double z = Dist.qnorm(0.975); double half = Math.max(z * maxse, Math.max(Math.abs(mx - center), Math.abs(mn - center))) * 1.05;
-        double xl = center - half, xh = center + half;
-        Axes a = axes(c, xl, xh, 0, maxse * 1.05, true, xlabFor(s), "Standard Error", log, "");
+        double xl = center - half, xh = center + half; { double[] cl = clampRaw(s, xl, xh); xl = cl[0]; xh = cl[1]; }
+        Axes a = axes(c, xl, xh, 0, maxse * 1.05, true, funnelXlab(s), "Standard Error", log, "");
         Graphics2D g = c.g; double ymax = maxse * 1.05;
         if (o.contour) { // contour-enhanced
             double[][] bands = {{1.96, 2.576, 0.0}, {1.645, 1.96, 0.0}};
@@ -390,8 +504,8 @@ public final class Plots {
         for (double t : pp.te) { mn = Math.min(mn, t); mx = Math.max(mx, t); }
         double[] ends = {pp.pet.b0, pp.peese.b0, pp.pet.b0 + pp.pet.b1 * maxse, pp.peese.b0 + pp.peese.b1 * maxse * maxse};
         for (double e : ends) { mn = Math.min(mn, e); mx = Math.max(mx, e); }
-        double pad = (mx - mn) * 0.06 + 1e-9; double xl = mn - pad, xh = mx + pad;
-        Axes a = axes(c, xl, xh, 0, maxse, true, xlabFor(s), "Standard Error", log, ""); Graphics2D g = c.g;
+        double pad = (mx - mn) * 0.06 + 1e-9; double xl = mn - pad, xh = mx + pad; { double[] cl = clampRaw(s, xl, xh); xl = cl[0]; xh = cl[1]; }
+        Axes a = axes(c, xl, xh, 0, maxse, true, funnelXlab(s), "Standard Error", log, ""); Graphics2D g = c.g;
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
         g.setColor(Color.GRAY); c.dashed(a.X(center), a.Y(0), a.X(center), a.Y(maxse));
         Color petCol = new Color(0x1F4E8C), peeseCol = new Color(0xD9822B); g.setStroke(new BasicStroke(1.8f));

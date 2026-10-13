@@ -130,6 +130,24 @@ meta-analysis methods" block); left/right axis labels, number of digits, row spa
 The x-axis is **centred on the null value** (1 for ratios such as OR, RR, HR, IRR; 0 for MD, SMD, RD, correlations),
 as in `meta::forest`; for single means, proportions and rates, which have no natural null value, the axis is not centred.
 
+**Theme** (applies to every forest plot: main, subgroup, leave-one-out and cumulative; also in the PNG / TIFF / JPG / SVG / PDF exports):
+
+| Theme | Look |
+|---|---|
+| Default | the `meta::forest` look (unchanged) |
+| RevMan 5 style | blue squares, black diamond, rule under the header, *Weight* before the estimate, "0.36 [0.30, 0.44]", pooled row "Total (95% CI)", footer "Heterogeneity: Tau² = …; Chi² = …, df = … (P …); I² = …%" |
+| BMJ style | purple diamonds, "No of events / total" as "e / n", grey rules, weight in %, "0.36 (0.30 to 0.44)", footer "Test for heterogeneity: τ²=…; χ²=…, df=…, P …; I²=…%" |
+| STATA style | pale-blue frame with a navy title, grey squares with a black dot, hollow diamond, solid null line and dashed dark-red pooled line, "Overall (I-squared = …%, p = …)", "% Weight" column, note under the table, "Favours …" labels centred on each half of the axis (use *X-axis left / right label*) |
+
+Below the theme, seven options override whatever the theme prescribes (**Theme default** keeps the theme's own choice):
+*Study-square fill colour* (the diamonds of the BMJ style), *Diamond fill* and *Diamond border* (pooled effects; **None** = hollow / no border),
+*Null-effect line color* and *style*, *Pooled-effect line color* and *style* (Solid, Dotted, Dashed).
+All of them are saved in project files.
+
+### Funnel plot themes (section 9)
+
+**Funnel plot themes** (Default, MetaWin style, STATA style) changes the look of the funnel plot and of the trim-and-fill funnel plot; imputed studies are orange in the MetaWin and STATA styles. MetaWin style is always a contour-enhanced sunset funnel with the power colour bar; STATA style shows grey pseudo 95% limits, or the grey contour bands when *Contour-enhanced* is on. *Study labels* applies to every theme.
+
 ### Subgroup analysis (section 5)
 
 * **Subgroup variable**, subgroup analysis on/off, assumption of a common tau² across subgroups.
