@@ -11,6 +11,8 @@ public final class Reg {
     public double[] est, se, zval, pval, lb, ub; public boolean knha; public double dfT = Double.NaN;
     public double[] x1, y1, size; public String xName; // for bubble plot (single numeric covariate)
     public double[] fitted; public int[] used; public boolean intercept;
+    public double s2 = 1;   // Knapp-Hartung scale factor of the coefficient covariance matrix (1 without KNHA)
+    public double[] plotX;   // x values used by the adjusted regression plot (set by the plot)
     public double tau2RE;
     public int[] refPos = new int[0]; public String[] refLabel = new String[0];   // reference-category rows of the coefficient tables
 
@@ -123,7 +125,7 @@ public final class Reg {
         g.QE = g.fit.QE; g.dfQE = k - p; g.pQE = Dist.pchisqUpper(g.QE, g.dfQE);
         g.knha = s.methodRandomCi.equals("HK"); g.adhocSe = s.adhocHakn.equals("se");
         Wald W = wald(g.fit, g.knha, g.adhocSe, intercept);
-        g.est = g.fit.beta.clone(); g.se = W.se;
+        g.est = g.fit.beta.clone(); g.se = W.se; g.s2 = W.s2;
         g.zval = W.z; g.pval = new double[p]; g.lb = new double[p]; g.ub = new double[p];
         double alpha = 1 - s.levelMa;
         for (int a = 0; a < p; a++) {
@@ -145,6 +147,20 @@ public final class Reg {
         return g;
     }
 
+
+    /** Fitted value and confidence bounds {fit, lower, upper} of the model at a model-matrix row (z or, with KNHA, t quantile). */
+    public double[] predict(double[] x, double level) {
+        double f = 0, v = 0; for (int a = 0; a < p; a++) { f += x[a] * fit.beta[a]; for (int b = 0; b < p; b++) v += x[a] * fit.vb[a][b] * x[b]; }
+        double se = Math.sqrt(Math.max(0, v * s2)), al = 1 - level, q = knha ? Dist.qt(1 - al / 2, k - p) : Dist.qnorm(1 - al / 2);
+        return new double[]{f, f - q * se, f + q * se};
+    }
+
+    /** Prediction-interval bounds {lower, upper} of the model at a model-matrix row (metafor::predict: fit +/- crit * sqrt(se^2 + tau^2); z, or t with KNHA, quantile). */
+    public double[] predictInterval(double[] x, double level) {
+        double f = 0, v = 0; for (int a = 0; a < p; a++) { f += x[a] * fit.beta[a]; for (int b = 0; b < p; b++) v += x[a] * fit.vb[a][b] * x[b]; }
+        double se = Math.sqrt(Math.max(0, v * s2) + Math.max(0, tau2)), al = 1 - level, q = knha ? Dist.qt(1 - al / 2, k - p) : Dist.qnorm(1 - al / 2);
+        return new double[]{f - q * se, f + q * se};
+    }
 
     /** Inserts the reference-category rows into the rows of a coefficient table (row a = coefficient a). Columns whose header is empty (significance stars) stay blank, all other columns get a dash. */
     public List<String[]> withReferenceRows(List<String> head, List<String[]> rows) {

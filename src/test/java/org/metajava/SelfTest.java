@@ -727,6 +727,18 @@ public class SelfTest {
 
         forestThemes(); funnelThemes();
 
+        // ---- prediction interval and study symbols of the regression plots
+        { double[][] dd = simData(1, 7, 14); MetaResult res = simResult(dd[0], dd[1]); java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", dd[2]);
+            Reg rg = Reg.run(res, java.util.List.of("x"), nd, java.util.List.of(), new java.util.HashMap<>(), true, new java.util.HashMap<>());
+            double[] row = {1, dd[2][0]}; double[] ci = rg.predict(row, 0.95), pi = rg.predictInterval(row, 0.95);
+            check(pi[0] <= ci[1] + 1e-12 && pi[1] >= ci[2] - 1e-12, "prediction interval of the regression line contains the confidence interval");
+            check(Math.abs((pi[1] - ci[0]) - (pi[1] - pi[0]) / 2) < 1e-9, "prediction interval is symmetric around the fitted value");
+            Plots.Opts o0 = new Plots.Opts(); o0.studyLabels = false; o0.confInt = true; Plots.Opts o2 = new Plots.Opts(); o2.studyLabels = false; o2.confInt = true; o2.predInt = true;
+            for (String stl : new String[]{org.metajava.plot.RegPlots.DEFAULT_STYLE, org.metajava.plot.RegPlots.GG}) { o0.bubbleStyle = stl; o2.bubbleStyle = stl;
+                BufferedImage a0 = Plots.bubble(rg, o0, res), a2 = Plots.bubble(rg, o2, res); boolean diff = a0.getWidth() != a2.getWidth(); for (int yy = 0; !diff && yy < Math.min(a0.getHeight(), a2.getHeight()); yy++) for (int xx = 0; xx < a0.getWidth() && !diff; xx++) if (a0.getRGB(xx, yy) != a2.getRGB(xx, yy)) diff = true;
+                check(diff, "'" + stl + "' bubble plot: the prediction interval changes the picture"); }
+            for (String sy : org.metajava.plot.RegPlots.SYMBOLS) { Plots.Opts q = new Plots.Opts(); q.studyLabels = false; q.symbol = sy; q.symSize = 1.4; q.predInt = true; q.confInt = true;
+                try { check(Plots.bubble(rg, q, res) != null, "bubble plot with study symbol '" + sy + "'"); q.bubbleStyle = org.metajava.plot.RegPlots.GG; check(Plots.bubble(rg, q, res) != null, "ggplot2-style bubble plot with study symbol '" + sy + "'"); } catch (Exception e) { check(false, "study symbol " + sy + " threw " + e); } } }
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);
     }

@@ -1,5 +1,15 @@
 # Changelog
 
+### Added - legend for the regression plots; fixed - STATA-style forest plot footer
+- All regression plots (default-style bubble plot, ggplot2-style bubble plot and the adjusted plot) now carry a framed **legend** under the x-axis label whenever the confidence interval and/or the prediction interval is shown: *Regression line*, *95% Confidence Interval* and *95% Prediction Interval* (levels follow the analysis settings). The swatches use the colours chosen in the Meta-regression menu (ggplot2 style / adjusted plot) or the fixed colours of the default style, with the dashed (confidence) and dotted (prediction) bound styles. The figure grows to make room.
+- **STATA style** forest plots (main, subgroup, leave-one-out, cumulative): the x-axis now sits in the row directly below the last table row (the prediction interval); the notes block (weights note, test lines, "Details of meta-analysis methods") moves below the axis and its tick / "Favours" labels, under a rule with a clear gap, so the two can no longer overlap. The figure becomes taller if needed.
+
+### Added - prediction interval and study-symbol options for the regression plots
+- New check box **Prediction interval** (section 6, Meta-regression, directly under *Confidence interval*). It applies to the bubble plot and to the regression plot with categorical moderator adjustment, and draws **dotted** prediction bounds (metafor::predict: fit +/- crit * sqrt(se^2 + tau^2), z or, with Knapp-Hartung, t quantile). In the default (meta style) bubble plot the prediction area is **lighter than the confidence area**.
+- New drop-downs **Prediction area colour** and **Prediction line colour** (below *Confidence lines colour*) for the ggplot2-style bubble plot and the adjusted regression plot.
+- New options below *Bubble plot style*: **Study symbol** (Circle (default), Triangle, Square, Star, Diamond, Open circle, Open triangle, Open square, Open diamond) and **Size of study symbol** (multiplier, 1.0 = previous size; symbols stay proportional to the study weights). The adjusted plot's legend uses the chosen symbol.
+- *Study circles colour* is renamed **Study symbol colour**. No number or report text changes; new settings are saved in project files (older projects open with the defaults).
+
 ### Added - funnel plot themes (Default, MetaWin style, STATA style)
 - New drop-down **Funnel plot themes** (section 9, Publication bias, directly under *Study labels*). It applies to the funnel plot and to the trim-and-fill funnel plot. **Default** is the current meta style (unchanged).
 - **MetaWin style:** sunset (power-enhanced) funnel, always contour-enhanced (the *Contour-enhanced* check box is disabled): red-yellow-green power map (power of a study with that standard error to detect the pooled effect, two-sided 5%), contour bands at p = 10%, 5% and 1% around the null value, dashed pseudo 95% limits and dotted line at the pooled effect, blue study points, "Power" colour bar, "standard error" axis and "ln <measure>" x label for ratio measures.

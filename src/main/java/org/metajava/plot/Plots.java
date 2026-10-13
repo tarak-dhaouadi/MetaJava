@@ -17,6 +17,8 @@ public final class Plots {
         public String xLeft = "", xRight = "", xlab = ""; public boolean showSubgroupName = true, testSubgroup = true, testEffectSubgroup = false; public boolean overallResults = true;
         public boolean weightsCol = true, effectCol = true, seCol = true, teCol = true; public double spacing = 1.0; public int digits = 2; public boolean predictionLine = true; public boolean apexLine = false; public String goshPalette = "Default";
         /** Overrides of the forest-plot theme ("Theme default" keeps what the theme prescribes). */
+        public boolean confInt = false; public String bubbleStyle = RegPlots.DEFAULT_STYLE, colPoints = RegPlots.POINTS_DEFAULT, colLine = RegPlots.LINE_DEFAULT, colBand = RegPlots.BAND_DEFAULT, colBandLine = RegPlots.BANDLINE_DEFAULT;   // regression plots
+        public boolean predInt = false; public String colPred = RegPlots.PRED_DEFAULT, colPredLine = RegPlots.PREDLINE_DEFAULT, symbol = RegPlots.SYM_DEFAULT; public double symSize = 1.0;   // prediction interval, study symbol
         public String funnelTheme = FunnelThemes.DEFAULT;   // funnel plot and trim-and-fill funnel plot: Default, MetaWin style, STATA style
         public String squareColour = ForestTheme.AUTO, diamondFill = ForestTheme.AUTO, diamondBorder = ForestTheme.AUTO, nullColour = ForestTheme.AUTO, nullStyle = ForestTheme.AUTO, pooledColour = ForestTheme.AUTO, pooledStyle = ForestTheme.AUTO; }
 
@@ -280,20 +282,23 @@ public final class Plots {
         FontMetrics f11 = probe.g.getFontMetrics(Canvas.font(11f)), f11b = probe.g.getFontMetrics(Canvas.bold(11f));
         java.util.List<String> fTxt = new ArrayList<>(); java.util.List<Boolean> fBold = new ArrayList<>(), fRich = new ArrayList<>(); java.util.List<Double> fGap = new ArrayList<>();
         for (int i = tail; i < nrow; i++) { fTxt.add(K == 0 ? rows.get(i).text : rows.get(i).text.replace(IT, "")); fBold.add(false); fRich.add(K == 0); fGap.add(fTxt.size() == 1 ? 0.0 : 15.0); }
+        final int nNote = fTxt.size();   // lines before the methods details: weights note, heterogeneity / test lines
         if (dl.length > 0) { fTxt.add("Details of meta-analysis methods:"); fBold.add(true); fRich.add(false); fGap.add(fTxt.size() == 1 ? 0.0 : 25.0);
             for (int i = 1; i < dl.length; i++) { fTxt.add(dl[i]); fBold.add(false); fRich.add(false); fGap.add(14.0); } }
         double ay, ruleNote = -1; double[] fy = new double[fTxt.size()];
-        if (K == 3) {   // STATA: the notes sit inside the frame under a rule, above the axis
-            ruleNote = yTableEnd + 8; double tcur = ruleNote + 20; for (int i = 0; i < fy.length; i++) { tcur += i == 0 ? 0 : fGap.get(i); fy[i] = tcur; }
-            ay = (fy.length > 0 ? fy[fy.length - 1] : ruleNote) + 26;
+        if (K == 3) {   // STATA: the note / test lines sit directly under the last table row (prediction interval), the axis under them, and the methods details under a rule below the axis
+            double tcur = yTableEnd + 14; for (int i = 0; i < nNote; i++) { tcur += i == 0 ? 0 : fGap.get(i); fy[i] = tcur; }
+            ay = nNote > 0 ? fy[0] + 8 : yTableEnd + rowH * 0.5;   // axis line level with the note lines (the plot is shifted right of them, see below)
         } else ay = y + rowH * 0.5;
         double axTop = ay - 3, axBot = ay + (xlab2 ? 38 : 20) + 5;   // vertical band occupied by the axis, tick labels and optional left/right labels
+        if (K == 3 && fy.length > nNote) { ruleNote = Math.max(axBot, nNote > 0 ? fy[nNote - 1] + 6 : axBot) + 16; double tcur = ruleNote + 20; for (int i = nNote; i < fy.length; i++) { tcur += i == nNote ? 0 : fGap.get(i); fy[i] = tcur; } }
         if (xlab2) { FontMetrics f11x = f11; if (!o.xLeft.isEmpty()) axL = Math.min(axL, X.applyAsDouble(xlC) - f11x.stringWidth(o.xLeft) / 2.0); if (!o.xRight.isEmpty()) axR = Math.max(axR, X.applyAsDouble(xrC) + f11x.stringWidth(o.xRight) / 2.0); }
         // ---- extra gap between the left columns and the plot: if the heterogeneity / test lines are slightly too long to fit left of the axis,
         // shift the plot (and the columns right of it) to the right instead of moving the whole footer below the axis (capped at 140 px).
-        if (K != 3) { double need = 0;
-          for (int i = tail; i < nrow; i++) need = Math.max(need, M + f11.stringWidth(rows.get(i).text.replace(IT, "")) + 6 + 8);
-          int extra = (int) Math.ceil(need - axL); if (extra > 0 && extra <= 140) { sh0[0] = extra; px0 += extra; px1 += extra; for (Col c : post) c.xl += extra; W += extra; axL += extra; axR += extra; } }
+        { double need = 0;   // STATA: the note lines stand at the level of the axis, so the plot is moved right until the longest line ends clearly left of the axis (no cap)
+          if (K != 3) for (int i = tail; i < nrow; i++) need = Math.max(need, M + f11.stringWidth(rows.get(i).text.replace(IT, "")) + 6 + 8);
+          else for (int i = 0; i < nNote; i++) need = Math.max(need, M + f11.stringWidth(fTxt.get(i)) + 6 + 18);
+          int extra = (int) Math.ceil(need - axL); if (extra > 0 && (K == 3 || extra <= 140)) { sh0[0] = extra; px0 += extra; px1 += extra; for (Col c : post) c.xl += extra; W += extra; axL += extra; axR += extra; } }
         W = Math.max(W, (int) Math.ceil(axR + M));
         // ---- footer text: starts directly under the last row, as in meta::forest, and is only pushed below the axis if a line would actually overlap the axis / tick labels horizontally.
         double tyEnd = y;
@@ -304,7 +309,7 @@ public final class Plots {
                 if (right > axL - 8 && tcur + 4 > axTop && tcur - 11 < axBot) tcur = axBot + 12;   // would collide with the axis -> move below it
                 fy[i] = tcur; tyEnd = tcur;
             } }
-        double yEnd = K == 3 ? axBot + 4 : Math.max(fy.length > 0 ? tyEnd + 4 : y, Math.max(axBot, y));
+        double yEnd = K == 3 ? (fy.length > nNote ? fy[fy.length - 1] + 6 : Math.max(axBot, nNote > 0 ? fy[nNote - 1] + 6 : axBot)) + 4 : Math.max(fy.length > 0 ? tyEnd + 4 : y, Math.max(axBot, y));
         int H = (int) Math.ceil(yEnd + 14);
         // ---- STATA: pale frame, navy title, white panel
         final String title = K != 3 ? null : !s.title.isEmpty() ? s.title : (s.random ? "Random effects" : "Fixed effects") + " Meta-Analysis of " + plural(measure);
@@ -385,6 +390,7 @@ public final class Plots {
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
         if (!o.xLeft.isEmpty()) c.text(o.xLeft, X.applyAsDouble(xlC), ay + 38, 11f, 1, false); if (!o.xRight.isEmpty()) c.text(o.xRight, X.applyAsDouble(xrC), ay + 38, 11f, 1, false);
         // ---- footer text
+        if (K == 3) for (int i = 0; i < nNote; i++) { double tw = f11.stringWidth(fTxt.get(i)) + 4; if (M + tw > px0 - 4) { g.setColor(Color.WHITE); g.fill(new Rectangle2D.Double(M - 2, fy[i] - 11, tw + 2, 15)); g.setColor(Color.BLACK); } }   // keep long note lines readable where they cross the reference lines
         for (int i = 0; i < fy.length; i++) { if (fRich.get(i)) rich(c, fTxt.get(i), M, fy[i], 11f, false); else c.text(fTxt.get(i), M, fy[i], 11f, 0, fBold.get(i)); }
         return c.img;
     }
@@ -430,8 +436,10 @@ public final class Plots {
         double X(double v) { return x0 + (v - xl) / (xh - xl) * (x1 - x0); }
         double Y(double v) { return yRev ? y0 + (v - yl) / (yh - yl) * (y1 - y0) : y1 - (v - yl) / (yh - yl) * (y1 - y0); } }
 
-    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title) {
-        Axes a = new Axes(); a.c = c; a.x0 = 70; a.x1 = c.w / c.scaleF() - 30; a.y0 = 40; a.y1 = c.h / c.scaleF() - 60; a.xl = xl; a.xh = xh; a.yl = yl; a.yh = yh; a.yRev = yRev;
+    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title) { return axes(c, xl, xh, yl, yh, yRev, xlab, ylab, logX, title, 60); }
+    /** bottom: space (px) between the panel and the lower edge of the canvas. */
+    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom) {
+        Axes a = new Axes(); a.c = c; a.x0 = 70; a.x1 = c.w / c.scaleF() - 30; a.y0 = 40; a.y1 = c.h / c.scaleF() - bottom; a.xl = xl; a.xh = xh; a.yl = yl; a.yh = yh; a.yRev = yRev;
         Graphics2D g = c.g; g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
         double[] xt = logX ? logTicks(Math.exp(xl), Math.exp(xh)) : Canvas.pretty(xl, xh, 6), yt = Canvas.pretty(yl, yh, 6);
         if (logX) { int inside = 0; for (double t : xt) { double v = Math.log(t); if (v >= xl && v <= xh) inside++; } if (inside < 2) xt = Canvas.pretty(Math.exp(xl), Math.exp(xh), 5); }   // narrow range: the 1-2-5 log ticks leave fewer than two labels
@@ -522,17 +530,44 @@ public final class Plots {
         return c.img;
     }
 
+    /** Default-style prediction band: lighter than the confidence band (drawn underneath it), with dotted bounds. */
+    private static void metaPred(Axes a, double[][] cv, boolean log, Graphics2D g) {
+        Path2D p = new Path2D.Double(); int n = cv[0].length;
+        for (int i = 0; i < n; i++) { double yy = a.Y(log ? Math.exp(cv[5][i]) : cv[5][i]); if (i == 0) p.moveTo(a.X(cv[0][i]), yy); else p.lineTo(a.X(cv[0][i]), yy); }
+        for (int i = n - 1; i >= 0; i--) p.lineTo(a.X(cv[0][i]), a.Y(log ? Math.exp(cv[4][i]) : cv[4][i])); p.closePath();
+        g.setColor(new Color(235, 235, 235, 150)); g.fill(p);
+        g.setColor(new Color(70, 70, 70)); g.setStroke(RegPlots.DOTTED);
+        for (int row = 4; row <= 5; row++) { Path2D q = new Path2D.Double(); for (int i = 0; i < n; i++) { double yy = a.Y(log ? Math.exp(cv[row][i]) : cv[row][i]); if (i == 0) q.moveTo(a.X(cv[0][i]), yy); else q.lineTo(a.X(cv[0][i]), yy); } g.draw(q); }
+        g.setStroke(new BasicStroke(1f));
+    }
+
     public static BufferedImage bubble(Reg g0, Opts o, MetaResult r) {
-        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); Canvas c = new Canvas(620, 520, o.scale);
+        if (g0.x1 != null && RegPlots.GG.equals(o.bubbleStyle)) return RegPlots.ggBubble(g0, o, r);
+        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); List<RegPlots.LegItem> leg = RegPlots.legendItems(o, s, false); int ext = RegPlots.legendExtra(leg); Canvas c = new Canvas(620, 520 + ext, o.scale);
         if (g0.x1 == null) { c.text("Bubble plot requires exactly one numeric covariate", 310, 260, 12, 1, false); return c.img; }
-        double xl = Arrays.stream(g0.x1).min().getAsDouble(), xh = Arrays.stream(g0.x1).max().getAsDouble(), pad = (xh - xl) * 0.08 + 1e-9; xl -= pad; xh += pad;
-        double yl = Double.POSITIVE_INFINITY, yh = Double.NEGATIVE_INFINITY; for (double v : g0.y1) { yl = Math.min(yl, v); yh = Math.max(yh, v); } double yp = (yh - yl) * 0.1 + 1e-9; yl -= yp; yh += yp;
-        Canvas probe = c; Axes a = axes(c, xl, xh, log ? Math.exp(yl) : yl, log ? Math.exp(yh) : yh, false, g0.xName, xlabFor(s), false, "");
-        double wmax = Arrays.stream(g0.size).max().getAsDouble(); Graphics2D g = c.g;
-        for (int i = 0; i < g0.x1.length; i++) { double yv = log ? Math.exp(g0.y1[i]) : g0.y1[i]; double rad = 4 + 12 * Math.sqrt(g0.size[i] / wmax); double xx = a.X(g0.x1[i]), yy = a.Y(yv);
-            g.setColor(new Color(150, 150, 150, 200)); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, 2 * rad, 2 * rad)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, 2 * rad, 2 * rad));
+        double dxl = Arrays.stream(g0.x1).min().getAsDouble(), dxh = Arrays.stream(g0.x1).max().getAsDouble(), xl = dxl, xh = dxh, pad = (xh - xl) * 0.08 + 1e-9; xl -= pad; xh += pad;
+        final boolean icpt = g0.intercept; double[][] cv = RegPlots.curve(g0, s, dxl, dxh, x -> icpt ? new double[]{1, x} : new double[]{x});
+        double yl = Double.POSITIVE_INFINITY, yh = Double.NEGATIVE_INFINITY; for (double v : g0.y1) { double t = log ? Math.exp(v) : v; yl = Math.min(yl, t); yh = Math.max(yh, t); }
+        for (int i = 0; i < cv[0].length; i++) for (int q : RegPlots.rowsShown(o)) { double t = log ? Math.exp(cv[q][i]) : cv[q][i]; yl = Math.min(yl, t); yh = Math.max(yh, t); }
+        double yp = (yh - yl) * 0.1 + 1e-9; yl -= yp; yh += yp;
+        Axes a = axes(c, xl, xh, yl, yh, false, g0.xName, xlabFor(s), false, "", 60 + ext);
+        double wmax = Arrays.stream(g0.size).max().getAsDouble(); Graphics2D g = c.g; Shape clip0 = g.getClip();
+        g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
+        if (o.predInt) metaPred(a, cv, log, g);   // prediction band: lighter than the confidence band, dotted bounds
+        if (o.confInt) {   // lighter band between the confidence bounds, dashed bounds
+            Path2D p = new Path2D.Double(); int n = cv[0].length;
+            for (int i = 0; i < n; i++) { double yy = a.Y(log ? Math.exp(cv[3][i]) : cv[3][i]); if (i == 0) p.moveTo(a.X(cv[0][i]), yy); else p.lineTo(a.X(cv[0][i]), yy); }
+            for (int i = n - 1; i >= 0; i--) p.lineTo(a.X(cv[0][i]), a.Y(log ? Math.exp(cv[2][i]) : cv[2][i])); p.closePath();
+            g.setColor(new Color(215, 215, 215, 170)); g.fill(p);
+            g.setColor(new Color(70, 70, 70)); g.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{5f, 4f}, 0));
+            for (int row = 2; row <= 3; row++) { Path2D q = new Path2D.Double(); for (int i = 0; i < n; i++) { double yy = a.Y(log ? Math.exp(cv[row][i]) : cv[row][i]); if (i == 0) q.moveTo(a.X(cv[0][i]), yy); else q.lineTo(a.X(cv[0][i]), yy); } g.draw(q); }
+            g.setStroke(new BasicStroke(1f)); }
+        g.setClip(clip0);
+        for (int i = 0; i < g0.x1.length; i++) { double yv = log ? Math.exp(g0.y1[i]) : g0.y1[i]; double rad = o.symSize * (4 + 12 * Math.sqrt(g0.size[i] / wmax)); double xx = a.X(g0.x1[i]), yy = a.Y(yv);
+            RegPlots.drawSymbol(g, o.symbol, xx, yy, rad, new Color(150, 150, 150), 200, Color.BLACK, 1f);
             if (o.studyLabels) c.text(r.studlab[g0.used[i]], xx - rad - 2, yy - 2, 8, 2, false); }
-        if (o.regLine) { double b0 = g0.est[0], b1 = g0.est[1]; if (!g0.intercept) { b0 = 0; b1 = g0.est[0]; } double yA = b0 + b1 * xl, yB = b0 + b1 * xh; if (log) { yA = Math.exp(yA); yB = Math.exp(yB); } g.setColor(Color.BLACK); c.line(a.X(xl), a.Y(yA), a.X(xh), a.Y(yB)); }
+        if (o.regLine) { Path2D q = new Path2D.Double(); for (int i = 0; i < cv[0].length; i++) { double yy = a.Y(log ? Math.exp(cv[1][i]) : cv[1][i]); if (i == 0) q.moveTo(a.X(cv[0][i]), yy); else q.lineTo(a.X(cv[0][i]), yy); } g.setColor(Color.BLACK); g.draw(q); }
+        RegPlots.drawLegend(c, (a.x0 + a.x1) / 2, a.y1 + 52, leg);
         return c.img;
     }
 
