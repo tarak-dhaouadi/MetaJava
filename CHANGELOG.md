@@ -1,5 +1,11 @@
 # Changelog
 
+### Fixed - pooling method now re-runs the analysis automatically
+- Choosing **Inverse**, **MH**, **Peto** or **SSW** in *Pooling method* now updates the results by itself, like every other option; only GLMM and LRP did before (the handler returned without scheduling a run).
+
+### Added - I\u00B2 and tau\u00B2 confidence intervals on the RevMan 5, BMJ and STATA forest plots
+- *I\u00B2 confidence interval* and *Tau\u00B2 confidence interval* now also work with the **RevMan 5**, **BMJ** and **STATA** styles (they only affected the Default style). RevMan 5: `Tau\u00B2 = 0.012 [0.000; 0.045]` and `I\u00B2 = 45% [3%; 70%]` in the heterogeneity line; BMJ: same line in BMJ number format; STATA: `Overall (I-squared = 45.0% [2.9%; 69.8%], p = 0.012; tau-squared = 0.0123 [0.0020; 0.0450])` (tau-squared is added only when its interval is selected). As for the Default style, a longer line pushes the plot (and the columns right of it) to the right and enlarges the figure, so nothing overlaps the plot or its axis.
+
 ### Added - L'Abbé plot theme and seven colour options
 - Section 10 (Diagnostics), below *L'Abbé plot*: drop-down **L'Abbé plot theme** with **Default** (the current meta / metafor look, unchanged) and **ggplot2 style** (open axes, dotted grid, black no-effect line, dashed estimated-effect line, a **confidence area** and a **prediction area** around that line, and a framed legend). The areas are the curves implied by the limits of the pooled confidence interval and of the prediction interval, for RR, OR, RD and ASD; the random-effects result is used when selected, otherwise the common-effect one (which has no prediction interval, so only the confidence area is drawn). Confidence and prediction levels follow the analysis settings.
 - **Legend placement (ggplot2 style):** top left while the estimated-effect line lies below the no-effect line; lower right when it lies above it, so the legend never covers the studies.

@@ -473,6 +473,11 @@ public class SelfTest {
             MetaSpec bs = new MetaSpec(); bs.type = "bin"; bs.sm = "RR"; bs.method = "Inverse"; bs.common = true; bs.random = true; MetaResult br = Meta.run(bs, bd); Lfk bl = Lfk.compute(br.TE, br.seTE, br.studlab);
             java.util.function.DoubleFunction<BufferedImage> labF = sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return Plots.labbe(br, q); }, doiF = sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return Plots.doi(bl, br, q); };
             check(Report.lfkText(bl, br).contains("LFK index: ") && labF.apply(1.0).getWidth() == 520 && doiF.apply(1.0).getWidth() == 620, "Doi plot and L'Abbe plot render and the LFK report is produced");
+            // I^2 / tau^2 confidence intervals appear on every forest-plot theme (RevMan 5, BMJ, STATA as well as Default) and never shrink the figure
+            for (String th : org.metajava.plot.ForestTheme.THEMES) { Plots.Opts f0 = new Plots.Opts(), f1 = new Plots.Opts(), f2 = new Plots.Opts(); f0.theme = f1.theme = f2.theme = th; f1.ciI2 = true; f2.ciTau = true;
+              BufferedImage a0 = Plots.forest(br, f0), a1 = Plots.forest(br, f1), a2 = Plots.forest(br, f2);
+              check(!same(a0, a1) && a1.getWidth() >= a0.getWidth(), "Forest plot (" + th + "): the I\u00B2 confidence interval is shown and the figure does not shrink");
+              check(!same(a0, a2) && a2.getWidth() >= a0.getWidth(), "Forest plot (" + th + "): the tau\u00B2 confidence interval is shown and the figure does not shrink"); }
             // L'Abbe themes and colours: Default is unchanged by the new options, ggplot2 style draws, colours reach the pixels, legend moves to the lower right when the effect line is above the no-effect line
             { Plots.Opts d0 = new Plots.Opts(); d0.studyLabels = false; BufferedImage dflt = Plots.labbe(br, d0); Plots.Opts d1 = new Plots.Opts(); d1.studyLabels = false; d1.labbeTheme = org.metajava.plot.LabbePlot.DEFAULT;
               check(same(dflt, Plots.labbe(br, d1)), "L'Abbe Default theme with every colour on 'Theme default' draws the same plot");

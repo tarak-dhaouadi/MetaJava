@@ -52,7 +52,7 @@ public final class Plots {
                 if (useCommon) rows.add(themed(K, poolRow(r, s, p, s.textCommon, true, dg, 100 * wsumFor(r, idx, true) / sc, idx), p, s, o, true, useRandom, true));
                 if (useRandom) rows.add(themed(K, poolRow(r, s, p, s.textRandom + p.randomLabelSuffix, false, dg, 100 * wsumFor(r, idx, false) / sr, idx), p, s, o, true, useCommon, false));
                 if (s.predictionSubgroup && !Double.isNaN(p.loPred)) rows.add(piRow(s, p, dg));
-                if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(p, s, true, o) : hetThemed(p, s, K); rows.add(t); }
+                if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(p, s, true, o) : hetThemed(p, s, K, o); rows.add(t); }
                 if (o.testEffectSubgroup) { Row t = new Row(); t.type = 5; t.text = K == 1 || K == 2 ? testThemed(p, s, true, K) : "Test for effect in subgroup: " + IT + (p.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(s.random ? p.statRandom : p.statCommon, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? p.pRandom : p.pCommon, 4) + ")"; rows.add(t); }
                 rows.add(blank());
             }
@@ -61,7 +61,7 @@ public final class Plots {
             if (useCommon) rows.add(themed(K, poolRow(r, s, P, s.textCommon, true, dg, 100, allIdx(n)), P, s, o, false, useRandom, true));
             if (useRandom) rows.add(themed(K, poolRow(r, s, P, s.textRandom + P.randomLabelSuffix, false, dg, 100, allIdx(n)), P, s, o, false, useCommon, false));
             if (s.prediction && !Double.isNaN(P.loPred)) rows.add(piRow(s, P, dg));
-            if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(P, s, false, o) : hetThemed(P, s, K); rows.add(t); }
+            if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(P, s, false, o) : hetThemed(P, s, K, o); rows.add(t); }
             if (o.testOverall) { Row t = new Row(); t.type = 5; t.text = K == 1 || K == 2 ? testThemed(P, s, false, K) : "Test for overall effect: " + IT + (P.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(s.random ? P.statRandom : P.statCommon, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? P.pRandom : P.pCommon, 4) + ")"; rows.add(t); }
             if (hasSg && o.testSubgroup) { Row t = new Row(); t.type = 5; double q = s.random && !s.common ? r.qbRandom : r.qbCommon, pv = s.random && !s.common ? r.pQbRandom : r.pQbCommon;
                 t.text = K == 1 || K == 2 ? subgroupThemed(q, r.dfBetween, pv, K) : "Test for subgroup differences: \u03C7\u00B2" + sub(r.dfBetween) + " = " + Fmt.num(q, 2) + ", df = " + r.dfBetween + " (" + IT + "p" + IT + " " + Fmt.pvalEq(pv, 4) + ")"; rows.add(t); }
@@ -88,14 +88,25 @@ public final class Plots {
         if (K == 1 || K == 2) { if (!both) w.label = (sub ? "Subtotal" : "Total") + " (" + Fmt.num(s.levelMa * 100, 0) + "% CI)"; return w; }   // RevMan 5 / BMJ: "Total (95% CI)"
         if (K != 3) return w;
         String base = both ? w.label : sub ? "Subtotal" : "Overall";
-        w.label = !o.hetStats || (both && commonRow) ? base : base + " (I-squared = " + Fmt.num(100 * p.I2, 1) + "%, p = " + Fmt.num(p.pQ, 3) + ")"; return w;
+        w.label = !o.hetStats || (both && commonRow) ? base : base + " (I-squared = " + Fmt.num(100 * p.I2, 1) + "%" + i2ci(p, o, 3) + ", p = " + Fmt.num(p.pQ, 3) + (s.random && o.ciTau && !tauCi(p, o, 3).isEmpty() ? "; tau-squared = " + t4(p.tau2) + tauCi(p, o, 3) : "") + ")"; return w;
     }
     static String tau3(double x) { String t = Fmt.num(x, 3); return t.equals("0.000") && x > 0 ? Fmt.num(x, 4) : t; }
     static String i2txt(Pool p) { return Double.isNaN(p.I2) ? "NA" : Math.round(100 * p.I2) + "%"; }
     /** Heterogeneity line of the RevMan 5 (K = 1) and BMJ (K = 2) themes. */
-    static String hetThemed(Pool p, MetaSpec s, int K) {
-        if (K == 1) return "Heterogeneity: " + (s.random ? "Tau\u00B2 = " + tau3(p.tau2) + "; " : "") + "Chi\u00B2 = " + Fmt.num(p.Q, 2) + ", df = " + p.dfQ + " (P " + Fmt.pvalEq(p.pQ, 4) + "); I\u00B2 = " + i2txt(p);
-        return "Test for heterogeneity: " + (s.random ? "\u03C4\u00B2=" + Fmt.num(p.tau2, 2) + "; " : "") + "\u03C7\u00B2=" + Fmt.num(p.Q, 2) + ", df=" + p.dfQ + ", P " + Fmt.pvalEq(p.pQ, 3) + "; I\u00B2=" + i2txt(p);
+    static String hetThemed(Pool p, MetaSpec s, int K, Opts o) {
+        String i2 = i2ci(p, o, K), tc = tauCi(p, o, K);
+        if (K == 1) return "Heterogeneity: " + (s.random ? "Tau\u00B2 = " + tau3(p.tau2) + tc + "; " : "") + "Chi\u00B2 = " + Fmt.num(p.Q, 2) + ", df = " + p.dfQ + " (P " + Fmt.pvalEq(p.pQ, 4) + "); I\u00B2 = " + i2txt(p) + i2;
+        return "Test for heterogeneity: " + (s.random ? "\u03C4\u00B2=" + Fmt.num(p.tau2, 2) + tc + "; " : "") + "\u03C7\u00B2=" + Fmt.num(p.Q, 2) + ", df=" + p.dfQ + ", P " + Fmt.pvalEq(p.pQ, 3) + "; I\u00B2=" + i2txt(p) + i2;
+    }
+    /** Confidence interval of I-squared for the RevMan 5 (K = 1, whole percent), BMJ (K = 2, whole percent) and STATA (K = 3, one decimal) themes; empty unless selected and available. */
+    static String i2ci(Pool p, Opts o, int K) {
+        if (!o.ciI2 || Double.isNaN(p.loI2) || Double.isNaN(p.upI2)) return "";
+        return K == 3 ? " [" + Fmt.num(100 * p.loI2, 1) + "%; " + Fmt.num(100 * p.upI2, 1) + "%]" : " [" + Math.round(100 * p.loI2) + "%; " + Math.round(100 * p.upI2) + "%]";
+    }
+    /** Confidence interval of tau-squared in the number format of each theme; empty unless selected and available. */
+    static String tauCi(Pool p, Opts o, int K) {
+        if (!o.ciTau || Double.isNaN(p.loTau2) || Double.isNaN(p.upTau2)) return "";
+        return K == 1 ? " [" + tau3(p.loTau2) + "; " + tau3(p.upTau2) + "]" : K == 2 ? " [" + Fmt.num(p.loTau2, 2) + "; " + Fmt.num(p.upTau2, 2) + "]" : " [" + t4(p.loTau2) + "; " + t4(p.upTau2) + "]";
     }
     static String testThemed(Pool p, MetaSpec s, boolean sub, int K) {
         double st = s.random ? p.statRandom : p.statCommon, pv = s.random ? p.pRandom : p.pCommon; String L = p.testType.equals("t") && s.random ? "t" : "Z", head = sub ? "Test for effect in subgroup: " : "Test for overall effect: ";
@@ -300,7 +311,7 @@ public final class Plots {
         { double need = 0;   // STATA: the note lines stand at the level of the axis, so the plot is moved right until the longest line ends clearly left of the axis (no cap)
           if (K != 3) for (int i = tail; i < nrow; i++) need = Math.max(need, M + f11.stringWidth(rows.get(i).text.replace(IT, "")) + 6 + 8);
           else for (int i = 0; i < nNote; i++) need = Math.max(need, M + f11.stringWidth(fTxt.get(i)) + 6 + 18);
-          int extra = (int) Math.ceil(need - axL); if (extra > 0 && (K == 3 || extra <= 140)) { sh0[0] = extra; px0 += extra; px1 += extra; for (Col c : post) c.xl += extra; W += extra; axL += extra; axR += extra; } }
+          int extra = (int) Math.ceil(need - axL); if (extra > 0 && (K == 3 || extra <= 140 || (K != 0 && (o.ciI2 || o.ciTau)))) { sh0[0] = extra; px0 += extra; px1 += extra; for (Col c : post) c.xl += extra; W += extra; axL += extra; axR += extra; } }
         W = Math.max(W, (int) Math.ceil(axR + M));
         // ---- footer text: starts directly under the last row, as in meta::forest, and is only pushed below the axis if a line would actually overlap the axis / tick labels horizontally.
         double tyEnd = y;

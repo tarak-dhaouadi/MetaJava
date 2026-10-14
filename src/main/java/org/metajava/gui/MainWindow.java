@@ -264,7 +264,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
         boolean glmm = "GLMM".equals(methodBox.getSelectedItem()), lrp = "LRP".equals(methodBox.getSelectedItem());
         glmmModelBox.setEnabled(glmm && glmmModelBox.getItemCount() > 1); nagqBox.setEnabled(glmm);
         if (lrp) { boolean o = suppress; suppress = true; smBox.setSelectedItem("OR"); String pm = (String) predBox.getSelectedItem(); if (!"V".equals(pm) && !"HTS".equals(pm) && !"S".equals(pm)) predBox.setSelectedItem("V"); if ("KR".equals(randCiBox.getSelectedItem())) randCiBox.setSelectedItem("classic"); suppress = o; schedule(); return; }
-        if (!glmm) return;
+        if (!glmm) { schedule(); return; }   // Inverse / MH / Peto / SSW: re-run automatically like every other option
         boolean old = suppress; suppress = true;
         String sm = MetaSpec.glmmSm(type); if (sm != null) smBox.setSelectedItem(sm);
         tauBox.setSelectedItem("ML"); if ("KR".equals(randCiBox.getSelectedItem())) randCiBox.setSelectedItem("classic");
