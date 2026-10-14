@@ -481,6 +481,9 @@ public class SelfTest {
             // L'Abbe themes and colours: Default is unchanged by the new options, ggplot2 style draws, colours reach the pixels, legend moves to the lower right when the effect line is above the no-effect line
             { Plots.Opts d0 = new Plots.Opts(); d0.studyLabels = false; BufferedImage dflt = Plots.labbe(br, d0); Plots.Opts d1 = new Plots.Opts(); d1.studyLabels = false; d1.labbeTheme = org.metajava.plot.LabbePlot.DEFAULT;
               check(same(dflt, Plots.labbe(br, d1)), "L'Abbe Default theme with every colour on 'Theme default' draws the same plot");
+              { for (String th : org.metajava.plot.FunnelThemes.NAMES) { Plots.Opts q = new Plots.Opts(); q.funnelTheme = th; BufferedImage f1 = Plots.funnel(br, q, null); q.precision = true; BufferedImage f2 = Plots.funnel(br, q, null); BufferedImage f3 = Plots.funnel(br, q, null); q.contour = true; BufferedImage f4 = Plots.funnel(br, q, null);
+                  check(!same(f1, f2) && same(f2, f3), "Funnel plot of precision (" + th + ") differs from the standard funnel and is reproducible"); check(!same(f2, f4) || th.startsWith("MetaWin"), "Funnel plot of precision (" + th + ") honours Contour-enhanced");
+                  q.studyLabels = false; check(!same(f4, Plots.funnel(br, q, null)), "Funnel plot of precision (" + th + ") honours Study labels"); } }
               { for (String th : org.metajava.plot.RadialPlot.THEMES) { Plots.Opts q = new Plots.Opts(); q.radialTheme = th; BufferedImage a1 = Plots.radial(br, q); q.radialLabels = false; BufferedImage a2 = Plots.radial(br, q);
                   check(a1.getWidth() > 100 && !same(a1, a2), "Radial plot (" + th + ") draws and the Study labels option changes it"); }
                 Plots.Opts q0 = new Plots.Opts(); BufferedImage r0 = Plots.radial(br, q0); q0.radialCI = "Red"; check(!same(r0, Plots.radial(br, q0)), "Radial plot confidence area colour reaches the plot");

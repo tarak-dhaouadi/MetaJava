@@ -1,5 +1,9 @@
 # Changelog
 
+### Added - Funnel plot of precision
+- Section 9 (Publication bias): new check box **Funnel plot of precision**, directly below *Funnel plot*. It adds a second, separate funnel plot with the precision (1 / SE) on the vertical axis (largest at the top); the pseudo confidence limits and the contour bands become the curves x = centre +/- z / precision.
+- **Contour-enhanced**, **Study labels** and **Funnel plot themes** (Default, MetaWin style, STATA style) apply to it exactly as they do to the standard funnel plot; it is independent of the *Funnel plot* check box.
+
 ### Fixed - radial plot (metafor style) arc axis; Default radial plot shows the confidence lines
 - The arc axis of the metafor-style radial plot is now a circle around the origin in plot space whose radius keeps the whole arc to the right of the band, so it sits beside the plot and no longer overlaps it (the canvas grows to fit it).
 - The Default radial plot now shows the confidence limits by default (dashed, with a legend entry); the *Radial confidence line colour* option still changes their colour.

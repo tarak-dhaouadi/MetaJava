@@ -85,7 +85,7 @@ public class MainWindow extends JFrame {
     // other analyses
     JCheckBox sgChk = Ui.check("Subgroup analysis (uses the subgroup column)", false), sgPred = Ui.check("Subgroup prediction interval", false), sgTestEffect = Ui.check("Test for effect in subgroup", false), sgDetails = Ui.check("Details of meta-analysis methods", false), regChk = Ui.check("Meta-regression", false), bubbleChk = Ui.check("Bubble plot", true), regLine = Ui.check("Regression line", true), regCI = Ui.check("Confidence interval", false), regPI = Ui.check("Prediction interval", false), adjChk = Ui.check("Regression plot with categorical moderator adjustment", false), regIntercept = Ui.check("Intercept", true),
         looChk = Ui.check("Leave-one-out analysis", false), looForest = Ui.check("Forest plot", true), cumChk = Ui.check("Cumulative meta-analysis", false), cumForest = Ui.check("Forest plot", true),
-        funnelChk = Ui.check("Funnel plot", false), contourChk = Ui.check("Contour-enhanced", false), labChk = Ui.check("Study labels", true), biasChk = Ui.check("Test for funnel plot asymmetry", false), biasPlotChk = Ui.check("Plot", true),
+        funnelChk = Ui.check("Funnel plot", false), funnelPrecChk = Ui.check("Funnel plot of precision", false), contourChk = Ui.check("Contour-enhanced", false), labChk = Ui.check("Study labels", true), biasChk = Ui.check("Test for funnel plot asymmetry", false), biasPlotChk = Ui.check("Plot", true),
         tfChk = Ui.check("Trim and fill", false), infChk = Ui.check("Outlier & influence diagnostics (metafor)", false), baujatChk = Ui.check("Baujat plot", false), radialChk = Ui.check("Radial (Galbraith) plot", false),
         doiChk = Ui.check("Doi plot and LFK index", false), doiApexChk = Ui.check("Mark the apex (dashed line)", false), labbeChk = Ui.check("L\u2019Abb\u00E9 plot (binary outcomes)", false);
     JCheckBox petChk = Ui.check("PET-PEESE (small-study effects)", false), petPlotChk = Ui.check("PET-PEESE plot", false), selChk = Ui.check("Selection model (3-parameter)", false), failChk = Ui.check("Fail-safe N", false);
@@ -198,7 +198,7 @@ public class MainWindow extends JFrame {
         Ui.Section cu = new Ui.Section("8. Cumulative meta-analysis", false); cu.row(null, cumChk); cu.row(null, cumForest); p.add(cu); p.add(Box.createVerticalStrut(8));
 funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill funnel plot. Default = meta style; MetaWin style = power-enhanced (sunset) funnel with contour bands, always contour-enhanced; STATA style = Stata look (pale-blue frame, grey pseudo 95% limits or contour bands, framed legend). Imputed studies of the trim-and-fill plot are orange in the MetaWin and STATA styles");
         funnelThemeBox.addActionListener(e -> contourChk.setEnabled(!org.metajava.plot.FunnelThemes.METAWIN.equals(funnelThemeBox.getSelectedItem())));   // MetaWin style is always contour-enhanced
-        Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row("Funnel plot themes", funnelThemeBox); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
+        Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, funnelPrecChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row("Funnel plot themes", funnelThemeBox); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
         pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row(null, doiChk); pb.row(null, doiApexChk);
         petChk.setToolTipText("Precision-effect test (PET) and precision-effect estimate with standard error (PEESE): regression-based effect corrected for small-study effects (Stanley & Doucouliagos, 2014)");
         selChk.setToolTipText("Vevea-Hedges three-parameter selection model: adjusted effect when non-significant results are less likely to be published (works best with 20-30 or more studies)");
@@ -470,7 +470,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
     static final class Snap {
         MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; Map<String, String> refs = new HashMap<>(); String biasMethod, tfSide, tfEst, selDir; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
         String goshPal = "Default"; boolean perm, permExact, cmp, orchard, cater, gosh, goshHl, goshCl, goshReg, goshTrim, goshTrimOrd; int permIter, goshSub; long permSeed, goshSeed;
-        boolean doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, adj, loo, looForest, cum, cumForest, funnel, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
+        boolean doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, adj, loo, looForest, cum, cumForest, funnel, funnelPrec, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
     }
     private final ThreadLocal<List<Item>> sink = new ThreadLocal<>();
     private volatile int generation = 0; private java.util.concurrent.Future<?> current;
@@ -495,7 +495,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
             if (n.sg) { n.sSub = n.s.clone(); n.dSub = buildData(n.sSub, true); }
             n.reg = regChk.isSelected(); n.nums = chosen(covList); n.facs = chosen(facList); n.refs = chosenRefs(n.facs); n.regIntercept = regIntercept.isSelected(); n.bubble = bubbleChk.isSelected(); n.regLine = regLine.isSelected(); n.adj = adjChk.isSelected();
             n.loo = looChk.isSelected(); n.looForest = looForest.isSelected(); n.cum = cumChk.isSelected(); n.cumForest = cumForest.isSelected();
-            n.funnel = funnelChk.isSelected(); n.contour = contourChk.isSelected(); n.labels = labChk.isSelected(); n.bias = biasChk.isSelected(); n.biasPlot = biasPlotChk.isSelected(); n.biasMethod = (String) biasMethod.getSelectedItem();
+            n.funnel = funnelChk.isSelected(); n.funnelPrec = funnelPrecChk.isSelected(); n.contour = contourChk.isSelected(); n.labels = labChk.isSelected(); n.bias = biasChk.isSelected(); n.biasPlot = biasPlotChk.isSelected(); n.biasMethod = (String) biasMethod.getSelectedItem();
             n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
             n.o.contour = n.funnel && n.contour; n.o.studyLabels = n.labels;
             n.perm = permChk.isSelected(); n.permExact = permExactChk.isSelected(); n.cmp = cmpChk.isSelected(); n.permIter = (Integer) permIterSp.getValue(); n.permSeed = lng(permSeedF, 1);
@@ -531,6 +531,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
             if (n.cum) secs.add(new Object[]{(Runnable) () -> { Meta.cumulative(r, null); addText("Cumulative Meta-Analysis", Report.cumText(r));
                 if (n.cumForest) addPlot("Cumulative Meta-Analysis Forest Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.forestSeries(r, r.cum, r.cumLabels, q, "cum"); }); }, true});
             if (n.funnel) secs.add(new Object[]{(Runnable) () -> addPlot("Funnel Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.contour = n.contour; q.studyLabels = n.labels; return Plots.funnel(r, q, null); }), false});
+            if (n.funnelPrec) secs.add(new Object[]{(Runnable) () -> addPlot("Funnel Plot of Precision", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.contour = n.contour; q.studyLabels = n.labels; q.precision = true; return Plots.funnel(r, q, null); }), false});
             if (n.bias) secs.add(new Object[]{(Runnable) () -> { Bias.Result b = Bias.run(r, n.biasMethod.equals("Default") ? null : n.biasMethod, false); addText("Test for Funnel Plot Asymmetry", Report.biasText(b, r));
                 if (n.biasPlot && b.error == null && b.plotX != null) addPlot("Plot (Test for Funnel Plot Asymmetry)", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.biasPlot(b, r, q); }); }, false});
             if (n.tf) secs.add(new Object[]{(Runnable) () -> { TrimFill tf = TrimFill.run(r, n.tfSide.equals("Auto") ? null : n.tfSide.equals("Left"), true, n.tfEst, s.common, s.random);

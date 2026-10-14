@@ -25,17 +25,21 @@ public final class FunnelThemes {
 
     /** What every funnel theme needs: studies (with the filled ones of a trim-and-fill), centre, extent. */
     static final class D {
-        MetaSpec s; boolean log; double[] te, se; String[] lab; boolean[] fl; double center, ref, maxse; boolean tf;
-        D(MetaResult r, TrimFill tf) {
-            s = r.spec; log = s.backtransf && s.isRatioSm(); this.tf = tf != null;
+        MetaSpec s; boolean log; double[] te, se; String[] lab; boolean[] fl; double center, ref, maxse, maxPrec; boolean tf, prec;   // prec: funnel plot of precision (y = 1 / SE)
+        D(MetaResult r, TrimFill tf, boolean prec) {
+            this.prec = prec; s = r.spec; log = s.backtransf && s.isRatioSm(); this.tf = tf != null;
             te = tf != null ? tf.TE : r.TE; se = tf != null ? tf.seTE : r.seTE; lab = tf != null ? tf.studlab : r.studlab; fl = tf != null ? tf.filled : null;
             center = tf != null ? (s.random ? tf.pool.teRandom : tf.pool.teCommon) : (s.random ? r.overall.teRandom : r.overall.teCommon);
             ref = s.nullValue(); if (Double.isNaN(ref)) ref = 0;
             for (int i = 0; i < te.length; i++) if (!Double.isNaN(te[i]) && !Double.isNaN(se[i])) maxse = Math.max(maxse, se[i]);
             if (maxse <= 0) maxse = 1;
+            for (int i = 0; i < te.length; i++) if (ok(i) && se[i] > 0) maxPrec = Math.max(maxPrec, 1 / se[i]);
+            if (maxPrec <= 0) maxPrec = 1;
         }
+        /** Vertical coordinate of study i: the standard error, or the precision 1 / SE. */
+        double yv(int i) { return prec ? 1 / se[i] : se[i]; }
         boolean filled(int i) { return fl != null && fl[i]; }
-        boolean ok(int i) { return !Double.isNaN(te[i]) && !Double.isNaN(se[i]); }
+        boolean ok(int i) { return !Double.isNaN(te[i]) && !Double.isNaN(se[i]) && (!prec || se[i] > 0); }
         String thetaSub() { return s.random ? s.methodTau : "IV"; }
     }
 
@@ -49,18 +53,31 @@ public final class FunnelThemes {
     static String stataNum(double v) { return Canvas.tick(v).replaceFirst("^(-?)0\\.", "$1."); }
 
     static Path2D tri(double xa, double ya, double xb, double yb, double xc, double yc) { Path2D p = new Path2D.Double(); p.moveTo(xa, ya); p.lineTo(xb, yb); p.lineTo(xc, yc); p.closePath(); return p; }
+    /** Curve x = ref + sign * zc / y (y = precision) from y = ylo to yhi, as a polyline in pixel space; half = width of the x range (the curve is capped far outside it). */
+    static Path2D curve(java.util.function.DoubleUnaryOperator X, java.util.function.DoubleUnaryOperator Y, double ref, double zc, double ylo, double yhi, double half, boolean move) {
+        Path2D p = new Path2D.Double(); double cap = 1000 * half; int N = 240;
+        for (int i = 0; i <= N; i++) { double y = ylo + (yhi - ylo) * Math.pow(i / (double) N, 2), x = ref + Math.signum(zc) * Math.min(Math.abs(zc) / Math.max(y, 1e-12), cap);
+            if (i == 0 && move) p.moveTo(X.applyAsDouble(x), Y.applyAsDouble(y)); else p.lineTo(X.applyAsDouble(x), Y.applyAsDouble(y)); }
+        return p;
+    }
+    /** Region |x - ref| < zc / y (the contour band of a funnel of precision), widening towards the bottom. */
+    static Path2D curvePoly(java.util.function.DoubleUnaryOperator X, java.util.function.DoubleUnaryOperator Y, double ref, double zc, double ylo, double yhi, double half) {
+        Path2D p = curve(X, Y, ref, -zc, ylo, yhi, half, true); double cap = 1000 * half; int N = 240;
+        for (int i = N; i >= 0; i--) { double y = ylo + (yhi - ylo) * Math.pow(i / (double) N, 2), x = ref + Math.min(zc / Math.max(y, 1e-12), cap); p.lineTo(X.applyAsDouble(x), Y.applyAsDouble(y)); }
+        p.closePath(); return p;
+    }
     static Color alpha(Color c, double a) { return new Color(c.getRed(), c.getGreen(), c.getBlue(), (int) Math.round(255 * a)); }
 
     /** Study labels next to the points (to the left of a point that is close to the right edge of the plot area). */
     static void labels(Canvas c, D d, java.util.function.DoubleUnaryOperator X, java.util.function.DoubleUnaryOperator Y, double xmax, Color col) {
         FontMetrics fm = c.g.getFontMetrics(Canvas.font(9f)); c.g.setColor(col);
-        for (int i = 0; i < d.te.length; i++) { if (!d.ok(i) || d.lab[i] == null) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.se[i]), w = fm.stringWidth(d.lab[i]);
+        for (int i = 0; i < d.te.length; i++) { if (!d.ok(i) || d.lab[i] == null) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.yv(i)), w = fm.stringWidth(d.lab[i]);
             if (xx + 6 + w > xmax) c.text(d.lab[i], xx - 6, yy - 4, 9f, 2, false); else c.text(d.lab[i], xx + 6, yy - 4, 9f, 0, false); }
     }
 
     // =================================================================== STATA
     static BufferedImage stata(MetaResult r, Plots.Opts o, TrimFill tf) {
-        D d = new D(r, tf); final boolean con = o.contour; MetaSpec s = d.s; final double z = Z95;
+        D d = new D(r, tf, o.precision); final boolean con = o.contour; MetaSpec s = d.s; final double z = Z95;
         // ---- legend items {kind, text}, filled row by row in two columns
         List<String[]> leg = new ArrayList<>();
         if (con) { leg.add(new String[]{"b1", "1% < p < 5%"}); leg.add(new String[]{"b2", "5% < p < 10%"}); leg.add(new String[]{"b3", "p > 10%"}); } else leg.add(new String[]{"ci", "Pseudo 95% CI"});
@@ -73,21 +90,21 @@ public final class FunnelThemes {
         double lo = Double.POSITIVE_INFINITY, hi = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < d.te.length; i++) if (d.ok(i)) { lo = Math.min(lo, d.te[i]); hi = Math.max(hi, d.te[i]); }
         double mid = con ? d.ref : d.center; lo = Math.min(lo, mid - z * d.maxse); hi = Math.max(hi, mid + z * d.maxse); if (con) { lo = Math.min(lo, d.center); hi = Math.max(hi, d.center); }
-        double padx = (hi - lo) * 0.05; lo -= padx; hi += padx; { double[] cl = Plots.clampRaw(s, lo, hi); lo = cl[0]; hi = cl[1]; } final double xl = lo, xh = hi, yh = d.maxse * (con ? 1.14 : 1.07), yEnd = d.maxse * 1.04;   // contour-enhanced: the bands stop just below the lowest study, leaving white space down to the axis (as Stata does)   // contour-enhanced: the bands stop just below the lowest study, leaving white space down to the axis (as Stata does)
-        java.util.function.DoubleUnaryOperator X = v -> x0 + (v - xl) / (xh - xl) * (x1 - x0), Y = v -> y0 + v / yh * (y1 - y0);
+        double padx = (hi - lo) * 0.05; lo -= padx; hi += padx; { double[] cl = Plots.clampRaw(s, lo, hi); lo = cl[0]; hi = cl[1]; } final double xl = lo, xh = hi, yh = d.prec ? d.maxPrec * 1.07 : d.maxse * (con ? 1.14 : 1.07), yEnd = d.maxse * 1.04;   // contour-enhanced: the bands stop just below the lowest study, leaving white space down to the axis (as Stata does)   // contour-enhanced: the bands stop just below the lowest study, leaving white space down to the axis (as Stata does)
+        java.util.function.DoubleUnaryOperator X = v -> x0 + (v - xl) / (xh - xl) * (x1 - x0), Y = v -> d.prec ? y1 - v / yh * (y1 - y0) : y0 + v / yh * (y1 - y0);
         Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g;
         g.setColor(PALE); g.fill(new Rectangle2D.Double(0, 0, W, H));
-        g.setColor(NAVY); c.text(con ? "Contour-enhanced funnel plot" : "Funnel plot", (x0 + x1) / 2.0, 36, 18f, 1, false);
+        g.setColor(NAVY); c.text((con ? "Contour-enhanced funnel plot" : "Funnel plot") + (d.prec ? " of precision" : ""), (x0 + x1) / 2.0, 36, 18f, 1, false);
         g.setColor(Color.WHITE); g.fill(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0));
         Shape clip0 = g.getClip(); g.setClip(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0));
         double[] yt = Canvas.pretty(0, yh, 5);
         g.setColor(new Color(224, 235, 238)); g.setStroke(new BasicStroke(1.5f)); for (double t : yt) if (t >= 0 && t <= yh + 1e-9) c.line(x0, Y.applyAsDouble(t), x1, Y.applyAsDouble(t));
         if (con) { double[] zs = {Z99, Z95, Z90}; Color[] cols = {new Color(208, 208, 208), new Color(160, 160, 160), new Color(105, 105, 105)};
-            for (int i = 0; i < 3; i++) g.setColor(cols[i]) ; for (int i = 0; i < 3; i++) { g.setColor(cols[i]); g.fill(tri(X.applyAsDouble(d.ref - zs[i] * yEnd), Y.applyAsDouble(yEnd), X.applyAsDouble(d.ref), y0, X.applyAsDouble(d.ref + zs[i] * yEnd), Y.applyAsDouble(yEnd))); } }
-        else { g.setColor(new Color(190, 190, 190)); g.setStroke(new BasicStroke(1.8f)); double yb = Y.applyAsDouble(d.maxse); c.line(X.applyAsDouble(d.center), y0, X.applyAsDouble(d.center - z * d.maxse), yb); c.line(X.applyAsDouble(d.center), y0, X.applyAsDouble(d.center + z * d.maxse), yb); }
-        g.setColor(CRIMSON); g.setStroke(new BasicStroke(1.8f)); c.line(X.applyAsDouble(d.center), y0, X.applyAsDouble(d.center), Y.applyAsDouble(d.maxse));
+            for (int i = 0; i < 3; i++) g.setColor(cols[i]) ; for (int i = 0; i < 3; i++) { g.setColor(cols[i]); g.fill(d.prec ? curvePoly(X, Y, d.ref, zs[i], 0, yh, xh - xl) : tri(X.applyAsDouble(d.ref - zs[i] * yEnd), Y.applyAsDouble(yEnd), X.applyAsDouble(d.ref), y0, X.applyAsDouble(d.ref + zs[i] * yEnd), Y.applyAsDouble(yEnd))); } }
+        else { g.setColor(new Color(190, 190, 190)); g.setStroke(new BasicStroke(1.8f)); if (d.prec) { g.draw(curve(X, Y, d.center, -z, 0, yh, xh - xl, true)); g.draw(curve(X, Y, d.center, z, 0, yh, xh - xl, true)); } else { double yb = Y.applyAsDouble(d.maxse); c.line(X.applyAsDouble(d.center), y0, X.applyAsDouble(d.center - z * d.maxse), yb); c.line(X.applyAsDouble(d.center), y0, X.applyAsDouble(d.center + z * d.maxse), yb); } }
+        g.setColor(CRIMSON); g.setStroke(new BasicStroke(1.8f)); c.line(X.applyAsDouble(d.center), y0, X.applyAsDouble(d.center), d.prec ? y1 : Y.applyAsDouble(d.maxse));
         // studies
-        for (int i = 0; i < d.te.length; i++) { if (!d.ok(i)) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.se[i]);
+        for (int i = 0; i < d.te.length; i++) { if (!d.ok(i)) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.yv(i));
             g.setColor(d.filled(i) ? ORANGE : NAVY); g.fill(new Ellipse2D.Double(xx - 3.8, yy - 3.8, 7.6, 7.6));
         }
         g.setClip(clip0); if (o.studyLabels) labels(c, d, X, Y, x1, new Color(40, 40, 40));
@@ -95,7 +112,7 @@ public final class FunnelThemes {
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1.2f)); c.line(x0, y0, x0, y1); c.line(x0, y1, x1, y1);
         for (double t : yt) { if (t < 0 || t > yh + 1e-9) continue; double yy = Y.applyAsDouble(t); c.line(x0 - 5, yy, x0, yy); c.textRot(stataNum(t), x0 - 12, yy, 13f); }
         for (double[] t : ticks(xl, xh, d.log, 6)) { double xx = X.applyAsDouble(t[0]); c.line(xx, y1, xx, y1 + 5); c.text(stataNum(t[1]), xx, y1 + 22, 13f, 1, false); }
-        c.text(Plots.funnelXlab(s), (x0 + x1) / 2.0, y1 + 44, 13f, 1, false); c.textRot("Standard error", 22, (y0 + y1) / 2.0, 13f);
+        c.text(Plots.funnelXlab(s), (x0 + x1) / 2.0, y1 + 44, 13f, 1, false); c.textRot(d.prec ? "Precision (1/SE)" : "Standard error", 22, (y0 + y1) / 2.0, 13f);
         // legend
         double lx = (W - legW) / 2.0; g.setColor(Color.WHITE); g.fill(new Rectangle2D.Double(lx, legTop, legW, legH)); g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); g.draw(new Rectangle2D.Double(lx, legTop, legW, legH));
         for (int k = 0; k < leg.size(); k++) {
@@ -126,27 +143,28 @@ public final class FunnelThemes {
     static double powerAt(double theta, double se) { double m = Math.abs(theta) / se; return Dist.pnorm(-Z95 + m) + Dist.pnorm(-Z95 - m); }
 
     static BufferedImage metawin(MetaResult r, Plots.Opts o, TrimFill tf) {
-        D d = new D(r, tf); MetaSpec s = d.s;
+        D d = new D(r, tf, o.precision); MetaSpec s = d.s;
         final int W = 800, H = 440, x0 = 66, x1 = W - 118, y0 = 14, y1 = H - 58, cb0 = W - 84, cb1 = cb0 + 22;
-        double yh = d.maxse * 1.15;
-        double lo = d.ref - Z99 * yh, hi = d.ref + Z99 * yh; for (int i = 0; i < d.te.length; i++) if (d.ok(i)) { lo = Math.min(lo, d.te[i]); hi = Math.max(hi, d.te[i]); }
+        double seh = d.maxse * 1.15, yh = d.prec ? d.maxPrec * 1.07 : seh;
+        double lo = d.ref - Z99 * seh, hi = d.ref + Z99 * seh; for (int i = 0; i < d.te.length; i++) if (d.ok(i)) { lo = Math.min(lo, d.te[i]); hi = Math.max(hi, d.te[i]); }
         double pad = (hi - lo) * 0.012; lo -= pad; hi += pad; { double[] cl = Plots.clampRaw(s, lo, hi); lo = cl[0]; hi = cl[1]; } final double xl = lo, xh = hi;
-        java.util.function.DoubleUnaryOperator X = v -> x0 + (v - xl) / (xh - xl) * (x1 - x0), Y = v -> y0 + v / yh * (y1 - y0);
+        java.util.function.DoubleUnaryOperator X = v -> x0 + (v - xl) / (xh - xl) * (x1 - x0), Y = v -> d.prec ? y1 - v / yh * (y1 - y0) : y0 + v / yh * (y1 - y0);
         Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g; Shape clip0 = g.getClip();
         g.setClip(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0));
         // power map: colour of a row = power of a study with that standard error to detect the pooled effect
-        for (int py = 0; py < (y1 - y0); py++) { double se = (py + 0.5) / (y1 - y0) * yh; g.setColor(power(powerAt(d.center, se))); g.fill(new Rectangle2D.Double(x0, y0 + py, x1 - x0, 1.6)); }
+        for (int py = 0; py < (y1 - y0); py++) { double se = d.prec ? 1 / (yh - (py + 0.5) / (y1 - y0) * yh) : (py + 0.5) / (y1 - y0) * yh; g.setColor(power(powerAt(d.center, se))); g.fill(new Rectangle2D.Double(x0, y0 + py, x1 - x0, 1.6)); }
         // contour bands around the null value: p > 10% (clear), 5-10%, 1-5%, < 1%
-        Area panel = new Area(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0)), f90 = new Area(funnel(X, d.ref, Z90, yh, y0, y1)), f95 = new Area(funnel(X, d.ref, Z95, yh, y0, y1)), f99 = new Area(funnel(X, d.ref, Z99, yh, y0, y1));
+        java.util.function.DoubleFunction<Path2D> fun = zc -> d.prec ? curvePoly(X, Y, d.ref, zc, 0, yh, xh - xl) : funnel(X, d.ref, zc, yh, y0, y1);
+        Area panel = new Area(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0)), f90 = new Area(fun.apply(Z90)), f95 = new Area(fun.apply(Z95)), f99 = new Area(fun.apply(Z99));
         Area bB = new Area(f95); bB.subtract(f90); Area bC = new Area(f99); bC.subtract(f95); Area bD = new Area(panel); bD.subtract(f99);
         g.setColor(new Color(150, 150, 150, 110)); g.fill(bB); g.setColor(new Color(200, 200, 200, 95)); g.fill(bC); g.setColor(new Color(255, 255, 255, 115)); g.fill(bD);
         // pseudo confidence limits (dashed) and pooled effect (dotted)
         Color lg = new Color(196, 196, 196); double xc = X.applyAsDouble(d.center);
         g.setColor(lg); g.setStroke(new BasicStroke(1.7f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{6f, 4f}, 0));
-        c.line(xc, y0, X.applyAsDouble(d.center - Z95 * yh), y1); c.line(xc, y0, X.applyAsDouble(d.center + Z95 * yh), y1);
+        if (d.prec) { g.draw(curve(X, Y, d.center, -Z95, 0, yh, xh - xl, true)); g.draw(curve(X, Y, d.center, Z95, 0, yh, xh - xl, true)); } else { c.line(xc, y0, X.applyAsDouble(d.center - Z95 * yh), y1); c.line(xc, y0, X.applyAsDouble(d.center + Z95 * yh), y1); }
         g.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{1.5f, 3f}, 0)); c.line(xc, y0, xc, y1);
         g.setStroke(new BasicStroke(1f));
-        for (int i = 0; i < d.te.length; i++) { if (!d.ok(i)) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.se[i]);
+        for (int i = 0; i < d.te.length; i++) { if (!d.ok(i)) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.yv(i));
             g.setColor(d.filled(i) ? TABORANGE : TABBLUE); g.fill(new Ellipse2D.Double(xx - 3.8, yy - 3.8, 7.6, 7.6));
         }
         g.setClip(clip0); if (o.studyLabels) labels(c, d, X, Y, x1, new Color(30, 30, 30));
@@ -158,7 +176,7 @@ public final class FunnelThemes {
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); c.line(x0, y0, x0, y1); c.line(x0, y1, x1, y1);
         for (double t : Canvas.pretty(0, yh, 6)) { if (t < 0 || t > yh + 1e-9) continue; double yy = Y.applyAsDouble(t); c.line(x0 - 4, yy, x0, yy); c.text(Canvas.tick(t), x0 - 8, yy + 4, 11f, 2, false); }
         for (double[] t : ticks(xl, xh, d.log, 8)) { double xx = X.applyAsDouble(t[0]); c.line(xx, y1, xx, y1 + 4); c.text(Canvas.tick(t[1]), xx, y1 + 18, 11f, 1, false); }   // ratio measures: axis labelled on the OR / HR scale (positions stay logarithmic)
-        c.text(Plots.funnelXlab(s), (x0 + x1) / 2.0, y1 + 40, 12f, 1, false); c.textRot("standard error", 16, (y0 + y1) / 2.0, 12f);
+        c.text(Plots.funnelXlab(s), (x0 + x1) / 2.0, y1 + 40, 12f, 1, false); c.textRot(d.prec ? "precision (1/SE)" : "standard error", 16, (y0 + y1) / 2.0, 12f);
         // colour bar
         for (int py = 0; py < (y1 - y0); py++) { g.setColor(power(1 - (py + 0.5) / (y1 - y0))); g.fill(new Rectangle2D.Double(cb0, y0 + py, cb1 - cb0, 1.6)); }
         g.setColor(Color.BLACK); for (int t = 0; t <= 100; t += 20) { double yy = y1 - t / 100.0 * (y1 - y0); c.line(cb1, yy, cb1 + 4, yy); c.text(String.valueOf(t), cb1 + 7, yy + 4, 11f, 0, false); }

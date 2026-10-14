@@ -21,7 +21,7 @@ public final class Plots {
         public boolean predInt = false; public String colPred = RegPlots.PRED_DEFAULT, colPredLine = RegPlots.PREDLINE_DEFAULT, symbol = RegPlots.SYM_DEFAULT; public double symSize = 1.0;   // prediction interval, study symbol
         public String baujatTheme = BaujatPlot.DEFAULT, baujatSymbol = BaujatPlot.AUTO, baujatBack = BaujatPlot.AUTO;   // Baujat plot: theme, symbol colour, background colour
         public String labbeTheme = LabbePlot.DEFAULT, labbeSymbol = LabbePlot.AUTO, labbeBack = LabbePlot.AUTO, labbeCircle = LabbePlot.AUTO, labbeRef = LabbePlot.AUTO, labbeEst = LabbePlot.AUTO, labbeCI = LabbePlot.AUTO, labbePI = LabbePlot.AUTO;   // L'Abbe plot: theme, symbol (circle border) colour, background, circle fill, reference line, estimated-effect line, confidence area, prediction area
-        public String radialTheme = RadialPlot.DEFAULT, radialSymbol = RadialPlot.AUTO, radialBack = RadialPlot.AUTO, radialCircle = RadialPlot.AUTO, radialReg = RadialPlot.AUTO, radialRef = RadialPlot.AUTO, radialCI = RadialPlot.AUTO, radialCILine = RadialPlot.AUTO; public boolean radialLabels = true, labbeLabels = true;   // Radial plot: theme, colours, study labels; L'Abbe plot: study labels
+        public String radialTheme = RadialPlot.DEFAULT, radialSymbol = RadialPlot.AUTO, radialBack = RadialPlot.AUTO, radialCircle = RadialPlot.AUTO, radialReg = RadialPlot.AUTO, radialRef = RadialPlot.AUTO, radialCI = RadialPlot.AUTO, radialCILine = RadialPlot.AUTO; public boolean radialLabels = true, labbeLabels = true; public boolean precision = false;   // funnel plot of precision (y = 1 / SE)   // Radial plot: theme, colours, study labels; L'Abbe plot: study labels
         public String funnelTheme = FunnelThemes.DEFAULT;   // funnel plot and trim-and-fill funnel plot: Default, MetaWin style, STATA style
         public String squareColour = ForestTheme.AUTO, diamondFill = ForestTheme.AUTO, diamondBorder = ForestTheme.AUTO, nullColour = ForestTheme.AUTO, nullStyle = ForestTheme.AUTO, pooledColour = ForestTheme.AUTO, pooledStyle = ForestTheme.AUTO; }
 
@@ -480,6 +480,7 @@ public final class Plots {
         double maxse = 0, mn = 1e300, mx = -1e300; for (int i = 0; i < te.length; i++) if (!Double.isNaN(te[i])) { maxse = Math.max(maxse, se[i]); mn = Math.min(mn, te[i]); mx = Math.max(mx, te[i]); }
         double z = Dist.qnorm(0.975); double half = Math.max(z * maxse, Math.max(Math.abs(mx - center), Math.abs(mn - center))) * 1.05;
         double xl = center - half, xh = center + half; { double[] cl = clampRaw(s, xl, xh); xl = cl[0]; xh = cl[1]; }
+        if (o.precision) return funnelPrecision(c, s, log, te, se, lab, fl, center, xl, xh, z, o);
         Axes a = axes(c, xl, xh, 0, maxse * 1.05, true, funnelXlab(s), "Standard Error", log, "");
         Graphics2D g = c.g; double ymax = maxse * 1.05;
         if (o.contour) { // contour-enhanced
@@ -496,6 +497,25 @@ public final class Plots {
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
         c.dashed(a.X(center), a.Y(0), a.X(center - z * ymax), a.Y(ymax)); c.dashed(a.X(center), a.Y(0), a.X(center + z * ymax), a.Y(ymax)); g.setClip(clip);
         for (int i = 0; i < te.length; i++) { if (Double.isNaN(te[i])) continue; double xx = a.X(te[i]), yy = a.Y(se[i]);
+            boolean f = fl != null && fl[i]; if (f) { g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); }
+            else { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); }
+            if (o.studyLabels) { g.setColor(Color.BLACK); c.text(lab[i], xx + 4, yy - 3, 8, 0, false); } }
+        return c.img;
+    }
+
+    /** Default (meta style) funnel plot of precision: precision 1 / SE on the vertical axis (largest at the top), pseudo confidence limits and contour bands are the curves x = centre +/- z / precision. */
+    private static BufferedImage funnelPrecision(Canvas c, MetaSpec s, boolean log, double[] te, double[] se, String[] lab, boolean[] fl, double center, double xl, double xh, double z, Opts o) {
+        double pmax = 0; for (int i = 0; i < te.length; i++) if (!Double.isNaN(te[i]) && se[i] > 0) pmax = Math.max(pmax, 1 / se[i]); if (pmax <= 0) pmax = 1;
+        Axes a = axes(c, xl, xh, 0, pmax * 1.05, false, funnelXlab(s), "Precision (1/SE)", log, ""); Graphics2D g = c.g; double ymax = pmax * 1.05, half = xh - xl;
+        Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
+        if (o.contour) { double ref = s.nullValue(); if (Double.isNaN(ref)) ref = 0;
+            double[] zz = {Dist.qnorm(0.995), Dist.qnorm(0.975), Dist.qnorm(0.95)}; Color[] fills = {new Color(235, 235, 235), new Color(215, 215, 215), new Color(195, 195, 195)};
+            for (int i = 0; i < 3; i++) { g.setColor(fills[2 - i]); g.fill(FunnelThemes.curvePoly(a::X, a::Y, ref, zz[i], 0, ymax, half)); } }
+        g.setColor(Color.BLACK); c.dashed(a.X(center), a.y0, a.X(center), a.y1);
+        g.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{5, 4}, 0));
+        g.draw(FunnelThemes.curve(a::X, a::Y, center, -z, 0, ymax, half, true)); g.draw(FunnelThemes.curve(a::X, a::Y, center, z, 0, ymax, half, true)); g.setStroke(new BasicStroke(1f)); g.setClip(clip);
+        if (o.contour) { g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0)); }
+        for (int i = 0; i < te.length; i++) { if (Double.isNaN(te[i]) || !(se[i] > 0)) continue; double xx = a.X(te[i]), yy = a.Y(1 / se[i]);
             boolean f = fl != null && fl[i]; if (f) { g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); }
             else { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); }
             if (o.studyLabels) { g.setColor(Color.BLACK); c.text(lab[i], xx + 4, yy - 3, 8, 0, false); } }
