@@ -388,6 +388,9 @@ public final class Report {
         b.append("Quantifying heterogeneity:").append(NL).append(" tau^2 = ").append(Fmt.num(p.tau2, 4)).append("; tau = ").append(Fmt.num(p.tau, 4)).append("; I^2 = ").append(Fmt.num(100 * p.I2, 1)).append("%; H = ").append(Fmt.num(p.H, 2)).append(NL).append(NL);
         b.append("Test of heterogeneity:").append(NL).append(table(List.of("Q", "d.f.", "p-value"), List.<String[]>of(new String[]{Fmt.num(p.Q, 2), String.valueOf(p.dfQ), Fmt.pval(p.pQ, 4)}), new boolean[]{true, true, true})).append(NL);
         b.append("Details on adjustment for publication bias:").append(NL).append("- Trim-and-fill method to adjust for funnel plot asymmetry (" + tf.type + "0 estimator)").append(NL);
+        b.append("- Model used to estimate the centre: ").append(tf.model).append(NL);
+        b.append("- Estimated number of missing studies on the ").append(tf.left ? "left" : "right").append(" side: ").append(tf.k0).append(" (SE = ").append(Fmt.num(tf.seK0, 4)).append(")").append(NL);
+        if (!Double.isNaN(tf.pK0)) b.append("- Test of H0: no missing studies on the ").append(tf.left ? "left" : "right").append(" side: p-value = ").append(Fmt.pval(tf.pK0, 4)).append(NL);
         return b.toString();
     }
 

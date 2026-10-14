@@ -96,7 +96,7 @@ public class MainWindow extends JFrame {
     JSpinner permIterSp = new JSpinner(new SpinnerNumberModel(5000, 100, 100000, 1000)), goshSubSp = new JSpinner(new SpinnerNumberModel(20000, 1000, 500000, 5000));
     JTextField permSeedF = new JTextField("1", 6), goshSeedF = new JTextField("1", 6);
     JComboBox<String> biasMethod = Ui.combo("Default", "Egger", "Begg", "Thompson", "Harbord", "Peters", "Macaskill", "Deeks", "Pustejovsky", "Schwarzer");
-    JComboBox<String> tfSide = Ui.combo("Auto", "Left", "Right"), tfEst = Ui.combo("L0", "R0", "Q0");
+    JComboBox<String> tfSide = Ui.combo("Auto", "Left", "Right"), tfEst = Ui.combo("L0", "R0", "Q0"), tfModel = Ui.combo("As the analysis (metafor)", "Common effect (meta)");
     JSpinner dpiSp = new JSpinner(new SpinnerNumberModel(300, 72, 1200, 100)); JComboBox<String> fmtBox = Ui.combo("PNG", "TIFF", "JPG", "SVG", "PDF"); JComboBox<String> goshPalBox = Ui.combo(ExtraPlots.PALETTE_NAMES);
     final List<Object[]> plots = new ArrayList<>(); // {title, DoubleFunction<BufferedImage>}
     final JLabel status = Ui.muted("Ready");
@@ -199,7 +199,7 @@ public class MainWindow extends JFrame {
 funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill funnel plot. Default = meta style; MetaWin style = power-enhanced (sunset) funnel with contour bands, always contour-enhanced; STATA style = Stata look (pale-blue frame, grey pseudo 95% limits or contour bands, framed legend). Imputed studies of the trim-and-fill plot are orange in the MetaWin and STATA styles");
         funnelThemeBox.addActionListener(e -> contourChk.setEnabled(!org.metajava.plot.FunnelThemes.METAWIN.equals(funnelThemeBox.getSelectedItem())));   // MetaWin style is always contour-enhanced
         Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, funnelPrecChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row("Funnel plot themes", funnelThemeBox); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
-        pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row(null, doiChk); pb.row(null, doiApexChk);
+        pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row("Trim-fill model", tfModel); pb.row(null, doiChk); pb.row(null, doiApexChk);
         petChk.setToolTipText("Precision-effect test (PET) and precision-effect estimate with standard error (PEESE): regression-based effect corrected for small-study effects (Stanley & Doucouliagos, 2014)");
         selChk.setToolTipText("Vevea-Hedges three-parameter selection model: adjusted effect when non-significant results are less likely to be published (works best with 20-30 or more studies)");
         selDir.setToolTipText("Direction in which significant results are favoured for publication. Auto: the direction of the pooled effect");
@@ -468,7 +468,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
     static final class Out { final List<Item> items = new ArrayList<>(); Exception error; }
     /** Everything the background code needs, captured on the UI thread (Swing components are never read from worker threads). */
     static final class Snap {
-        MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; Map<String, String> refs = new HashMap<>(); String biasMethod, tfSide, tfEst, selDir; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
+        MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; Map<String, String> refs = new HashMap<>(); String biasMethod, tfSide, tfEst, tfModel, selDir; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
         String goshPal = "Default"; boolean perm, permExact, cmp, orchard, cater, gosh, goshHl, goshCl, goshReg, goshTrim, goshTrimOrd; int permIter, goshSub; long permSeed, goshSeed;
         boolean doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, adj, loo, looForest, cum, cumForest, funnel, funnelPrec, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
     }
@@ -496,7 +496,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
             n.reg = regChk.isSelected(); n.nums = chosen(covList); n.facs = chosen(facList); n.refs = chosenRefs(n.facs); n.regIntercept = regIntercept.isSelected(); n.bubble = bubbleChk.isSelected(); n.regLine = regLine.isSelected(); n.adj = adjChk.isSelected();
             n.loo = looChk.isSelected(); n.looForest = looForest.isSelected(); n.cum = cumChk.isSelected(); n.cumForest = cumForest.isSelected();
             n.funnel = funnelChk.isSelected(); n.funnelPrec = funnelPrecChk.isSelected(); n.contour = contourChk.isSelected(); n.labels = labChk.isSelected(); n.bias = biasChk.isSelected(); n.biasPlot = biasPlotChk.isSelected(); n.biasMethod = (String) biasMethod.getSelectedItem();
-            n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
+            n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.tfModel = (String) tfModel.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
             n.o.contour = n.funnel && n.contour; n.o.studyLabels = n.labels;
             n.perm = permChk.isSelected(); n.permExact = permExactChk.isSelected(); n.cmp = cmpChk.isSelected(); n.permIter = (Integer) permIterSp.getValue(); n.permSeed = lng(permSeedF, 1);
             n.orchard = orchardChk.isSelected(); n.cater = caterChk.isSelected(); n.gosh = goshChk.isSelected(); n.goshHl = goshHlChk.isSelected(); n.goshPal = (String) goshPalBox.getSelectedItem(); n.goshCl = goshClChk.isSelected(); n.goshReg = goshRegChk.isSelected(); n.goshTrim = goshTrimChk.isSelected(); n.goshTrimOrd = goshTrimOrdChk.isSelected(); n.goshSub = (Integer) goshSubSp.getValue(); n.goshSeed = lng(goshSeedF, 1);
@@ -534,7 +534,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
             if (n.funnelPrec) secs.add(new Object[]{(Runnable) () -> addPlot("Funnel Plot of Precision", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.contour = n.contour; q.studyLabels = n.labels; q.precision = true; return Plots.funnel(r, q, null); }), false});
             if (n.bias) secs.add(new Object[]{(Runnable) () -> { Bias.Result b = Bias.run(r, n.biasMethod.equals("Default") ? null : n.biasMethod, false); addText("Test for Funnel Plot Asymmetry", Report.biasText(b, r));
                 if (n.biasPlot && b.error == null && b.plotX != null) addPlot("Plot (Test for Funnel Plot Asymmetry)", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.biasPlot(b, r, q); }); }, false});
-            if (n.tf) secs.add(new Object[]{(Runnable) () -> { TrimFill tf = TrimFill.run(r, n.tfSide.equals("Auto") ? null : n.tfSide.equals("Left"), true, n.tfEst, s.common, s.random);
+            if (n.tf) secs.add(new Object[]{(Runnable) () -> { TrimFill tf = TrimFill.run(r, n.tfSide.equals("Auto") ? null : n.tfSide.equals("Left"), n.tfModel.startsWith("Common") || !s.random, n.tfEst, s.common, s.random);
                 if (tf == null) addText("Trim and Fill", "Too few studies for trim-and-fill."); else { addText("Trim and Fill", Report.trimfillText(tf, r)); addPlot("Trim-and-Fill Funnel Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.funnel(r, q, tf); }); } }, false});
             if (n.doi) secs.add(new Object[]{(Runnable) () -> { Lfk l = Lfk.compute(r.TE, r.seTE, r.studlab); addText("Doi Plot and LFK Index", Report.lfkText(l, r));
                 if (l.lfk == l.lfk) addPlot("Doi Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; q.apexLine = n.doiApex; return Plots.doi(l, r, q); }); }, false});

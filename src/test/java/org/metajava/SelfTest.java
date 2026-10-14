@@ -235,6 +235,16 @@ public class SelfTest {
         check(TrimFill.run(r, null, true, "R0", true, true).k0 == 3, "trim-and-fill R0 imputes 3 studies");
         int q = TrimFill.run(r, null, true, "Q0", true, true).k0; check(q > 9 && q <= 22, "trim-and-fill Q0 (quadratic) runs and gives a larger count than L0");
         check(TrimFill.estimateMissing(new double[]{-1, 1, 2, -3, 4}, 0, "Q") >= 0, "Q0 is never negative");
+        // "Mean difference" example (30 studies), random-effects centre as in metafor::trimfill(rma(method = "REML" / "DL")); expected values from an independent port of trimfill.rma.uni
+        double[] mte = {-12.220000, -8.100000, -21.280000, -9.310000, -16.000000, -7.250000, -2.730000, -15.600000, -15.500000, -6.300000, 0.200000, -46.530000, -9.400000, -14.600000, -4.400000, -4.650000, -5.100000, -4.870000, -20.500000, -15.430000, -10.600000, -13.800000, -15.200000, -15.000000, -17.700000, -12.800000, -7.000000, -1.580000, -7.800000, -9.780000}, mse = {1.693986, 0.956562, 1.159921, 2.485611, 4.926227, 1.998917, 1.252950, 1.876800, 1.182069, 1.594768, 2.497594, 0.906547, 0.696101, 0.341147, 2.808559, 1.588450, 1.463498, 1.851426, 4.191740, 2.677997, 1.281886, 4.070362, 2.205448, 2.354090, 3.188091, 2.921440, 2.907232, 3.021098, 1.476614, 2.008692};
+        for (String tau : new String[]{"REML", "DL"}) {
+            MetaSpec ms = new MetaSpec(); ms.type = "gen"; ms.sm = "MD"; ms.methodTau = tau; MetaData md = new MetaData(); md.put("TE", mte); md.put("seTE", mse); md.studlab = new String[30]; for (int i = 0; i < 30; i++) md.studlab[i] = "S" + (i + 1);
+            MetaResult mr = Meta.run(ms, md);
+            check(TrimFill.run(mr, null, false, "L0", true, true).k0 == 9, "trim-and-fill (metafor, " + tau + ") L0 imputes 9 studies on the Mean difference example");
+            check(TrimFill.run(mr, null, false, "R0", true, true).k0 == 0, "trim-and-fill (metafor, " + tau + ") R0 imputes 0 studies on the Mean difference example");
+            check(TrimFill.run(mr, null, false, "Q0", true, true).k0 == 21, "trim-and-fill (metafor, " + tau + ") Q0 imputes 21 studies on the Mean difference example");
+        }
+        check(TrimFill.rankFirst(new double[]{3, 1, 3, 2})[0] == 3 && TrimFill.rankFirst(new double[]{3, 1, 3, 2})[2] == 4, "ranks use ties.method = \"first\"");
     }
 
     /** Funnel plot themes (Default, MetaWin style, STATA style) for the main and the trim-and-fill funnel plot. */

@@ -1,5 +1,12 @@
 # Changelog
 
+### Fixed - trim-and-fill now reproduces metafor::trimfill.rma.uni
+- **Cause of the discrepancies (L0, R0, Q0):** MetaJava re-estimated the centre of the funnel with the *common-effect* model after each trimming step (meta's `ma.common = TRUE`), whereas metafor uses the *random-effects model of the analysis* (tau^2 estimator re-estimated on the truncated data). On the \"Mean difference\" example this gave 11 (L0) and 29 (Q0) imputed studies instead of 9 and 21.
+- Same algorithm as metafor now: side \"Auto\" = sign of the slope of a meta-regression of the effects on sqrt(v) (not the Egger sign); ranks of the centred effects with `ties.method = \"first\"` (average ranks before); k0 rounded like R's `round()` (half to even; was floor(x + 0.5)); filled studies mirrored around the centre of the last truncated fit; k0 capped at k - 1.
+- New drop-down **Trim-fill model**: *As the analysis (metafor)* (default; random effects with the chosen tau^2 estimator, common effect when only the common-effect model is selected) or *Common effect (meta)* (previous behaviour).
+- The Trim and Fill report now shows the model used, the estimated number of missing studies with its SE, and, for R0, the test of H0: no missing studies (as metafor's print method).
+- Self-tests added (Mean difference example, REML and DL; ties; rounding).
+
 ### Fixed - trim-and-fill imputed too few studies; new Q0 estimator
 - **Bug:** the drop-down values "L0" / "R0" were compared with "L" in the code, so *L0* silently ran the **R0** (run) estimator. On the "Binary outcome" example this gave 3 imputed studies instead of 9. *L0* now runs the linear estimator exactly as `meta::trimfill(type = "L")`: 9 imputed studies, in agreement with meta, metafor and Comprehensive Meta-Analysis.
 - **New:** *Trim-fill estimator* now offers **Q0**, the quadratic estimator of Duval & Tweedie (2000), Q0 = n - 1/2 - sqrt(2n^2 - 4 T_n + 1/4), rounded like L0/R0 and capped at k - 1. It is not available in meta or metafor; it is generally not recommended (L0 and R0 have lower mean squared error).
