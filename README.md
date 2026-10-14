@@ -15,7 +15,7 @@ meta 8.5-0); outlier and influence diagnostics follow [metafor](https://cran.r-p
 * **Load project / Save project** (buttons under the title bar) keep a whole session in a `.json` file: data, column assignments and all settings.
 * Exports: results tables to Excel (`.xlsx`, one sheet per section), the whole output (paragraphs, tables, figures) to Word (`.docx`), plots as PNG, TIFF, JPG, SVG and PDF, and the text output as `.txt`.
 * Forest plots (main and subgroup), leave-one-out, cumulative, funnel (optionally contour-enhanced), bubble, Baujat,
-  radial (Galbraith), L'Abbé, Doi (with LFK index) and influence-diagnostics plots, drawn in the style of R; PNG, TIFF, JPG, SVG and PDF export (resolution in dpi for the raster formats).
+  radial (Galbraith), L'Abbé, drapery, Doi (with LFK index) and influence-diagnostics plots, drawn in the style of R; PNG, TIFF, JPG, SVG and PDF export (resolution in dpi for the raster formats).
 
 ![MetaJava: forest plot with prediction interval, subgroup results and settings](docs/screenshot.png)
 
@@ -188,7 +188,7 @@ restricted likelihood for REML (BIC and AICc then use k - p), the ordinary likel
   Before each run the data are checked and every problem (non-numeric cells, events > n, duplicate study labels, ...) is explained with its row number.
 * **Diagnostics:** outlier and influence diagnostics (rstudent, dffits, Cook's distance, cov.r, tau2.del, QE.del,
   hat, weight, dfbetas); studies flagged as influential/outliers are drawn as **red points** in the eight-panel
-  plot, as in metafor. Baujat plot, radial (Galbraith) plot, L'Abbé plot (binary outcomes; Default or ggplot2 style with 95% confidence and prediction areas and a legend, plus colour options). Publication bias also offers the Doi plot with the LFK index.
+  plot, as in metafor. Baujat plot, radial (Galbraith) plot, L'Abbé plot (binary outcomes; Default or ggplot2 style with 95% confidence and prediction areas and a legend, plus colour options). Publication bias also offers the drapery plot (meta::drapery: p-value / test-statistic curves of the studies and the pooled estimate with the prediction region), followed by a "Drapery Plot Analysis and Interpretation" section (statistical report with an expandable table of the individual studies, plus a copyable manuscript-ready narrative generated from the fitted model and the plotted curves; it never infers publication bias) and the Doi plot with the LFK index.
 * **GOSH plot** (graphical display of study heterogeneity; Olkin et al., 2012; `metafor::gosh`): the random-effects model is fitted to
   all subsets of at least two studies (up to 18 studies) or to many random subsets (number and seed settable); pooled estimate
   against I² (as selected for the main analysis) with marginal densities and dashed lines for the analysis of all studies. Dense
@@ -215,7 +215,7 @@ restricted likelihood for REML (BIC and AICc then use k - p), the ordinary likel
 
 ## Not implemented
 
-Drapery plots; `permutest` confidence intervals (`permci`); `metacr`, `metabind` and cumulative analysis by cluster; three-level models.
+`permutest` confidence intervals (`permci`); `metacr`, `metabind` and cumulative analysis by cluster; three-level models.
 
 ## Validation
 

@@ -69,10 +69,11 @@ public class MainWindow extends JFrame {
     /** Combo box of the named plot colours, with a colour swatch in front of every name. */
     static JComboBox<String> colourCombo(String dflt) { return colourCombo(RegPlots.COLOURS, dflt); }
     /** Drop-down of named colours with a colour swatch in front of every item (items "Theme default" show no swatch, "White" a white one). */
-    static JComboBox<String> colourCombo(String[] items, String dflt) { JComboBox<String> c = Ui.combo(items); c.setSelectedItem(dflt);
+    static JComboBox<String> colourCombo(String[] items, String dflt) { return colourCombo(items, dflt, v -> { Color col = org.metajava.plot.BaujatPlot.colourOf(v); if (col == null && !org.metajava.plot.BaujatPlot.AUTO.equals(v)) col = RegPlots.rgb(v); return col; }); }
+    /** Same, with the colour of every name given by {@code res} (null: no swatch). */
+    static JComboBox<String> colourCombo(String[] items, String dflt, java.util.function.Function<String, Color> res) { JComboBox<String> c = Ui.combo(items); c.setSelectedItem(dflt);
         c.setRenderer(new DefaultListCellRenderer() { @Override public Component getListCellRendererComponent(JList<?> l, Object v, int i, boolean sel, boolean foc) { JLabel x = (JLabel) super.getListCellRendererComponent(l, v, i, sel, foc);
-            Color col = org.metajava.plot.BaujatPlot.colourOf(String.valueOf(v)); if (col == null && !org.metajava.plot.BaujatPlot.AUTO.equals(String.valueOf(v))) col = RegPlots.rgb(String.valueOf(v));
-            final Color fc = col; x.setIcon(fc == null ? null : new Icon() { public int getIconWidth() { return 14; } public int getIconHeight() { return 12; } public void paintIcon(Component cc, Graphics gg, int px, int py) { gg.setColor(fc); gg.fillRect(px, py, 14, 12); gg.setColor(Color.GRAY); gg.drawRect(px, py, 13, 11); } }); return x; } }); return c; }
+            final Color fc = res.apply(String.valueOf(v)); x.setIcon(fc == null ? null : new Icon() { public int getIconWidth() { return 14; } public int getIconHeight() { return 12; } public void paintIcon(Component cc, Graphics gg, int px, int py) { gg.setColor(fc); gg.fillRect(px, py, 14, 12); gg.setColor(Color.GRAY); gg.drawRect(px, py, 13, 11); } }); return x; } }); return c; }
     JComboBox<String> baujatThemeBox = Ui.combo(org.metajava.plot.BaujatPlot.THEMES), baujatSymbolBox = colourCombo(org.metajava.plot.BaujatPlot.SYMBOL_COLOURS, org.metajava.plot.BaujatPlot.AUTO), baujatBackBox = colourCombo(org.metajava.plot.BaujatPlot.BACK_COLOURS, org.metajava.plot.BaujatPlot.AUTO);   // Baujat plot theme / symbol colour / background colour
     JComboBox<String> radialThemeBox = Ui.combo(org.metajava.plot.RadialPlot.THEMES), radialSymbolBox = colourCombo(org.metajava.plot.RadialPlot.COLOURS, org.metajava.plot.RadialPlot.AUTO), radialBackBox = colourCombo(org.metajava.plot.RadialPlot.BACK_COLOURS, org.metajava.plot.RadialPlot.AUTO), radialCircleBox = colourCombo(org.metajava.plot.RadialPlot.COLOURS, org.metajava.plot.RadialPlot.AUTO),
         radialRegBox = colourCombo(org.metajava.plot.RadialPlot.COLOURS, org.metajava.plot.RadialPlot.AUTO), radialRefBox = colourCombo(org.metajava.plot.RadialPlot.COLOURS, org.metajava.plot.RadialPlot.AUTO), radialCiBox = colourCombo(org.metajava.plot.RadialPlot.COLOURS, org.metajava.plot.RadialPlot.AUTO), radialCiLineBox = colourCombo(org.metajava.plot.RadialPlot.COLOURS, org.metajava.plot.RadialPlot.AUTO);   // Radial plot theme and colours
@@ -80,6 +81,11 @@ public class MainWindow extends JFrame {
     JComboBox<String> labbeThemeBox = Ui.combo(org.metajava.plot.LabbePlot.THEMES), labbeSymbolBox = colourCombo(org.metajava.plot.LabbePlot.COLOURS, org.metajava.plot.LabbePlot.AUTO), labbeBackBox = colourCombo(org.metajava.plot.LabbePlot.BACK_COLOURS, org.metajava.plot.LabbePlot.AUTO),
         labbeCircleBox = colourCombo(org.metajava.plot.LabbePlot.COLOURS, org.metajava.plot.LabbePlot.AUTO), labbeRefBox = colourCombo(org.metajava.plot.LabbePlot.COLOURS, org.metajava.plot.LabbePlot.AUTO), labbeEstBox = colourCombo(org.metajava.plot.LabbePlot.COLOURS, org.metajava.plot.LabbePlot.AUTO),
         labbeCiBox = colourCombo(org.metajava.plot.LabbePlot.COLOURS, org.metajava.plot.LabbePlot.AUTO), labbePiBox = colourCombo(org.metajava.plot.LabbePlot.COLOURS, org.metajava.plot.LabbePlot.AUTO);   // L'Abbe plot theme and colours
+    // drapery plot options (defaults = meta::drapery)
+    JComboBox<String> drapTypeBox = Ui.combo(org.metajava.plot.Drapery.TYPES), drapLayoutBox = Ui.combo(org.metajava.plot.Drapery.LAYOUTS), drapLabelsBox = Ui.combo(org.metajava.plot.Drapery.LABELS), drapModelBox = Ui.combo(org.metajava.plot.Drapery.MODELS),
+        drapStudyColBox = colourCombo(org.metajava.plot.Drapery.STUDY_COLOURS, org.metajava.plot.Drapery.STUDY_DEFAULT, org.metajava.plot.Drapery::colour), drapPredColBox = colourCombo(org.metajava.plot.Drapery.COLOURS, org.metajava.plot.Drapery.PRED_DEFAULT, org.metajava.plot.Drapery::colour),
+        drapRandomColBox = colourCombo(org.metajava.plot.Drapery.COLOURS, org.metajava.plot.Drapery.RANDOM_DEFAULT, org.metajava.plot.Drapery::colour), drapCommonColBox = colourCombo(org.metajava.plot.Drapery.COLOURS, org.metajava.plot.Drapery.COMMON_DEFAULT, org.metajava.plot.Drapery::colour);
+    JSpinner drapAngleSp = new JSpinner(new SpinnerNumberModel(0, 0, 90, 5));
     JComboBox<String> funnelThemeBox = Ui.combo(org.metajava.plot.FunnelThemes.NAMES);   // Default / MetaWin style / STATA style
     JTextField xLeft = new JTextField(10), xRight = new JTextField(10); JSpinner digitsSp = new JSpinner(new SpinnerNumberModel(2, 0, 6, 1)), spacingSp = new JSpinner(new SpinnerNumberModel(1.0, 0.6, 2.5, 0.1));
     // other analyses
@@ -87,7 +93,7 @@ public class MainWindow extends JFrame {
         looChk = Ui.check("Leave-one-out analysis", false), looForest = Ui.check("Forest plot", true), cumChk = Ui.check("Cumulative meta-analysis", false), cumForest = Ui.check("Forest plot", true),
         funnelChk = Ui.check("Funnel plot", false), funnelPrecChk = Ui.check("Funnel plot of precision", false), contourChk = Ui.check("Contour-enhanced", false), labChk = Ui.check("Study labels", true), biasChk = Ui.check("Test for funnel plot asymmetry", false), biasPlotChk = Ui.check("Plot", true),
         tfChk = Ui.check("Trim and fill", false), infChk = Ui.check("Outlier & influence diagnostics (metafor)", false), baujatChk = Ui.check("Baujat plot", false), radialChk = Ui.check("Radial (Galbraith) plot", false),
-        doiChk = Ui.check("Doi plot and LFK index", false), doiApexChk = Ui.check("Mark the apex (dashed line)", false), labbeChk = Ui.check("L\u2019Abb\u00E9 plot (binary outcomes)", false);
+        drapChk = Ui.check("Drapery plot", false), drapPredChk = Ui.check("Prediction region", true), drapReportChk = Ui.check("Drapery plot analysis and interpretation (statistical report + narrative)", true), doiChk = Ui.check("Doi plot and LFK index", false), doiApexChk = Ui.check("Mark the apex (dashed line)", false), labbeChk = Ui.check("L\u2019Abb\u00E9 plot (binary outcomes)", false);
     JCheckBox petChk = Ui.check("PET-PEESE (small-study effects)", false), petPlotChk = Ui.check("PET-PEESE plot", false), selChk = Ui.check("Selection model (3-parameter)", false), failChk = Ui.check("Fail-safe N", false);
     JComboBox<String> selDir = Ui.combo("Auto", "Positive", "Negative");
     // meta-regression extras, subgroup plots, GOSH
@@ -199,7 +205,22 @@ public class MainWindow extends JFrame {
 funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill funnel plot. Default = meta style; MetaWin style = power-enhanced (sunset) funnel with contour bands, always contour-enhanced; STATA style = Stata look (pale-blue frame, grey pseudo 95% limits or contour bands, framed legend). Imputed studies of the trim-and-fill plot are orange in the MetaWin and STATA styles");
         funnelThemeBox.addActionListener(e -> contourChk.setEnabled(!org.metajava.plot.FunnelThemes.METAWIN.equals(funnelThemeBox.getSelectedItem())));   // MetaWin style is always contour-enhanced
         Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, funnelPrecChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row("Funnel plot themes", funnelThemeBox); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
-        pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row("Trim-fill model", tfModel); pb.row(null, doiChk); pb.row(null, doiApexChk);
+        pb.row(null, tfChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row("Trim-fill model", tfModel); pb.row(null, drapChk); pb.row("Drapery type", drapTypeBox); pb.row("Drapery layout", drapLayoutBox); pb.row("Drapery study colour", drapStudyColBox); pb.row("Drapery study labels", drapLabelsBox); pb.row("Drapery study label angle", drapAngleSp); pb.row(null, drapPredChk); pb.row("Drapery prediction colour", drapPredColBox); pb.row(null, drapReportChk);
+        pb.row("Drapery model", drapModelBox); pb.row("Drapery random-effects colour", drapRandomColBox); pb.row("Drapery common-effect colour", drapCommonColBox);
+        drapChk.setToolTipText("Drapery plot (meta::drapery): p-value functions (confidence curves) of the individual studies and of the pooled estimate, with the prediction region. Drawn after trim-and-fill. Relative effects (OR, RR, HR, ...) are always back-transformed (log-scaled x-axis)");
+        drapLabelsBox.setSelectedItem(org.metajava.plot.Drapery.LAB_ID);   // default as in the meta examples: study numbers
+        drapReportChk.setToolTipText("Adds the section \"Drapery Plot Analysis and Interpretation\" below the plot: a statistical report (model, pooled effect, individual studies, prediction region) and a narrative generated from the fitted model and the plotted curves. It follows the model(s) displayed in the plot and never infers publication bias");
+        drapTypeBox.setToolTipText("zvalue: scaled curves (test statistic, default); pvalue: p-value functions");
+        drapLayoutBox.setToolTipText("Line layout of the individual studies: grayscale = darker with increasing precision (default); equal = identical lines; linewidth = thicker with increasing weight");
+        drapStudyColBox.setToolTipText("Colour of the study lines. Default: grey scale for the layout grayscale, dark gray otherwise; a colour chosen here is used for all studies in every layout");
+        drapLabelsBox.setToolTipText("Labels at the top of the plot: None, the study number in the data (id) or the study name");
+        drapAngleSp.setToolTipText("Rotation of the study labels in degrees (0 to 90). Study names are rotated up on the left of the pooled estimate and down on the right, as in meta");
+        drapModelBox.setToolTipText("As main analysis: the model(s) of the analysis (random effects, common effect or both); or choose Random, Common or Both. The prediction region belongs to the random-effects model");
+        java.awt.event.ActionListener drapEn = e -> { boolean on = drapChk.isSelected(); for (JComponent x : new JComponent[]{drapTypeBox, drapLayoutBox, drapStudyColBox, drapLabelsBox, drapPredChk, drapReportChk, drapModelBox, drapRandomColBox, drapCommonColBox}) x.setEnabled(on);
+            drapAngleSp.setEnabled(on && !org.metajava.plot.Drapery.LAB_NONE.equals(drapLabelsBox.getSelectedItem())); drapPredColBox.setEnabled(on && drapPredChk.isSelected());
+            String dm = (String) drapModelBox.getSelectedItem(); drapRandomColBox.setEnabled(on && !org.metajava.plot.Drapery.MODEL_COMMON.equals(dm)); drapCommonColBox.setEnabled(on && !org.metajava.plot.Drapery.MODEL_RANDOM.equals(dm)); };
+        drapChk.addItemListener(e -> drapEn.actionPerformed(null)); drapPredChk.addItemListener(e -> drapEn.actionPerformed(null)); drapLabelsBox.addActionListener(drapEn); drapModelBox.addActionListener(drapEn); drapEn.actionPerformed(null);
+        pb.row(null, doiChk); pb.row(null, doiApexChk);
         petChk.setToolTipText("Precision-effect test (PET) and precision-effect estimate with standard error (PEESE): regression-based effect corrected for small-study effects (Stanley & Doucouliagos, 2014)");
         selChk.setToolTipText("Vevea-Hedges three-parameter selection model: adjusted effect when non-significant results are less likely to be published (works best with 20-30 or more studies)");
         selDir.setToolTipText("Direction in which significant results are favoured for publication. Auto: the direction of the pooled effect");
@@ -464,13 +485,13 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
     static String esc(String x) { return x.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
 
     // ===== analysis pipeline: computed off the UI thread; independent sections run concurrently =====
-    static final class Item { final String title, text; final DoubleFunction<BufferedImage> render; BufferedImage img; List<Report.Tbl> tables = new ArrayList<>(); Item(String t, String x, DoubleFunction<BufferedImage> r) { title = t; text = x; render = r; } }
+    static final class Item { final String title, text; final DoubleFunction<BufferedImage> render; BufferedImage img; org.metajava.plot.DraperyReport.Result drap; List<Report.Tbl> tables = new ArrayList<>(); Item(String t, String x, DoubleFunction<BufferedImage> r) { title = t; text = x; render = r; } }
     static final class Out { final List<Item> items = new ArrayList<>(); Exception error; }
     /** Everything the background code needs, captured on the UI thread (Swing components are never read from worker threads). */
     static final class Snap {
         MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; Map<String, String> refs = new HashMap<>(); String biasMethod, tfSide, tfEst, tfModel, selDir; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
         String goshPal = "Default"; boolean perm, permExact, cmp, orchard, cater, gosh, goshHl, goshCl, goshReg, goshTrim, goshTrimOrd; int permIter, goshSub; long permSeed, goshSeed;
-        boolean doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, adj, loo, looForest, cum, cumForest, funnel, funnelPrec, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
+        boolean drap, drapReport, doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, adj, loo, looForest, cum, cumForest, funnel, funnelPrec, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
     }
     private final ThreadLocal<List<Item>> sink = new ThreadLocal<>();
     private volatile int generation = 0; private java.util.concurrent.Future<?> current;
@@ -496,7 +517,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
             n.reg = regChk.isSelected(); n.nums = chosen(covList); n.facs = chosen(facList); n.refs = chosenRefs(n.facs); n.regIntercept = regIntercept.isSelected(); n.bubble = bubbleChk.isSelected(); n.regLine = regLine.isSelected(); n.adj = adjChk.isSelected();
             n.loo = looChk.isSelected(); n.looForest = looForest.isSelected(); n.cum = cumChk.isSelected(); n.cumForest = cumForest.isSelected();
             n.funnel = funnelChk.isSelected(); n.funnelPrec = funnelPrecChk.isSelected(); n.contour = contourChk.isSelected(); n.labels = labChk.isSelected(); n.bias = biasChk.isSelected(); n.biasPlot = biasPlotChk.isSelected(); n.biasMethod = (String) biasMethod.getSelectedItem();
-            n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.tfModel = (String) tfModel.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
+            n.tf = tfChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.tfModel = (String) tfModel.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.drap = drapChk.isSelected(); n.drapReport = drapReportChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
             n.o.contour = n.funnel && n.contour; n.o.studyLabels = n.labels;
             n.perm = permChk.isSelected(); n.permExact = permExactChk.isSelected(); n.cmp = cmpChk.isSelected(); n.permIter = (Integer) permIterSp.getValue(); n.permSeed = lng(permSeedF, 1);
             n.orchard = orchardChk.isSelected(); n.cater = caterChk.isSelected(); n.gosh = goshChk.isSelected(); n.goshHl = goshHlChk.isSelected(); n.goshPal = (String) goshPalBox.getSelectedItem(); n.goshCl = goshClChk.isSelected(); n.goshReg = goshRegChk.isSelected(); n.goshTrim = goshTrimChk.isSelected(); n.goshTrimOrd = goshTrimOrdChk.isSelected(); n.goshSub = (Integer) goshSubSp.getValue(); n.goshSeed = lng(goshSeedF, 1);
@@ -536,6 +557,8 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
                 if (n.biasPlot && b.error == null && b.plotX != null) addPlot("Plot (Test for Funnel Plot Asymmetry)", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.biasPlot(b, r, q); }); }, false});
             if (n.tf) secs.add(new Object[]{(Runnable) () -> { TrimFill tf = TrimFill.run(r, n.tfSide.equals("Auto") ? null : n.tfSide.equals("Left"), n.tfModel.startsWith("Common") || !s.random, n.tfEst, s.common, s.random);
                 if (tf == null) addText("Trim and Fill", "Too few studies for trim-and-fill."); else { addText("Trim and Fill", Report.trimfillText(tf, r)); addPlot("Trim-and-Fill Funnel Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.funnel(r, q, tf); }); } }, false});
+            if (n.drap) secs.add(new Object[]{(Runnable) () -> { addPlot("Drapery Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return org.metajava.plot.Drapery.plot(r, q); });
+                if (n.drapReport) { org.metajava.plot.DraperyReport.Result dr = org.metajava.plot.DraperyReport.build(r, copy(o)); if (dr.available) addDrapery(dr); } }, false});
             if (n.doi) secs.add(new Object[]{(Runnable) () -> { Lfk l = Lfk.compute(r.TE, r.seTE, r.studlab); addText("Doi Plot and LFK Index", Report.lfkText(l, r));
                 if (l.lfk == l.lfk) addPlot("Doi Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; q.apexLine = n.doiApex; return Plots.doi(l, r, q); }); }, false});
             if (n.pet) secs.add(new Object[]{(Runnable) () -> { PubBias.PetPeese pp = PubBias.petPeese(r); addText("PET-PEESE", BiasReport.petPeeseText(pp, r));
@@ -581,7 +604,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
         if (gen != generation) return;
         results.removeAll(); textAreas.clear(); plots.clear(); shown.clear(); shownTitle = n.s.title; shownSource = fileLabel.getText(); lastText = ""; Exception first = null;
         if (!n.dataWarn.isEmpty()) { StringBuilder dw = new StringBuilder("The analysis was run, but please check these points in the data (row numbers count the data rows below the header line):\n"); for (String w : n.dataWarn) dw.append("\n- ").append(w); Item it = new Item("Data Check", BiasReport.wrapLines(dw.toString(), 100), null); shown.add(it); showText(it.title, it.text); }
-        for (Out o : outs) { for (Item it : o.items) { shown.add(it); if (it.render == null) showText(it.title, it.text); else showPlot(it.title, it.render, it.img); } if (o.error != null && first == null) first = o.error; }
+        for (Out o : outs) { for (Item it : o.items) { shown.add(it); if (it.drap != null) showDrapery(it); else if (it.render == null) showText(it.title, it.text); else showPlot(it.title, it.render, it.img); } if (o.error != null && first == null) first = o.error; }
         for (String w : r.warnings) { shown.add(new Item("Warning", w, null)); showText("Warning", w); }
         strip.setProgress(100); runFinished();
         if (first != null) { if (auto) { softError(first); return; } error(first); }
@@ -594,6 +617,8 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
     }
 
     Plots.Opts forestOpts() { Plots.Opts o = new Plots.Opts(); o.sortBy = (String) sortBox.getSelectedItem(); o.ascending = sortDir.getSelectedIndex() == 0; o.analysisDetails = fDetails.isSelected(); o.testOverall = fOverallTest.isSelected(); o.hetStats = fHet.isSelected(); o.ciI2 = fCiI2.isSelected(); o.ciTau = fCiTau.isSelected();
+        o.drapType = (String) drapTypeBox.getSelectedItem(); o.drapLayout = (String) drapLayoutBox.getSelectedItem(); o.drapStudyColour = (String) drapStudyColBox.getSelectedItem(); o.drapLabels = (String) drapLabelsBox.getSelectedItem(); o.drapAngle = (Integer) drapAngleSp.getValue(); o.drapPrediction = drapPredChk.isSelected();
+        o.drapPredColour = (String) drapPredColBox.getSelectedItem(); o.drapModel = (String) drapModelBox.getSelectedItem(); o.drapRandomColour = (String) drapRandomColBox.getSelectedItem(); o.drapCommonColour = (String) drapCommonColBox.getSelectedItem();
         o.theme = (String) themeBox.getSelectedItem(); o.squareColour = (String) squareColBox.getSelectedItem(); o.diamondFill = (String) diamondFillBox.getSelectedItem(); o.diamondBorder = (String) diamondBorderBox.getSelectedItem();
         o.nullColour = (String) nullColBox.getSelectedItem(); o.nullStyle = (String) nullStyleBox.getSelectedItem(); o.pooledColour = (String) pooledColBox.getSelectedItem(); o.pooledStyle = (String) pooledStyleBox.getSelectedItem();
         o.radialTheme = (String) radialThemeBox.getSelectedItem(); o.radialLabels = radialLabChk.isSelected(); o.radialSymbol = (String) radialSymbolBox.getSelectedItem(); o.radialBack = (String) radialBackBox.getSelectedItem(); o.radialCircle = (String) radialCircleBox.getSelectedItem();
@@ -646,6 +671,8 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
 
     /** Called from analysis threads: collects the item in the current section. */
     void addText(String title, String text) { Item it = new Item(title, text, null); it.tables = Report.drain(); sink.get().add(it); }
+    /** Called from analysis threads: the merged section "Drapery Plot Analysis and Interpretation" (statistical report with its study table, and the narrative). */
+    void addDrapery(org.metajava.plot.DraperyReport.Result dr) { Item it = new Item(org.metajava.plot.DraperyReport.TITLE, dr.combined(), null); it.tables = Report.drain(); it.drap = dr; sink.get().add(it); }
     void addPlot(String title, DoubleFunction<BufferedImage> render) { sink.get().add(new Item(title, null, render)); }
 
     /** UI thread only. */
@@ -654,6 +681,23 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
         JLabel t = new JLabel(title); t.setFont(new Font("SansSerif", Font.BOLD, 18)); t.setForeground(Ui.PRIMARY); t.setAlignmentX(LEFT_ALIGNMENT); t.setBorder(new EmptyBorder(14, 0, 6, 0)); results.add(t);
         JTextArea a = new JTextArea(text); a.setEditable(false); a.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12)); a.setBackground(Color.WHITE); a.setAlignmentX(LEFT_ALIGNMENT); a.setBorder(new EmptyBorder(0, 0, 0, 0)); a.putClientProperty("raw", text); textAreas.add(a); a.setText(wrapped(a, text)); results.add(a);
     }
+    /** UI thread: the drapery report. Statistical report (the individual-study table is an expandable block, collapsed at first) and the narrative, each with its own copy button. */
+    void showDrapery(Item it) {
+        final org.metajava.plot.DraperyReport.Result dr = it.drap; lastText += "== " + it.title + " ==\n" + it.text + "\n\n";
+        JLabel t = new JLabel(it.title); t.setFont(new Font("SansSerif", Font.BOLD, 18)); t.setForeground(Ui.PRIMARY); t.setAlignmentX(LEFT_ALIGNMENT); t.setBorder(new EmptyBorder(16, 0, 6, 0)); results.add(t);
+        // statistical report: all sections, the individual-study table included, in the same black text
+        JLabel h1 = new JLabel("Statistical report"); h1.setFont(new Font("SansSerif", Font.BOLD, 14)); h1.setAlignmentX(LEFT_ALIGNMENT); h1.setBorder(new EmptyBorder(2, 0, 4, 0)); results.add(h1);
+        results.add(proseArea(dr.statisticalReport()));
+        // narrative
+        JLabel h2 = new JLabel("Drapery plot analysis (manuscript-ready text)"); h2.setFont(new Font("SansSerif", Font.BOLD, 14)); h2.setAlignmentX(LEFT_ALIGNMENT); h2.setBorder(new EmptyBorder(14, 0, 4, 0)); results.add(h2);
+        results.add(proseArea(dr.narrativeText()));
+    }
+    /** Read-only text block that is re-wrapped with the panel width like the other text sections. */
+    JTextArea proseArea(String text) {
+        JTextArea a = new JTextArea(text); a.setEditable(false); a.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12)); a.setBackground(Color.WHITE); a.setAlignmentX(LEFT_ALIGNMENT); a.setBorder(new EmptyBorder(0, 0, 0, 0));
+        a.putClientProperty("raw", text); textAreas.add(a); a.setText(wrapped(a, text)); return a;
+    }
+    void copyText(String text, String msg) { try { java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(text), null); status.setText(msg); } catch (Exception ex) { error(ex); } }
     /** Number of monospaced characters that fit in the visible width of the results panel. */
     int fitCols(JTextArea a) {
         int vw = resScroll.getViewport().getWidth(); if (vw <= 0) return 100;

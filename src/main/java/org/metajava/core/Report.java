@@ -69,7 +69,7 @@ public final class Report {
     /** Confidence level in percent without superfluous decimals (95, 99, 97.5). */
     public static String pct(double level) { double x = Math.round(level * 1e6) / 1e4; return x == Math.rint(x) ? String.valueOf((long) x) : String.valueOf(x); }
 
-    static String tauLabel(String m) { return TAU_NAME.getOrDefault(m, m); }
+    public static String tauLabel(String m) { return TAU_NAME.getOrDefault(m, m); }
 
     public static String summary(MetaResult r) {
         MetaSpec s = r.spec; Pool p = r.overall; StringBuilder b = new StringBuilder();

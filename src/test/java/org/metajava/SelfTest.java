@@ -2,6 +2,7 @@ package org.metajava;
 
 import org.metajava.core.*;
 import org.metajava.plot.Plots;
+import org.metajava.plot.Drapery;
 import org.metajava.export.ResultsDoc;
 
 import java.awt.image.BufferedImage;
@@ -487,6 +488,21 @@ public class SelfTest {
             check(Double.isNaN(nw.qWald) && nw.est == re.est, "GLMM UM.RS: wald = false skips the Wald-type Q only");
         }
 
+        // ---- 3b. Drapery plot (meta::drapery): model(s) shown, prediction region, types, axis ticks like R
+        { MetaSpec dsp = genSpec("HR"); dsp.methodTau = "DL"; dsp.random = true; dsp.common = true; MetaResult dry = Meta.run(dsp, gen(LNHR, SEHR, false));
+            Plots.Opts dop = new Plots.Opts(); dop.drapModel = Drapery.MODEL_RANDOM; BufferedImage dim = Drapery.plot(dry, dop);
+            check(dim.getWidth() == 780 && countColour(dim, 0xFF0000) > 100 && countColour(dim, 0xADD8E6) > 1000 && countColour(dim, 0x0000FF) == 0, "Drapery plot: random-effects model (red) with the prediction region (light blue), no common-effect line");
+            dop.drapModel = Drapery.MODEL_COMMON; BufferedImage dcm = Drapery.plot(dry, dop);
+            check(countColour(dcm, 0x0000FF) > 100 && countColour(dcm, 0xFF0000) == 0 && countColour(dcm, 0xADD8E6) == 0, "Drapery plot: common-effect model only is blue and carries no prediction region");
+            dop.drapModel = Drapery.MODEL_BOTH; BufferedImage dbo = Drapery.plot(dry, dop); check(countColour(dbo, 0x0000FF) > 100 && countColour(dbo, 0xFF0000) > 100, "Drapery plot: both models are drawn");
+            dop.drapModel = Drapery.MODEL_AUTO; dsp.random = false; BufferedImage dau = Drapery.plot(Meta.run(dsp, gen(LNHR, SEHR, false)), dop); check(countColour(dau, 0x0000FF) > 100 && countColour(dau, 0xFF0000) == 0, "Drapery plot: 'As main analysis' follows a common-effect analysis"); dsp.random = true;
+            Plots.Opts dpv = new Plots.Opts(); dpv.drapType = Drapery.PVALUE; dpv.drapPrediction = false; dpv.drapRandomColour = "Dark green"; BufferedImage dpi = Drapery.plot(dry, dpv);
+            check(!same(dpi, dim) && countColour(dpi, 0xADD8E6) == 0 && countColour(dpi, 0x006400) > 100, "Drapery plot: p-value type, prediction region off, random-effects colour changed");
+            Plots.Opts dlw = new Plots.Opts(); dlw.drapLayout = Drapery.LINEWIDTH; dlw.drapLabels = Drapery.LAB_NAME; dlw.drapAngle = 45; dlw.drapStudyColour = "Steel blue"; check(Drapery.plot(dry, dlw).getWidth() == 780, "Drapery plot: linewidth layout with rotated study names renders");
+            double[] dtk = Drapery.logTicks(0.2, 0.64, 0.213, 0.69); check(dtk.length == 4 && Math.abs(dtk[0] - 0.3) < 1e-9 && Math.abs(dtk[3] - 0.6) < 1e-9, "Drapery plot: log-axis ticks inside one decade are 0.3, 0.4, 0.5, 0.6 (as R)");
+            check(java.util.Arrays.equals(Drapery.labelsOf(new double[]{0, -0.5, -1}, false), new String[]{"0.0", "-0.5", "-1.0"}), "Drapery plot: axis labels share one number of decimals (as R)");
+            BufferedImage dg1 = Drapery.plot(dry, new Plots.Opts()); check(dg1.getWidth() == 780 && Drapery.GRAYSCALE.equals(new Plots.Opts().drapLayout) && Drapery.ZVALUE.equals(new Plots.Opts().drapType) && Drapery.LAB_ID.equals(new Plots.Opts().drapLabels) && new Plots.Opts().drapPrediction, "Drapery plot: defaults are zvalue, grayscale, id labels, prediction on"); }
+
         // ---- 4. Doi plot / LFK index (metasens::lfkindex algorithm) and vector export
         { double[] te = {-4.270, -1.710, -0.580, -0.190, 0.000}, vr = {0.158, 0.076, 0.018, 0.022, 0.040}, se = new double[5]; for (int i = 0; i < 5; i++) se[i] = Math.sqrt(vr[i]);
             Lfk lf = Lfk.compute(te, se, null); check(lf.apex == 3 && lf.interpretation.equals("major asymmetry") && lf.lfk < -2, "LFK index: pain example (Furuya-Kanamori 2018) is flagged as major left asymmetry (" + lf.lfk + ")");
@@ -795,6 +811,21 @@ public class SelfTest {
                 check(diff, "'" + stl + "' bubble plot: the prediction interval changes the picture"); }
             for (String sy : org.metajava.plot.RegPlots.SYMBOLS) { Plots.Opts q = new Plots.Opts(); q.studyLabels = false; q.symbol = sy; q.symSize = 1.4; q.predInt = true; q.confInt = true;
                 try { check(Plots.bubble(rg, q, res) != null, "bubble plot with study symbol '" + sy + "'"); q.bubbleStyle = org.metajava.plot.RegPlots.GG; check(Plots.bubble(rg, q, res) != null, "ggplot2-style bubble plot with study symbol '" + sy + "'"); } catch (Exception e) { check(false, "study symbol " + sy + " threw " + e); } } }
+        // ---- 3c. Drapery plot analysis and interpretation: model-consistent, conditional on the plotted result
+        {
+            MetaSpec dsp = new MetaSpec(); dsp.type = "bin"; dsp.sm = "OR"; dsp.methodTau = "DL"; dsp.prediction = true; dsp.common = false; dsp.random = true; MetaData ddat = new MetaData();
+            ddat.put("event.e", new double[]{12, 8, 15, 5, 20, 9}).put("n.e", new double[]{100, 80, 120, 60, 150, 90}).put("event.c", new double[]{20, 14, 22, 9, 30, 13}).put("n.c", new double[]{100, 82, 118, 62, 148, 88}); ddat.studlab = new String[]{"A", "B", "C", "D", "E", "F"};
+            MetaResult dmr = Meta.run(dsp, ddat); Plots.Opts dq = new Plots.Opts(); org.metajava.plot.DraperyReport.Result rep = org.metajava.plot.DraperyReport.build(dmr, dq); String dnt = rep.narrativeText(), dst = rep.statisticalReport();
+            check(rep.available && dst.contains("Analysis model: Random-effects") && dst.contains("Prediction region shown: yes") && dst.contains("Null effect within interval: no") && dnt.contains("prediction interval"), "Drapery report: random-effects model with prediction region");
+            check(dst.contains("Pooled OR: " + Fmt.num(Math.exp(dmr.overall.teRandom), 4)) && !dst.contains("Common-effect model") && !dnt.contains("common-effect"), "Drapery report: reports the random-effects estimate only (no mixing with the common-effect model)");
+            check(dnt.contains("statistically significant") && dnt.contains("does not, by itself, establish the presence or absence of publication bias") && dst.contains("not a test for publication bias"), "Drapery report: significance statement from the curve, and the publication-bias reminder");
+            dq.drapPrediction = false; org.metajava.plot.DraperyReport.Result r2 = org.metajava.plot.DraperyReport.build(dmr, dq);
+            check(r2.statisticalReport().contains("Prediction region shown: no") && !r2.narrativeText().contains("prediction interval") && !r2.statisticalReport().contains("Null effect within interval"), "Drapery report: no prediction-interval statements when the region is not displayed");
+            dq.drapPrediction = true; dq.drapModel = Drapery.MODEL_BOTH; org.metajava.plot.DraperyReport.Result r3 = org.metajava.plot.DraperyReport.build(dmr, dq);
+            check(r3.statisticalReport().contains("Random-effects model") && r3.statisticalReport().contains("Common-effect model") && r3.narrativeText().contains("interpreted separately") && r3.studyRendered.contains("%W(common)"), "Drapery report: both curves are reported and interpreted separately");
+            dq.drapModel = Drapery.MODEL_COMMON; org.metajava.plot.DraperyReport.Result r4 = org.metajava.plot.DraperyReport.build(dmr, dq);
+            check(r4.statisticalReport().contains("Prediction region shown: no") && r4.statisticalReport().contains("Analysis model: Common-effect") && !r4.narrativeText().contains("prediction interval"), "Drapery report: common-effect curve only has no prediction region");
+        }
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);
     }
