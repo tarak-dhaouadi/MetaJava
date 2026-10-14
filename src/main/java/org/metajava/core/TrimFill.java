@@ -5,10 +5,11 @@ import java.util.*;
 /** Duval & Tweedie trim-and-fill (meta::trimfill). */
 public final class TrimFill {
     public double[] TE, seTE; public boolean[] filled; public boolean left; public int k0;
-    public String[] studlab; public Pool pool; public MetaSpec spec; public double teSum;
+    public String[] studlab; public String type = "L"; public Pool pool; public MetaSpec spec; public double teSum;
 
     public static TrimFill run(MetaResult r, Boolean leftArg, boolean maCommon, String type, boolean commonOut, boolean randomOut) {
         MetaSpec s = r.spec;
+        type = normType(type);
         List<Integer> sel = new ArrayList<>();
         for (int i = 0; i < r.TE.length; i++) if (!Double.isNaN(r.TE[i]) && !Double.isNaN(r.seTE[i]) && r.seTE[i] > 0) sel.add(i);
         int k = sel.size(); if (k <= 2) return null;
@@ -36,21 +37,34 @@ public final class TrimFill {
         for (int j = 0; j < k; j++) { T[ord[j]] = t1[j]; S[ord[j]] = s1[j]; L[ord[j]] = l1[j]; }
         for (int j = 0; j < k0; j++) { int src = k - k0 + j; T[k + j] = 2 * teSum - t1[src]; S[k + j] = s1[src]; L[k + j] = "Filled: " + l1[src]; f[k + j] = true; }
         if (!left) for (int j = 0; j < tot; j++) T[j] = -T[j];
-        TrimFill tf = new TrimFill(); tf.TE = T; tf.seTE = S; tf.filled = f; tf.left = left; tf.k0 = k0; tf.studlab = L; tf.teSum = left ? teSum : -teSum;
+        TrimFill tf = new TrimFill(); tf.TE = T; tf.seTE = S; tf.filled = f; tf.left = left; tf.type = type; tf.k0 = k0; tf.studlab = L; tf.teSum = left ? teSum : -teSum;
         MetaSpec s2 = s.forAux(); s2.common = commonOut; s2.random = randomOut; tf.spec = s2;
         int[] all = new int[tot]; for (int i = 0; i < tot; i++) all[i] = i;
         tf.pool = Pool.compute(s2, T, S, all, null);
         return tf;
     }
 
-    static int estimateMissing(double[] te, double teSum, String type) {
+    /** Accepts "L", "R", "Q" as well as "L0", "R0", "Q0" (case-insensitive); anything else is an error. */
+    static String normType(String t) {
+        String u = t == null ? "L" : t.trim().toUpperCase(Locale.ROOT);
+        if (u.endsWith("0")) u = u.substring(0, u.length() - 1);
+        if (!u.equals("L") && !u.equals("R") && !u.equals("Q")) throw new IllegalArgumentException("Unknown trim-and-fill estimator: " + t);
+        return u;
+    }
+
+    public static int estimateMissing(double[] te, double teSum, String type) {
         int n = te.length; double[] tc = new double[n], abs = new double[n];
         for (int i = 0; i < n; i++) { tc[i] = te[i] - teSum; abs[i] = Math.abs(tc[i]); }
         double[] rk = rank(abs); double[] rs = new double[n];
         for (int i = 0; i < n; i++) rs[i] = rk[i] * Math.signum(tc[i]);
         double res0;
         if (type.equals("L")) { double S = 0; for (double x : rs) if (x > 0) S += x; res0 = (4 * S - n * (n + 1.0)) / (2 * n - 1); }
+        else if (type.equals("Q")) { // quadratic estimator of Duval & Tweedie (2000): Q0 = n - 1/2 - sqrt(2n^2 - 4 T_n + 1/4)
+            double S = 0; for (double x : rs) if (x > 0) S += x;
+            double rad = 2.0 * n * n - 4 * S + 0.25;
+            res0 = rad < 0 ? Double.POSITIVE_INFINITY : n - 0.5 - Math.sqrt(rad); }
         else { double mn = 0; for (double x : rs) mn = Math.min(mn, x); res0 = n - Math.abs(mn) - 1.5; }
+        if (Double.isInfinite(res0)) return n;
         return (int) Math.floor(Math.max(0, res0 + 0.5));
     }
 

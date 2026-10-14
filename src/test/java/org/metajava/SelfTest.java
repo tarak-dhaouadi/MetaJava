@@ -223,6 +223,20 @@ public class SelfTest {
         check(!Report.summary(Meta.run(sp, gen(LNHR, SEHR, true))).contains("second, higher maximum"), "no warning in the reference data sets");
     }
 
+    /** Trim-and-fill on the "Binary outcome" example (OR, 23 studies): meta::trimfill(type = "L") imputes 9 studies; "L0"/"R0"/"Q0" labels are accepted. */
+    static void trimFillEstimators() {
+        String[] lab = new String[23]; for (int i = 0; i < 23; i++) lab[i] = "S" + (i + 1);
+        double[] ee = {49,4,36,17,17,168,42,63,49,244,30,165,49,525,88,39,188,108,26,31,18,12,104}, ne = {100,92,112,34,40,490,130,100,104,524,692,440,78,1074,140,98,522,182,440,58,42,28,252},
+            ec = {36,7,8,19,13,22,89,40,56,137,11,26,47,95,124,92,21,77,18,29,83,13,39}, nc = {100,194,42,48,38,82,228,72,196,296,228,100,96,200,264,202,50,118,440,108,198,40,108};
+        MetaSpec s = new MetaSpec(); s.type = "bin"; s.sm = "OR"; s.methodTau = "DL"; MetaData d = new MetaData(); d.put("event.e", ee).put("n.e", ne).put("event.c", ec).put("n.c", nc); d.studlab = lab;
+        MetaResult r = Meta.run(s, d);
+        check(TrimFill.run(r, null, true, "L0", true, true).k0 == 9, "trim-and-fill L0 imputes 9 studies (as meta, metafor and CMA)");
+        check(TrimFill.run(r, null, true, "L", true, true).k0 == 9, "trim-and-fill 'L' is the same as 'L0'");
+        check(TrimFill.run(r, null, true, "R0", true, true).k0 == 3, "trim-and-fill R0 imputes 3 studies");
+        int q = TrimFill.run(r, null, true, "Q0", true, true).k0; check(q > 9 && q <= 22, "trim-and-fill Q0 (quadratic) runs and gives a larger count than L0");
+        check(TrimFill.estimateMissing(new double[]{-1, 1, 2, -3, 4}, 0, "Q") >= 0, "Q0 is never negative");
+    }
+
     /** Funnel plot themes (Default, MetaWin style, STATA style) for the main and the trim-and-fill funnel plot. */
     static void funnelThemes() {
         try {
@@ -757,7 +771,7 @@ public class SelfTest {
             check(RegReport.goshText(gs, br).contains("Cluster detection"), "report text of the ordinary GOSH includes the cluster detection when requested");
         } catch (Exception e) { e.printStackTrace(); check(false, "permutest / model comparison / GOSH tests threw " + e); }
 
-        forestThemes(); funnelThemes();
+        forestThemes(); funnelThemes(); trimFillEstimators();
 
         // ---- prediction interval and study symbols of the regression plots
         { double[][] dd = simData(1, 7, 14); MetaResult res = simResult(dd[0], dd[1]); java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", dd[2]);

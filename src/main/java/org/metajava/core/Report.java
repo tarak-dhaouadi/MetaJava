@@ -387,7 +387,7 @@ public final class Report {
         b.append(table(head, rr, new boolean[]{false, true, true})).append(NL);
         b.append("Quantifying heterogeneity:").append(NL).append(" tau^2 = ").append(Fmt.num(p.tau2, 4)).append("; tau = ").append(Fmt.num(p.tau, 4)).append("; I^2 = ").append(Fmt.num(100 * p.I2, 1)).append("%; H = ").append(Fmt.num(p.H, 2)).append(NL).append(NL);
         b.append("Test of heterogeneity:").append(NL).append(table(List.of("Q", "d.f.", "p-value"), List.<String[]>of(new String[]{Fmt.num(p.Q, 2), String.valueOf(p.dfQ), Fmt.pval(p.pQ, 4)}), new boolean[]{true, true, true})).append(NL);
-        b.append("Details on adjustment for publication bias:").append(NL).append("- Trim-and-fill method to adjust for funnel plot asymmetry (L-estimator)").append(NL);
+        b.append("Details on adjustment for publication bias:").append(NL).append("- Trim-and-fill method to adjust for funnel plot asymmetry (" + tf.type + "0 estimator)").append(NL);
         return b.toString();
     }
 

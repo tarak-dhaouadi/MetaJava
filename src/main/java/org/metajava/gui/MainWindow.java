@@ -96,7 +96,7 @@ public class MainWindow extends JFrame {
     JSpinner permIterSp = new JSpinner(new SpinnerNumberModel(5000, 100, 100000, 1000)), goshSubSp = new JSpinner(new SpinnerNumberModel(20000, 1000, 500000, 5000));
     JTextField permSeedF = new JTextField("1", 6), goshSeedF = new JTextField("1", 6);
     JComboBox<String> biasMethod = Ui.combo("Default", "Egger", "Begg", "Thompson", "Harbord", "Peters", "Macaskill", "Deeks", "Pustejovsky", "Schwarzer");
-    JComboBox<String> tfSide = Ui.combo("Auto", "Left", "Right"), tfEst = Ui.combo("L0", "R0");
+    JComboBox<String> tfSide = Ui.combo("Auto", "Left", "Right"), tfEst = Ui.combo("L0", "R0", "Q0");
     JSpinner dpiSp = new JSpinner(new SpinnerNumberModel(300, 72, 1200, 100)); JComboBox<String> fmtBox = Ui.combo("PNG", "TIFF", "JPG", "SVG", "PDF"); JComboBox<String> goshPalBox = Ui.combo(ExtraPlots.PALETTE_NAMES);
     final List<Object[]> plots = new ArrayList<>(); // {title, DoubleFunction<BufferedImage>}
     final JLabel status = Ui.muted("Ready");

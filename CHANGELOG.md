@@ -1,5 +1,10 @@
 # Changelog
 
+### Fixed - trim-and-fill imputed too few studies; new Q0 estimator
+- **Bug:** the drop-down values "L0" / "R0" were compared with "L" in the code, so *L0* silently ran the **R0** (run) estimator. On the "Binary outcome" example this gave 3 imputed studies instead of 9. *L0* now runs the linear estimator exactly as `meta::trimfill(type = "L")`: 9 imputed studies, in agreement with meta, metafor and Comprehensive Meta-Analysis.
+- **New:** *Trim-fill estimator* now offers **Q0**, the quadratic estimator of Duval & Tweedie (2000), Q0 = n - 1/2 - sqrt(2n^2 - 4 T_n + 1/4), rounded like L0/R0 and capped at k - 1. It is not available in meta or metafor; it is generally not recommended (L0 and R0 have lower mean squared error).
+- The trim-and-fill report now names the estimator that was actually used. Self-test added.
+
 ### Added - Funnel plot of precision
 - Section 9 (Publication bias): new check box **Funnel plot of precision**, directly below *Funnel plot*. It adds a second, separate funnel plot with the precision (1 / SE) on the vertical axis (largest at the top); the pseudo confidence limits and the contour bands become the curves x = centre +/- z / precision.
 - **Contour-enhanced**, **Study labels** and **Funnel plot themes** (Default, MetaWin style, STATA style) apply to it exactly as they do to the standard funnel plot; it is independent of the *Funnel plot* check box.

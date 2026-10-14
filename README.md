@@ -183,7 +183,7 @@ restricted likelihood for REML (BIC and AICc then use k - p), the ordinary likel
 * **Leave-one-out** and **cumulative** meta-analysis (ordered by a chosen column), with forest plots.
 * **Publication bias:** funnel plot (contour-enhanced option, study labels), tests for funnel plot asymmetry
   (Egger, Begg, Thompson, Harbord, Peters, Macaskill, Deeks, Pustejovsky, Schwarzer; the default depends on the
-  data type) with plot, Duval-Tweedie **trim-and-fill** (side auto/left/right; estimator L0 or R0).
+  data type) with plot, Duval-Tweedie **trim-and-fill** (side auto/left/right; estimator L0, R0 or Q0).
   Also **PET-PEESE** (with plot), a three-parameter **selection model** (Vevea-Hedges, adjusted effect with profile-likelihood CI and likelihood ratio test) and **fail-safe N** (Rosenthal, Rosenberg).
   Before each run the data are checked and every problem (non-numeric cells, events > n, duplicate study labels, ...) is explained with its row number.
 * **Diagnostics:** outlier and influence diagnostics (rstudent, dffits, Cook's distance, cov.r, tau2.del, QE.del,
