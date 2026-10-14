@@ -481,6 +481,10 @@ public class SelfTest {
             // L'Abbe themes and colours: Default is unchanged by the new options, ggplot2 style draws, colours reach the pixels, legend moves to the lower right when the effect line is above the no-effect line
             { Plots.Opts d0 = new Plots.Opts(); d0.studyLabels = false; BufferedImage dflt = Plots.labbe(br, d0); Plots.Opts d1 = new Plots.Opts(); d1.studyLabels = false; d1.labbeTheme = org.metajava.plot.LabbePlot.DEFAULT;
               check(same(dflt, Plots.labbe(br, d1)), "L'Abbe Default theme with every colour on 'Theme default' draws the same plot");
+              { for (String th : org.metajava.plot.RadialPlot.THEMES) { Plots.Opts q = new Plots.Opts(); q.radialTheme = th; BufferedImage a1 = Plots.radial(br, q); q.radialLabels = false; BufferedImage a2 = Plots.radial(br, q);
+                  check(a1.getWidth() > 100 && !same(a1, a2), "Radial plot (" + th + ") draws and the Study labels option changes it"); }
+                Plots.Opts q0 = new Plots.Opts(); BufferedImage r0 = Plots.radial(br, q0); q0.radialCI = "Red"; check(!same(r0, Plots.radial(br, q0)), "Radial plot confidence area colour reaches the plot");
+                Plots.Opts l0 = new Plots.Opts(); l0.studyLabels = true; BufferedImage lo = Plots.labbe(br, l0); l0.studyLabels = false; check(!same(lo, Plots.labbe(br, l0)), "L'Abbe study labels can be switched off"); }
               Plots.Opts g1 = new Plots.Opts(); g1.studyLabels = false; g1.labbeTheme = org.metajava.plot.LabbePlot.GG; BufferedImage gi = Plots.labbe(br, g1);
               check(gi.getWidth() > 0 && !same(gi, dflt), "L'Abbe ggplot2 style renders and differs from the Default theme");
               Plots.Opts c1 = new Plots.Opts(); c1.studyLabels = false; c1.labbeCI = "Red"; BufferedImage ci1 = Plots.labbe(br, c1); int reds = 0, greens = 0;

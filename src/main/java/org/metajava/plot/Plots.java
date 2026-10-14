@@ -21,6 +21,7 @@ public final class Plots {
         public boolean predInt = false; public String colPred = RegPlots.PRED_DEFAULT, colPredLine = RegPlots.PREDLINE_DEFAULT, symbol = RegPlots.SYM_DEFAULT; public double symSize = 1.0;   // prediction interval, study symbol
         public String baujatTheme = BaujatPlot.DEFAULT, baujatSymbol = BaujatPlot.AUTO, baujatBack = BaujatPlot.AUTO;   // Baujat plot: theme, symbol colour, background colour
         public String labbeTheme = LabbePlot.DEFAULT, labbeSymbol = LabbePlot.AUTO, labbeBack = LabbePlot.AUTO, labbeCircle = LabbePlot.AUTO, labbeRef = LabbePlot.AUTO, labbeEst = LabbePlot.AUTO, labbeCI = LabbePlot.AUTO, labbePI = LabbePlot.AUTO;   // L'Abbe plot: theme, symbol (circle border) colour, background, circle fill, reference line, estimated-effect line, confidence area, prediction area
+        public String radialTheme = RadialPlot.DEFAULT, radialSymbol = RadialPlot.AUTO, radialBack = RadialPlot.AUTO, radialCircle = RadialPlot.AUTO, radialReg = RadialPlot.AUTO, radialRef = RadialPlot.AUTO, radialCI = RadialPlot.AUTO, radialCILine = RadialPlot.AUTO; public boolean radialLabels = true, labbeLabels = true;   // Radial plot: theme, colours, study labels; L'Abbe plot: study labels
         public String funnelTheme = FunnelThemes.DEFAULT;   // funnel plot and trim-and-fill funnel plot: Default, MetaWin style, STATA style
         public String squareColour = ForestTheme.AUTO, diamondFill = ForestTheme.AUTO, diamondBorder = ForestTheme.AUTO, nullColour = ForestTheme.AUTO, nullStyle = ForestTheme.AUTO, pooledColour = ForestTheme.AUTO, pooledStyle = ForestTheme.AUTO; }
 
@@ -613,16 +614,8 @@ public final class Plots {
         c.g.setColor(Color.BLACK); return c.img;
     }
 
-    public static BufferedImage radial(MetaResult r, Opts o) {
-        MetaSpec s = r.spec; Pool p = r.overall; int n = r.TE.length; List<double[]> pts = new ArrayList<>(); List<String> labs = new ArrayList<>();
-        for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && r.seTE[i] > 0) { pts.add(new double[]{1 / r.seTE[i], r.TE[i] / r.seTE[i]}); labs.add(r.studlab[i]); }
-        Canvas c = new Canvas(560, 520, o.scale); double xm = 0, ym = 0, yn = 0; for (double[] q : pts) { xm = Math.max(xm, q[0]); ym = Math.max(ym, q[1]); yn = Math.min(yn, q[1]); }
-        double slope = p.teCommon; double yl = Math.min(yn, 0) - 1, yh = Math.max(ym, slope * xm) + 1;
-        Axes a = axes(c, 0, xm * 1.05, yl, yh, false, "Inverse of standard error", "Standardised treatment estimate", false, "");
-        Shape clip = c.g.getClip(); c.g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0)); c.line(a.X(0), a.Y(0), a.X(xm * 1.05), a.Y(slope * xm * 1.05)); c.g.setClip(clip);
-        for (int i = 0; i < pts.size(); i++) { double xx = a.X(pts.get(i)[0]), yy = a.Y(pts.get(i)[1]); c.g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) c.text(labs.get(i), xx + 4, yy - 3, 8, 0, false); }
-        return c.img;
-    }
+    /** Radial (Galbraith) plot: see {@link RadialPlot} (Default, metafor, ggplot2 and STATA themes, colours, study labels, legend). */
+    public static BufferedImage radial(MetaResult r, Opts o) { return RadialPlot.draw(r, o); }
 
     /** Doi plot (Furuya-Kanamori et al. 2018): |Z-score| (reversed axis) against the effect size, studies joined in order of effect; optional dashed line through the apex (Opts.apexLine, off as in metasens::doiplot). */
     public static BufferedImage doi(Lfk l, MetaResult r, Opts o) {

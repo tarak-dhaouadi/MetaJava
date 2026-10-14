@@ -1,5 +1,15 @@
 # Changelog
 
+### Fixed - radial plot (metafor style) arc axis; Default radial plot shows the confidence lines
+- The arc axis of the metafor-style radial plot is now a circle around the origin in plot space whose radius keeps the whole arc to the right of the band, so it sits beside the plot and no longer overlaps it (the canvas grows to fit it).
+- The Default radial plot now shows the confidence limits by default (dashed, with a legend entry); the *Radial confidence line colour* option still changes their colour.
+
+### Added - Radial (Galbraith) plot themes, colours and study labels; study labels for the L'Abb\u00E9 plot
+- Section 10 (Diagnostics), below *Radial (Galbraith) plot*: drop-down **Radial plot theme** with **Default** (current meta look, unchanged apart from the regression line now starting inside the frame), **metafor style** (detached axes, grey confidence band with dotted limits, grey points, arc axis with the confidence interval of the pooled effect; z = y/sqrt(v + tau^2) against x = 1/sqrt(v + tau^2), random-effects slope when selected), **ggplot2 style** (open axes, dotted grid, grey band, dark-red regression line, teal no-effect line, navy points) and **STATA style** (pale-blue frame, navy title, dashed limits, navy points and labels).
+- Every theme now carries a framed **legend** below the plot (95% CI, 95% CI limits, Studies, Regression line, No effect: only the elements that are drawn are listed).
+- New options under the theme: **Study labels** (on/off), **Radial symbol colour**, **Radial background colour**, **Radial study circle colour**, **Radial regression line colour**, **Radial no-effect line colour**, **Radial confidence area colour**, **Radial confidence line colour** (same drop-downs as the L'Abb\u00E9 ones; "Theme default" keeps what the theme prescribes; in a theme that does not draw the no-effect line / confidence area / limits by itself, choosing a colour adds them).
+- **L'Abb\u00E9 plot**: new **Study labels** check box directly below *L'Abb\u00E9 plot (binary outcomes)*. Both new *Study labels* options are independent of the funnel-plot one and are saved in project files.
+
 ### Fixed - pooling method now re-runs the analysis automatically
 - Choosing **Inverse**, **MH**, **Peto** or **SSW** in *Pooling method* now updates the results by itself, like every other option; only GLMM and LRP did before (the handler returned without scheduling a run).
 
