@@ -826,6 +826,17 @@ public class SelfTest {
             dq.drapModel = Drapery.MODEL_COMMON; org.metajava.plot.DraperyReport.Result r4 = org.metajava.plot.DraperyReport.build(dmr, dq);
             check(r4.statisticalReport().contains("Prediction region shown: no") && r4.statisticalReport().contains("Analysis model: Common-effect") && !r4.narrativeText().contains("prediction interval"), "Drapery report: common-effect curve only has no prediction region");
         }
+        {   // Drapery report: methods, critical values, data coding
+            MetaSpec ms = new MetaSpec(); ms.type = "bin"; ms.sm = "OR"; ms.methodTau = "DL"; ms.prediction = true; ms.common = false; ms.random = true; ms.methodRandomCi = "HK"; ms.methodPredict = "HTS"; MetaData md = new MetaData();
+            md.put("event.e", new double[]{12, 0, 15, 5, 20, 9}).put("n.e", new double[]{100, 80, 120, 60, 150, 90}).put("event.c", new double[]{20, 14, 22, 9, 30, 13}).put("n.c", new double[]{100, 82, 118, 62, 148, 88}); md.studlab = new String[]{"A", "B", "C", "D", "E", "F"};
+            MetaResult mr = Meta.run(ms, md); org.metajava.plot.DraperyReport.Result rr = org.metajava.plot.DraperyReport.build(mr, new Plots.Opts()); String mst = rr.statisticalReport(), mnt = rr.narrativeText();
+            check(mst.contains("5.1 Plotted statistic") && mst.contains("p(theta) = 2 * [1 - Phi(|y - theta| / se)]"), "Drapery report: mathematical definition of the plotted statistic");
+            check(mst.contains("Hartung-Knapp") && mst.contains("t(5.00 d.f.), critical value " + Fmt.num(Dist.qt(0.975, 5), 4)), "Drapery report: inference method and critical value of the pooled CI / p-value");
+            check(mst.contains("Critical value: " + Fmt.num(Dist.qt(0.975, 4), 4) + " (t quantile, 4 d.f.)") && mst.contains("Treatment of tau^2 uncertainty") && mst.contains("k - 2 d.f."), "Drapery report: prediction-interval method, critical value and tau^2 treatment");
+            check(mst.contains("I^2 confidence interval method: Q-based (Higgins & Thompson 2002)"), "Drapery report: method of the I^2 confidence interval");
+            check(mst.contains("Events (E)") && mst.contains("Studies with a zero cell in one group: 1") && mst.contains("applied to 1 of 6 studies used") && mnt.contains("continuity correction"), "Drapery report: event / group coding and continuity correction");
+            check(!mst.contains("\\n") && mr.warnings != null, "Drapery report: no stray escape sequences");
+        }
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);
     }

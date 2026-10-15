@@ -46,7 +46,7 @@ public final class Drapery {
         double sePred = P.sePred, tq = (P.upPred - P.loPred) / sePred / 2;
         boolean predOk = !Double.isNaN(sePred) && sePred > 0 && !Double.isNaN(tq) && !Double.isInfinite(tq);
         h.pred = o.drapPrediction && showRandom && okRandom && predOk;
-        if (!h.pred) h.predReason = !o.drapPrediction ? "the option \"Prediction region\" is turned off" : !showRandom ? "the random-effects curve is not displayed (the prediction region belongs to the random-effects model)" : "a prediction interval could not be estimated for these data (it needs at least 3 studies)";
+        if (!h.pred) h.predReason = !o.drapPrediction ? "the option \"Prediction region\" is turned off" : !showRandom ? "the random-effects curve is not displayed (the prediction region belongs to the random-effects model)" : "no standard-error-based prediction interval is available (it needs enough studies for the chosen method, and the bootstrap method of Nagashima et al. gives no SE)";
         h.random = showRandom; h.common = showCommon; h.okRandom = okRandom; h.okCommon = okCommon; return h;
     }
 

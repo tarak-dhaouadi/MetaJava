@@ -1,5 +1,15 @@
 # Changelog
 
+### Changed - wording of the Drapery report
+- Assumptions note (section 7) rewritten: normal-theory (Wald-type) curves from the estimated study effects and standard errors, estimated study-level and between-study variances treated as fixed, normal true effects for the random-effects model.
+- Section 5.1 simplified (z, p and the right-hand confidence-level axis) and the prediction curve described as a graphical construction calibrated to the prediction-interval limits, not a predictive distribution or an additional inferential procedure.
+- Section 1: the single "Levels" line is replaced by separate lines for the confidence level (pooled and study-level intervals, listed separately only when they differ), the prediction interval level (only when the prediction region is shown), the heterogeneity confidence level and the significance threshold.
+
+### Changed - Drapery Plot Analysis and Interpretation (verbose methods)
+- Statistical report: new sections **5. Plotted statistic and inferential methods** (5.1 mathematical definition of the plotted p-value / z-value function and of the prediction curve; 5.2 inferential method, SE, test statistic, reference distribution and critical value of the pooled CI and p-value for each displayed model; 5.3 Q, tau^2 with the method of its CI, I^2 and H with the **method of the I^2 confidence interval**; 5.4 prediction-interval method, **critical value** and **treatment of the uncertainty of tau^2**) and **6. Data and group coding** (group coding E / C, direction of the effect measure, effect-size formula, study-level events / sample sizes / time / means / SDs table when available, totals, zero-cell studies, continuity correction). Caveats are now section 7 and include the warnings issued by the analysis, a small-k caution and the note on t-based versus plotted normal-theory results.
+- Section 4 now states the prediction-interval method and critical value; section 1 states the confidence, prediction and heterogeneity levels and the number of studies in the data.
+- The narrative has a new paragraph **Statistical methods** (conditional on the displayed model, prediction region and data type).
+
 ### Changed - forest plot colours, precision trim-and-fill
 - The forest-plot drop-down lists *Diamond fill*, *Diamond border*, *Null-effect line colour* and *Pooled-effect line colour* now show a colour swatch in front of every colour, like the Baujat, radial and L'Abbe lists; "color" is spelled "colour" in their labels.
 - New check box *Trim and fill funnel plot of precision* just below *Trim and fill*: trim-and-fill funnel plot with precision (1/SE) on the vertical axis (imputed studies as open circles). It follows the trim-and-fill settings and the funnel-plot options (study labels, funnel theme, contour-enhanced) and can be used with or without the ordinary trim-and-fill plot.
