@@ -1,5 +1,22 @@
 # Changelog
 
+### Changed - Drapery report: Hartung-Knapp rule checks
+- Each ad hoc variant now shows its **rule check** (q versus 1 for `se`; width of the Hartung-Knapp interval versus the classic z interval for `ci`; versus the DerSimonian-Laird-based classic interval for `IQWiG6`) and whether the correction was applied or not triggered; the narrative names the corrections that were not triggered, so identical rows are no longer unexplained.
+
+### Changed - Drapery report: Hartung-Knapp variants and refined wording
+- Hartung-Knapp sensitivity analysis (shown when the reported test is the classic Wald z test): section 2 now documents the procedure (variance factor q, classic SE, SE_HK, t distribution with k - 1 d.f.) and lists **every ad hoc variant** - none (conventional), `se`, `ci`, `IQWiG6` - each with its rule, SE, distribution, CI, p-value and whether the 5% conclusion changes. It is labelled a sensitivity analysis, not the inferential method of the pooled curve. The narrative reports the conventional result and any variants that differ.
+- Pooled CI: new wording (the normal-theory p-value function reaches the 5% threshold at the CI limits; values inside are not rejected, values outside are rejected under that procedure; this does not imply equal plausibility inside or impossibility outside).
+- Cochran's Q: "rejected the common-effect homogeneity hypothesis ... evidence of between-study variability beyond that expected from sampling error alone under the test assumptions; the test does not establish the cause" (a non-significant Q is also worded carefully).
+- Prediction interval: states that tau^2 uncertainty affects the reliability of the interval but is not explicitly propagated (plug-in method).
+- Precision gradient: precision = 1/SE_i on the analysis scale, ranking rule, tie rule and m = floor(k / 3) are stated in the narrative, and the selected studies are listed in the notes of section 7.
+
+### Changed - Drapery report: significance, heterogeneity, prediction and study-level statements
+- Pooled effect: the significance sentence now names the two points where the pooled curve crosses the 5% line, states whether the null lies inside or outside that range, gives the test statistic and p-value and the direction of the point estimate. For a random-effects result obtained with the classic Wald z test (k >= 3), a Hartung-Knapp sensitivity check (CI, p-value, conclusion unchanged / changed) is added to section 2 and to the narrative.
+- Heterogeneity: the narrative gives Cochran's Q test result and notes when the CIs for I^2 / tau^2 are wide and that the prediction interval shares that uncertainty.
+- Prediction: when the interval contains the null, both ends are described in words (e.g. "from a lower risk (RR = 0.8169) to a higher risk (RR = 1.6396)"); the prediction curve is again described as a graphical calibration, not a predictive distribution, in the narrative and in section 7.
+- Study curves: the non-significant curves are explicitly not read as absence of effect; the number of estimates on each side of the null is reported; with k >= 9 the median estimates of the most and least precise thirds are compared and, only if the less precise studies show the larger effect in the direction of the pooled estimate, flagged as a descriptive small-study observation (not a test).
+- Wording: the plotted statistic is described as -|z| (peaks at 0); the repeated "treated as known" caveat for tau^2 is no longer duplicated in the methods paragraph.
+
 ### Changed - wording of the Drapery report
 - Assumptions note (section 7) rewritten: normal-theory (Wald-type) curves from the estimated study effects and standard errors, estimated study-level and between-study variances treated as fixed, normal true effects for the random-effects model.
 - Section 5.1 simplified (z, p and the right-hand confidence-level axis) and the prediction curve described as a graphical construction calibrated to the prediction-interval limits, not a predictive distribution or an additional inferential procedure.

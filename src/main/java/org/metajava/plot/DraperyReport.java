@@ -81,7 +81,7 @@ public final class DraperyReport {
         a.append("Confidence intervals for heterogeneity parameters: ").append(pct(s.levelHetstat)).append("%\n");
         a.append("Significance threshold: alpha = 0.05\n");
         a.append("Studies in the data: ").append(r.kAll > 0 ? r.kAll : r.TE.length).append(" (used in the pooled analysis: ").append(k).append(")\n");
-        a.append("Display: ").append(zType ? "Test-statistic (z-value) curves, i.e. scaled p-value functions; the right-hand axis gives the confidence level" : "P-value functions").append("\n");
+        a.append("Display: ").append(zType ? "Test-statistic curves, plotted as the negative absolute z-value -|z| (scaled p-value functions that peak at 0 at the estimate); the right-hand axis gives the confidence level" : "P-value functions").append("\n");
         a.append("Null effect: ").append(hasNull ? eff + " = " + nv(v.applyAsDouble(nullW)) : "not defined for this measure (no threshold statements are made)").append("\n");
         a.append("Scale of the estimates: ").append(rel ? "back-transformed (the x-axis of the plot is logarithmic)" : analysisScale(s) ? "analysis scale, as plotted (not back-transformed): " + Plots.xlabFor(s) : "as analysed").append("\n");
         a.append("\n2. Pooled effect\n");
@@ -131,12 +131,16 @@ public final class DraperyReport {
         b.append("\n6. Data and group coding\n\n");
         b.append(dataCoding(r, s, eff));
         b.append("\n7. Interpretation and caveats\n\n");
-        b.append("The drapery plot displays how statistical evidence changes across hypothetical effect values. The pooled curve summarizes the selected meta-analysis model, while the individual curves show study-level evidence. The prediction region, when displayed, describes uncertainty about the effect in a future study under the fitted model.\n\n");
+        b.append("The drapery plot displays how statistical evidence changes across hypothetical effect values. The pooled curve summarizes the selected meta-analysis model, while the individual curves show study-level evidence. The prediction region, when displayed, describes uncertainty about the effect in a future study under the fitted model; the prediction curve is a graphical calibration to that interval, not a predictive distribution.\n\n");
         b.append("Notes:\n- A drapery plot is not a test for publication bias. It describes uncertainty and statistical evidence across possible effect values; it does not establish whether publication bias exists.\n");
         b.append("- The report follows the model(s) displayed in the plot: random-effects and common-effect results are never mixed, and a prediction interval is not a confidence interval for the pooled effect.\n");
         b.append("- The plotted curves use normal-theory (Wald-type) p-value functions based on the estimated study effects and their standard errors. The calculations treat the estimated study-level variances and the estimated between-study variance as fixed. The random-effects model additionally assumes that the true study effects follow a normal distribution around the pooled mean. p(theta) is the p-value of the test of the hypothetical effect theta, not the probability that theta is the true effect.\n");
         b.append("- Where the reported test uses a t distribution (Hartung-Knapp, Kenward-Roger), the reported CI and p-value differ from the points where the plotted normal-theory curve crosses the 5% line; the reported values are the inferential result.\n");
         if (k < 10) b.append("- Only k = ").append(k).append(" studies contribute: tau^2, I^2 and the prediction interval are imprecisely estimated, and small-sample adjustments (Hartung-Knapp, Kenward-Roger) are advisable.\n");
+        Prec pg0 = hasNull ? precision(r, k) : null;
+        if (pg0 != null) { StringBuilder hi = new StringBuilder(), lo = new StringBuilder(); for (int i : pg0.hi) hi.append(hi.length() > 0 ? ", " : "").append(r.studlab[i]); for (int i : pg0.lo) lo.append(lo.length() > 0 ? ", " : "").append(r.studlab[i]);
+            b.append("- Precision gradient (descriptive, not a test): precision = 1/SE_i on the analysis scale; studies ranked by it (ties in input order); m = floor(k / 3) = ").append(pg0.m).append(" studies at each extreme. Most precise: ").append(hi).append(". Least precise: ").append(lo).append(". Medians of the observed estimates: ")
+                .append(n4(v.applyAsDouble(pg0.medHi))).append(" (most precise) and ").append(n4(v.applyAsDouble(pg0.medLo))).append(" (least precise). Ranking by 1/SE is equivalent to ranking by confidence-curve width at any confidence level under the normal approximation.\n"); }
         if (hasNull) b.append("- Observed power of a study is a one-to-one function of its p-value; it should not be used to interpret a non-significant result.\n");
         if (!r.warnings.isEmpty()) { b.append("\nWarnings issued by the analysis:\n"); for (String w : r.warnings) b.append("- ").append(w).append("\n"); }
         R.partB = b.toString();
@@ -145,7 +149,7 @@ public final class DraperyReport {
         String effPhrase = effectName(s).replaceAll(" \\(.*\\)$", "").toLowerCase(Locale.ROOT); if (effPhrase.startsWith("fisher")) effPhrase = "Fisher's z transformed correlation";
         String modelsTxt = (both ? "common-effect and random-effects meta-analyses of " + k + " studies (interpreted separately below)" : (rnd ? "random-effects" : "common-effect") + " meta-analysis of " + k + " studies");
         R.narrative.add("Purpose and model. A drapery plot was used to examine how statistical evidence for the pooled effect and for the individual studies varies across a range of hypothetical effect sizes. The analysis was based on " + (both ? "" : "a ") + modelsTxt
-            + ", using the " + effPhrase + " as the effect measure. " + (zType ? "The curves show test statistics (z-values) against hypothetical effect values, with the confidence level on the right-hand axis." : "The curves show p-values against hypothetical effect values.")
+            + ", using the " + effPhrase + " as the effect measure. " + (zType ? "The curves show the negative absolute test statistic (-|z|, a scaled p-value function that peaks at zero at the estimate) against hypothetical effect values, with the confidence level on the right-hand axis." : "The curves show p-values against hypothetical effect values.")
             + (rel ? " The horizontal axis is logarithmic and the estimates are back-transformed." : analysisScale(s) ? " The estimates are shown on the analysis scale." : ""));
         R.narrative.add(methodsNarrative(r, s, P, rnd, com, both, pred, rel, zType, k));
         StringBuilder p2 = new StringBuilder("Pooled effect and statistical significance. ");
@@ -154,20 +158,42 @@ public final class DraperyReport {
         R.narrative.add(p2.toString().replaceAll(" +$", "").replace("  ", " "));
         StringBuilder p3 = new StringBuilder(); boolean hetOk = P.k >= 2 && ok(P.I2);
         if (rnd && ok(P.tau2) && !P.lrp) { p3.append("Between-study variability and prediction. Between-study heterogeneity was estimated as tau^2 = ").append(n4(P.tau2)).append(" (").append(Report.tauLabel(s.methodTau)).append(")");
-            if (hetOk) p3.append(", with I^2 = ").append(Fmt.num(100 * P.I2, 1)).append("%").append(ok(P.loI2) && ok(P.upI2) ? " (" + pct(s.levelHetstat) + "% CI " + Fmt.num(100 * P.loI2, 1) + "% to " + Fmt.num(100 * P.upI2, 1) + "%)" : ""); p3.append(". "); }
+            if (hetOk) p3.append(", with I^2 = ").append(Fmt.num(100 * P.I2, 1)).append("%").append(ok(P.loI2) && ok(P.upI2) ? " (" + pct(s.levelHetstat) + "% CI " + Fmt.num(100 * P.loI2, 1) + "% to " + Fmt.num(100 * P.upI2, 1) + "%)" : ""); p3.append(". ");
+            if (hetOk && ok(P.Q) && P.dfQ > 0) p3.append(P.pQ < ALPHA ? "Cochran's Q test rejected the common-effect homogeneity hypothesis" : "Cochran's Q test did not reject the common-effect homogeneity hypothesis").append(" (Q = ").append(Fmt.num(P.Q, 2)).append(", d.f. = ").append(P.dfQ).append(", ").append(pEq(P.pQ)).append(P.pQ < ALPHA
+                ? "), indicating evidence of between-study variability beyond that expected from sampling error alone under the test assumptions; the test does not establish the cause of the heterogeneity. " : "), which does not establish that the studies share one true effect, as the test has limited power when studies are few or small. ");
+            if (hetOk && ok(P.loI2) && ok(P.upI2) && P.upI2 - P.loI2 >= 0.30) p3.append("The confidence interval for I^2").append(ok(P.loTau2) && ok(P.upTau2) ? " and that for tau^2 (" + n4(P.loTau2) + " to " + n4(P.upTau2) + ")" : "").append(ok(P.loTau2) && ok(P.upTau2) ? " are" : " is").append(" wide, so the amount of heterogeneity is estimated imprecisely. "); }
         else if (hetOk) { p3.append("Between-study variability. ").append(rnd ? "Between-study variance was not reported for this pooling method; " : "The common-effect model assumes one true effect and has no between-study variance; ").append("the Q-based heterogeneity statistic was I^2 = ").append(Fmt.num(100 * P.I2, 1)).append("% (").append(pEq(P.pQ)).append(" for Q). "); }
         if (pred) { boolean in = hasNull && nullW >= P.loPred && nullW <= P.upPred;
             if (p3.length() == 0) p3.append("Prediction. ");
             p3.append("The prediction region corresponds to a ").append(pct(s.levelPredict)).append("% prediction interval of ").append(n4(v.applyAsDouble(P.loPred))).append(" to ").append(n4(v.applyAsDouble(P.upPred))).append(" for the effect in a future study");
             if (ok(w95) && w95 > 0) p3.append(", which is about ").append(Fmt.num(w95, 1)).append(" times as wide as the ").append(cl).append(" of the pooled effect (on the analysis scale)");
             p3.append(". ");
-            if (hasNull) p3.append(in ? "The prediction interval includes the null effect (" + eff + " = " + nv(v.applyAsDouble(nullW)) + "), so under the fitted model the effect in a future study may be compatible with no effect. "
+            String[] sd = sides(s.sm);
+            if (hasNull) p3.append(in ? "The prediction interval includes the null effect (" + eff + " = " + nv(v.applyAsDouble(nullW)) + "), so under the fitted model the effect in a future study may be compatible with no effect"
+                                          + (sd != null && P.loPred < nullW && P.upPred > nullW ? ": it could range from " + sd[0] + " (" + eff + " = " + n4(v.applyAsDouble(P.loPred)) + ") to " + sd[1] + " (" + eff + " = " + n4(v.applyAsDouble(P.upPred)) + ")" + GROUPS : "") + ". "
                                        : "The prediction interval does not include the null effect (" + eff + " = " + nv(v.applyAsDouble(nullW)) + "): under the fitted model the effect in a future study is expected to lie on the same side of the null as the pooled estimate. ");
-            p3.append("This describes uncertainty about the effect in a future study, subject to the assumptions of the fitted model, and is distinct from the confidence interval of the pooled effect."); }
+            p3.append("The prediction interval depends on the estimated between-study variance, and uncertainty in that estimate affects the reliability of the interval. The reported interval uses the ").append(P.glmm ? "GLMM" : Report.tauLabel(s.methodTau)).append(" point estimate of tau^2 and does not explicitly propagate its estimation uncertainty. Consequently, the reported interval should be interpreted in light of both the fitted model assumptions and the limitations of this plug-in prediction-interval method. ");
+            p3.append("This describes uncertainty about the effect in a future study, subject to the assumptions of the fitted model, and is distinct from the confidence interval of the pooled effect. The prediction curve drawn on the plot is only a graphical calibration to this interval, not a predictive distribution."); }
         if (p3.length() > 0) R.narrative.add(p3.toString().trim());
-        StringBuilder p4 = new StringBuilder("Overall interpretation. The drapery plot provides a complementary representation of statistical uncertainty, showing how evidence changes across possible effect sizes. The pooled curve should be interpreted alongside the conventional confidence interval and p-value, while the individual-study curves illustrate study-level uncertainty");
+        StringBuilder p4 = new StringBuilder("Overall interpretation. The drapery plot shows how statistical evidence changes across possible effect sizes; the pooled curve should be read alongside the conventional confidence interval and p-value, and the individual-study curves illustrate study-level uncertainty");
         if (hasNull) p4.append(": at the null effect, ").append(sigStudies).append(" of ").append(k).append(sigStudies == 1 ? " study curve lies" : " study curves lie").append(" below the 5% threshold (p < 0.05)");
         p4.append(". ");
+        if (hasNull) {
+            int above = 0, below = 0; List<Integer> ord = new ArrayList<>();
+            for (int i = 0; i < r.TE.length; i++) if (ok(r.TE[i]) && ok(r.seTE[i]) && r.seTE[i] > 0) { ord.add(i); if (r.TE[i] > nullW) above++; else if (r.TE[i] < nullW) below++; }
+            int rest = k - sigStudies;
+            if (rest > 0) p4.append(sigStudies == 0 ? "None of the study curves rejects the null at the 5% level" : rest == 1 ? "The remaining study curve does not reject the null at the 5% level" : "The remaining " + rest + " study curves do not reject the null at the 5% level")
+                .append("; this reflects the limited precision of individual studies and should not be read as evidence of no effect. ");
+            if (above > 0 && below > 0) p4.append("Study point estimates lie on both sides of the null (").append(above).append(" above, ").append(below).append(" below), so the direction of effect is not uniform across studies. ");
+            Prec pg = precision(r, k);
+            if (pg != null) {
+                double pooledTe = rnd ? P.teRandom : P.teCommon;
+                p4.append("Precision was defined as 1/SE_i, the inverse of the study-level standard error on the analysis scale").append(rel ? " (log scale)" : "").append("; studies were ranked by this value (ties kept in input order), and the ").append(pg.m).append(" (= floor(k / 3)) studies at each extreme were selected before the medians of their observed estimates were calculated. The ").append(pg.m).append(" most precise studies (the steepest and narrowest curves) have a median estimate of ")
+                    .append(n4(v.applyAsDouble(pg.medHi))).append(", compared with ").append(n4(v.applyAsDouble(pg.medLo))).append(" for the ").append(pg.m).append(" least precise studies. ");
+                if (Math.signum(pg.medLo - nullW) == Math.signum(pooledTe - nullW) && Math.abs(pg.medLo - nullW) > Math.abs(pg.medHi - nullW))
+                    p4.append("Larger estimates among the less precise studies would be compatible with small-study effects, but this is a descriptive observation, not a test; it requires a separate assessment (for example a funnel plot with an asymmetry test). ");
+            }
+        }
         if (both) p4.append("The common-effect and random-effects curves answer different questions (a single true effect versus a distribution of true effects) and are interpreted separately; differences between them should not be read as evidence of publication bias. ");
         p4.append("The plot does not, by itself, establish the presence or absence of publication bias.");
         R.narrative.add(p4.toString());
@@ -190,8 +216,81 @@ public final class DraperyReport {
         double cLo = v.applyAsDouble(te - zc * se), cUp = v.applyAsDouble(te + zc * se);
         if (!ci(cLo, cUp).equals(ci(v.applyAsDouble(lo), v.applyAsDouble(up))) || Math.abs(s.levelMa - 0.95) > 1e-9)
             b.append("Hypothetical effects with p >= 0.05 on the plotted curve: ").append(ci(cLo, cUp)).append("\n");
+        Hk hk = random && hasNull ? hkSens(P, s, nullW) : null;
+        if (hk != null) {
+            boolean sigMain = ok(p) ? p < ALPHA : Drapery.curve(false, nullW, te, se) < ALPHA;
+            b.append("\nSensitivity analysis: Hartung-Knapp adjustment. It is not the inferential method of the pooled curve (classic Wald z test, section 5.2); it only checks the robustness of the conclusion.\n");
+            b.append("  Variance factor q = sum w*_i (y_i - mu)^2 / (k - 1) = ").append(n4(hk.q)).append("; classic SE (analysis scale) = ").append(n4(hk.seClassic)).append("; conventional SE_HK = sqrt(q / sum w*_i) = ").append(n4(hk.conv().se)).append("\n");
+            for (HkVar x : hk.vars) b.append("  Ad hoc correction: ").append(x.name).append(" - ").append(x.rule).append("\n    Rule check: ").append(x.check).append("\n    SE = ").append(n4(x.se)).append("; ").append(x.t ? "t distribution, " + Fmt.num(x.df, 0) + " d.f." : "standard normal distribution").append("; ").append(cl).append(" ")
+                .append(ci(v.applyAsDouble(x.lo), v.applyAsDouble(x.up))).append("; P-value: ").append(Fmt.pval(x.p, 4)).append("; conclusion at alpha = 0.05 ").append((x.p < ALPHA) == sigMain ? "unchanged" : "changed").append("\n");
+        }
         return b.toString();
     }
+
+    /** Phrases for the two sides of the null ("a lower risk", "a higher risk" ...), or null when the measure has no stated direction. */
+    private static String[] sides(String sm) {
+        if (Drapery.relative(sm)) { String n = sm.equals("HR") ? "hazard" : sm.equals("OR") || sm.equals("DOR") ? "odds" : sm.equals("RR") ? "risk" : sm.equals("IRR") ? "incidence rate" : "mean";
+            return new String[]{"a lower " + n, "a higher " + n}; }
+        if (Arrays.asList("RD", "MD", "SMD", "ASD", "IRD").contains(sm)) return new String[]{"a smaller value", "a larger value"};
+        return null;
+    }
+    private static final String GROUPS = " in the experimental group than in the control group";
+
+    /** One Hartung-Knapp variant: SE on the analysis scale, reference distribution (d.f. NaN = standard normal), CI and two-sided p-value for the null. */
+    private static final class HkVar {
+        String name, rule, check; double se, df, lo, up, p; boolean t, applied;
+        boolean same(HkVar o) { return Fmt.num(lo, 4).equals(Fmt.num(o.lo, 4)) && Fmt.num(up, 4).equals(Fmt.num(o.up, 4)) && Fmt.pval(p, 4).equals(Fmt.pval(o.p, 4)); }
+    }
+    private static final class Hk { double q, seClassic; List<HkVar> vars = new ArrayList<>(); HkVar conv() { return vars.get(0); } }
+
+    /**
+     * Hartung-Knapp sensitivity analysis for a random-effects result obtained with the classic Wald z test (k >= 3): the conventional adjustment and each ad hoc
+     * variant (se, ci, IQWiG6), calculated exactly as MetaJava does when Hartung-Knapp is chosen as the reported method. Null when not applicable
+     * (t-based reported test, GLMM / LRP / SSW pooling, fewer than 3 studies).
+     */
+    private static Hk hkSens(Pool P, MetaSpec s, double nullW) {
+        if (P.glmm || P.lrp || "t".equals(P.testType) || !ok(P.tau2) || P.k < 3 || P.idxTE == null || P.idxSE == null || "SSW".equals(s.method) || !ok(nullW)) return null;
+        int k = P.k; double sw = 0, swy = 0; double[] w = new double[k], vv = new double[k];
+        for (int i = 0; i < k; i++) { vv[i] = P.idxSE[i] * P.idxSE[i]; w[i] = 1 / (vv[i] + P.tau2); sw += w[i]; swy += w[i] * P.idxTE[i]; }
+        double mu = swy / sw, q = 0; for (int i = 0; i < k; i++) q += w[i] * (P.idxTE[i] - mu) * (P.idxTE[i] - mu);
+        q /= (k - 1); double seHK = Math.sqrt(q / sw), seCl = 1 / Math.sqrt(sw), df = k - 1, alpha = 1 - s.levelMa, tc = Dist.qt(1 - alpha / 2, df), zc = Dist.qnorm(1 - alpha / 2);
+        if (!ok(seHK) || seHK <= 0) return null;
+        Hk h = new Hk(); h.q = q; h.seClassic = seCl;
+        double dl = Rma.fit(P.idxTE, vv, null, "DL").tau2, sd = 0; for (int i = 0; i < k; i++) sd += 1 / (vv[i] + dl);
+        double wHK = 2 * tc * seHK, wCl = 2 * zc * seCl, wDL = 2 * zc / Math.sqrt(sd);
+        String[] names = {"none (conventional Hartung-Knapp)", "se", "ci", "IQWiG6"};
+        String[] rules = {"SE_HK = sqrt(q / sum w*_i); t distribution with k - 1 d.f.",
+            "SE_HK is replaced by the classic SE when q < 1 (SE never below the classic random-effects SE); t distribution with k - 1 d.f.",
+            "the classic z interval replaces the Hartung-Knapp interval when the latter is narrower",
+            "the classic SE (t distribution) replaces SE_HK when the Hartung-Knapp interval is narrower than the DerSimonian-Laird-based classic interval (IQWiG method 6)"};
+        String[] checks = {"no correction", "q = " + Fmt.num(q, 4) + (q < 1 ? " < 1, so SE_HK (" + Fmt.num(seHK, 4) + ") is smaller than the classic SE (" + Fmt.num(seCl, 4) + ")" : " >= 1, so SE_HK (" + Fmt.num(seHK, 4) + ") is not smaller than the classic SE (" + Fmt.num(seCl, 4) + ")"),
+            "width of the Hartung-Knapp interval " + Fmt.num(wHK, 4) + " versus classic z interval " + Fmt.num(wCl, 4) + " (analysis scale)",
+            "width of the Hartung-Knapp interval " + Fmt.num(wHK, 4) + " versus DerSimonian-Laird-based classic z interval " + Fmt.num(wDL, 4) + " (analysis scale)"};
+        boolean[] trig = {false, q < 1, wHK < wCl, wHK < wDL};
+        for (int j = 0; j < 4; j++) {
+            double se = seHK; boolean t = true;
+            if (j == 1 && trig[1]) se = seCl;
+            if (j == 2 && trig[2]) { se = seCl; t = false; }
+            if (j == 3 && trig[3]) se = seCl;
+            HkVar x = new HkVar(); x.name = names[j]; x.rule = rules[j]; x.se = se; x.t = t; x.applied = trig[j]; x.check = checks[j] + (j == 0 ? "" : trig[j] ? ": correction applied" : ": correction not triggered, result identical to the conventional adjustment"); x.df = t ? df : Double.NaN; double c = t ? tc : zc;
+            x.lo = mu - c * se; x.up = mu + c * se; x.p = t ? Dist.ptTwoSided((mu - nullW) / se, df) : Dist.pnormTwoSided((mu - nullW) / se); h.vars.add(x);
+        }
+        return h;
+    }
+
+    /** Reproducible precision gradient: studies ranked by 1/SE_i (analysis scale), the m = floor(k/3) extremes selected before the medians are taken. */
+    private static final class Prec { int m; List<Integer> hi = new ArrayList<>(), lo = new ArrayList<>(); double medHi, medLo; }
+    private static Prec precision(MetaResult r, int k) {
+        if (k < 9) return null;
+        List<Integer> ord = new ArrayList<>(); for (int i = 0; i < r.TE.length; i++) if (ok(r.TE[i]) && ok(r.seTE[i]) && r.seTE[i] > 0) ord.add(i);
+        ord.sort(Comparator.comparingDouble(i -> r.seTE[i]));   // ascending SE = descending 1/SE; stable, so ties keep the input order
+        Prec pg = new Prec(); pg.m = k / 3; List<Double> hv = new ArrayList<>(), lv = new ArrayList<>();
+        for (int j = 0; j < pg.m; j++) { pg.hi.add(ord.get(j)); pg.lo.add(ord.get(k - 1 - j)); hv.add(r.TE[ord.get(j)]); lv.add(r.TE[ord.get(k - 1 - j)]); }
+        pg.medHi = median(hv); pg.medLo = median(lv); return pg;
+    }
+
+    /** Median of a list of doubles. */
+    private static double median(List<Double> x) { List<Double> c = new ArrayList<>(x); Collections.sort(c); int n = c.size(); return n % 2 == 1 ? c.get(n / 2) : 0.5 * (c.get(n / 2 - 1) + c.get(n / 2)); }
 
     private static String rng0(double te, double se, double zc, java.util.function.DoubleUnaryOperator v) { return ci(v.applyAsDouble(te - zc * se), v.applyAsDouble(te + zc * se)); }
 
@@ -204,9 +303,23 @@ public final class DraperyReport {
         if (hasNull) b.append("; ").append(pEq(p)); b.append("). ");
         if (!hasNull) return b.append("No null effect is defined for this measure, so no statement about statistical significance is made; at the 5% level, hypothetical effects from ").append(rng.replace("[", "").replace("]", "")).append(" are compatible with the data (pooled curve on or above the 5% line). ").toString();
         double pc = Drapery.curve(false, nullW, te, se); boolean sigCurve = pc < ALPHA, sigModel = ok(p) ? p < ALPHA : sigCurve; String nul = eff + " = " + nv(v.applyAsDouble(nullW));
-        b.append("The drapery plot illustrates how the statistical significance of the pooled effect changes across hypothetical values of the underlying effect. At the conventional 5% significance level, ");
-        if (sigCurve) b.append("the pooled curve lies below the 5% line at the null effect (").append(nul).append("); the null value is outside the range of hypothetical effects from ").append(rng.replace("[", "").replace("]", "")).append(differs ? " (normal approximation of the plotted curve)" : "").append(", which is where the curve stays on or above the 5% line, so the pooled effect was statistically significant at that level. ");
-        else b.append("the pooled curve lies on or above the 5% line at the null effect (").append(nul).append("); the null value is within the range of hypothetical effects from ").append(rng.replace("[", "").replace("]", "")).append(differs ? " (normal approximation of the plotted curve)" : "").append(" that remain compatible with the data, so the pooled effect was not statistically significant at that level. ");
+        String lo95 = n4(v.applyAsDouble(te - zc * se)), up95 = n4(v.applyAsDouble(te + zc * se)); double stat = random ? P.statRandom : P.statCommon; boolean tt = random && "t".equals(P.testType) && ok(P.dfRandom);
+        String[] sd = sides(s.sm); double tev = te - nullW; String testTxt = ok(stat) ? " (" + (tt ? "t" : "z") + " = " + Fmt.num(stat, 2) + ", " + pEq(p) + ")" : "";
+        b.append("The drapery plot illustrates how the statistical significance of the pooled effect changes across hypothetical values of the underlying effect. The pooled normal-theory p-value function reaches the 5% significance threshold at ").append(eff).append(" = ").append(lo95).append(" and ").append(eff).append(" = ").append(up95)
+            .append(", corresponding to the limits of the ").append(differs ? "normal-theory (Wald-type) 95% interval (the reported interval is t-based and differs; see section 2)" : "conventional 95% Wald confidence interval").append(". Hypothetical effect values within this interval are not rejected by the corresponding two-sided test at the 5% significance level; values outside it are rejected under that procedure. This does not imply that all values within the interval are equally plausible or that values outside it are impossible. ");
+        if (sigCurve) b.append("The null value (").append(nul).append(") lies outside this interval, so the null hypothesis is rejected and the pooled effect was statistically significant at the 5% level").append(testTxt).append(". ");
+        else b.append("The null value (").append(nul).append(") lies within this interval, so the null hypothesis is not rejected and the pooled effect was not statistically significant at the 5% level").append(testTxt).append(". ");
+        if (sd != null && ok(tev) && tev != 0) b.append("The point estimate corresponds to ").append(tev > 0 ? sd[1] : sd[0]).append(GROUPS).append(sigCurve ? ". " : ", but the data are also compatible with no effect. ");
+        Hk hk = random && hasNull ? hkSens(P, s, nullW) : null;
+        if (hk != null) { HkVar c0 = hk.conv(); StringBuilder dv = new StringBuilder();
+            b.append("As a sensitivity analysis, and not as the inferential method behind the pooled curve (the classic Wald z test), the conventional Hartung-Knapp adjustment (SE = sqrt(q / sum w*_i) with q = ").append(n4(hk.q)).append("; t distribution with ").append(Fmt.num(c0.df, 0)).append(" d.f.) gave a ").append(cl).append(" of ")
+                .append(n4(v.applyAsDouble(c0.lo))).append(" to ").append(n4(v.applyAsDouble(c0.up))).append(" (").append(pEq(c0.p)).append("), so the conclusion at the 5% level was ").append((c0.p < ALPHA) == sigModel ? "unchanged. " : "different. ");
+            String[] nm = {"", "'se'", "'ci'", "IQWiG 6"}; StringBuilder nt = new StringBuilder();
+            for (int j = 1; j < 4; j++) { HkVar x = hk.vars.get(j);
+                if (x.applied) dv.append(dv.length() > 0 ? "; " : "").append(nm[j]).append(" ad hoc correction: ").append(n4(v.applyAsDouble(x.lo))).append(" to ").append(n4(v.applyAsDouble(x.up))).append(" (").append(pEq(x.p)).append(")");
+                else nt.append(nt.length() > 0 ? ", " : "").append(nm[j]); }
+            if (dv.length() > 0) b.append("Ad hoc corrections that were triggered gave: ").append(dv).append(". ");
+            if (nt.length() > 0) b.append("The ad hoc correction").append(nt.indexOf(",") >= 0 ? "s " : " ").append(nt).append(nt.indexOf(",") >= 0 ? " were" : " was").append(" not triggered (the Hartung-Knapp result did not meet the condition of the rule; see the rule checks in section 2), so ").append(nt.indexOf(",") >= 0 ? "they coincide" : "it coincides").append(" with the conventional adjustment. "); }
         if (sigCurve != sigModel) b.append("Note that the reported p-value uses the t distribution").append(random && ok(P.dfRandom) ? " (d.f. = " + Fmt.num(P.dfRandom, 1) + ")" : "").append(", whereas the plotted curve uses the normal approximation (p = ").append(Fmt.pval(pc, 4)).append(" at the null); the two lead to different conclusions at the 5% level. ");
         return b.toString();
     }
@@ -335,6 +448,12 @@ public final class DraperyReport {
         }
     }
 
+    /** Shorter wording for the manuscript narrative: the pooled-effect method sentence has already said that tau^2 is treated as known. */
+    private static String tauTreatmentNarr(MetaSpec s, Pool P) {
+        if ("V".equals(effPredMethod(s, P))) return "tau^2 enters as a plug-in point estimate; the t distribution with k - 1 d.f. is only a small-sample approximation for the uncertainty of tau^2, and the uncertainty of the pooled mean enters through SE_mu.";
+        return tauTreatment(s, P);
+    }
+
     private static String predictionDetail(MetaSpec s, Pool P, java.util.function.DoubleUnaryOperator v, double nullW) {
         StringBuilder b = new StringBuilder("5.4 Prediction interval\n");
         b.append("Level: ").append(pct(s.levelPredict)).append("%. Interval = pooled random-effects estimate -/+ c * SE_pred (analysis scale)" + (Drapery.relative(s.sm) ? ", back-transformed for ratio measures" : "") + ".\n");
@@ -442,7 +561,7 @@ public final class DraperyReport {
         if (com) { String cm = commonMethod(s); b.append(both ? "For the common-effect model, " + Character.toLowerCase(cm.charAt(0)) + cm.substring(1) : Character.toUpperCase(cm.charAt(0)) + cm.substring(1)).append(" "); }
         if (rnd && ok(P.tau2) && !P.lrp && P.k >= 2) { b.append("Between-study variance tau^2 was estimated by ").append(P.glmm ? "the GLMM" : Report.tauLabel(s.methodTau)).append(ok(P.loTau2) && ok(P.upTau2) ? " with a " + pct(s.levelHetstat) + "% confidence interval from the " + tauCiName(P.tauCiMethod) : "").append(". "); }
         if (ok(P.I2) && P.k >= 2) { b.append("The confidence interval of I^2 was based on ").append("tau2".equals(s.methodI2) && ok(P.loTau2) ? "the transformed confidence interval of tau^2 (tau^2-based I^2)" : "the Q-based H statistic (Higgins and Thompson, 2002; limits of ln H with the standard error of that paper)").append(". "); }
-        if (pred) b.append("The prediction interval used ").append(predMethod(s, P).replaceFirst("^SE_pred", "SE_pred")).append(", critical value ").append(predCritical(P).replaceAll(";.*$", "")).append("; ").append(tauTreatment(s, P).replaceFirst("^tau\\^2", "tau^2")).append(" ");
+        if (pred) b.append("The prediction interval used ").append(predMethod(s, P).replaceFirst("^SE_pred", "SE_pred")).append(", critical value ").append(predCritical(P).replaceAll(";.*$", "")).append("; ").append(tauTreatmentNarr(s, P)).append(" ");
         String ty = s.type == null ? "gen" : s.type;
         if (ty.equals("gen") || r.data == null) b.append("Study effect estimates and standard errors were used as supplied (generic inverse-variance data).");
         else if (ty.equals("bin") || ty.equals("inc")) { String E = s.labelE == null || s.labelE.isEmpty() ? "Experimental" : s.labelE, C = s.labelC == null || s.labelC.isEmpty() ? "Control" : s.labelC;
