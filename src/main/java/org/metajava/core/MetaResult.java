@@ -13,6 +13,7 @@ public class MetaResult {
     // subgroup analysis
     public List<String> sgLevels = new ArrayList<>(); public List<Pool> sgPools = new ArrayList<>();
     public List<int[]> sgIdx = new ArrayList<>();
+    /** Non-empty when the random-effects test for subgroup differences cannot be calculated (a subgroup has SE = 0, i.e. an infinite weight): the reason, for reports and plots. */ public String qbRandomNote = "";
     public double qbCommon = Double.NaN, qbRandom = Double.NaN; public int dfBetween; public double pQbCommon = Double.NaN, pQbRandom = Double.NaN;
     public double qwCommon = Double.NaN, qwRandom = Double.NaN; public int dfWithin;
     public Pool residualTau;                            // when tau.common = TRUE

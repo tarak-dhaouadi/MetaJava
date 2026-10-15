@@ -112,8 +112,12 @@ public final class Meta {
         for (Pool p : gp) { double w = 1 / (p.seCommon * p.seCommon); sw += w; swy += w * p.teCommon; double wr = 1 / (p.seRandom * p.seRandom); swr += wr; swyr += wr * p.teRandom; }
         double qc = 0, qr = 0;
         for (Pool p : gp) { double w = 1 / (p.seCommon * p.seCommon); qc += w * Math.pow(p.teCommon - swy / sw, 2); double wr = 1 / (p.seRandom * p.seRandom); qr += wr * Math.pow(p.teRandom - swyr / swr, 2); }
+        // A subgroup whose random-effects SE is exactly 0 (plain Hartung-Knapp with q = 0: all its weighted effects are identical) has an infinite weight: the between-group statistic is then
+        // undefined (Inf, or 0 * Inf = NaN depending on the data). It is reported as not available, with the reason, instead of an accidental number or NaN.
+        StringBuilder zero = new StringBuilder(); int nz = 0; for (int g = 0; g < r.sgPools.size(); g++) { Pool p = r.sgPools.get(g); if (p.k > 0 && p.seRandom == 0) { zero.append(zero.length() > 0 ? ", " : "").append(r.sgLevels.get(g)); nz++; } }
+        if (s.random && !s.isGlmm() && !s.isLrp() && zero.length() > 0) { qr = Double.NaN; r.qbRandomNote = "not available: the random-effects standard error of subgroup" + (nz > 1 ? "s " : " ") + zero + (nz > 1 ? " are" : " is") + " 0 (Hartung-Knapp with q = 0, all weighted study effects identical), so " + (nz > 1 ? "their weights are" : "its weight is") + " infinite and the between-group statistic is undefined"; }
         r.qbCommon = qc; r.qbRandom = qr;
-        if (r.dfBetween > 0) { r.pQbCommon = Dist.pchisqUpper(qc, r.dfBetween); r.pQbRandom = Dist.pchisqUpper(qr, r.dfBetween); }
+        if (r.dfBetween > 0) { r.pQbCommon = Dist.pchisqUpper(qc, r.dfBetween); r.pQbRandom = Double.isNaN(qr) ? Double.NaN : Dist.pchisqUpper(qr, r.dfBetween); }
         double qwc = 0; int dfw = 0; for (Pool p : gp) { qwc += p.Q; dfw += p.dfQ; }
         r.qwCommon = qwc; r.dfWithin = dfw;
     }

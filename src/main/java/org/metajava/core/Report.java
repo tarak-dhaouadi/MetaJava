@@ -199,6 +199,7 @@ public final class Report {
         b.append("Test for subgroup differences (").append(s.random && !s.common ? "random effects" : "common effect").append(" model):").append(NL);
         double q = s.random && !s.common ? r.qbRandom : r.qbCommon, pv = s.random && !s.common ? r.pQbRandom : r.pQbCommon;
         b.append(table(List.of("", "Q", "d.f.", "p-value"), List.<String[]>of(new String[]{"Between groups", Fmt.num(q, 2), String.valueOf(r.dfBetween), Fmt.pval(pv, 4)}), new boolean[]{false, true, true, true})).append(NL);
+        if (s.random && !s.common && !r.qbRandomNote.isEmpty()) b.append("Note: the test for subgroup differences is ").append(r.qbRandomNote).append(".").append(NL);
         return b.toString();
     }
 

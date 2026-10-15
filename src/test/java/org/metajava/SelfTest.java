@@ -1006,6 +1006,24 @@ public class SelfTest {
             String tabQ = sQ.substring(sQ.indexOf("Summary of the sensitivity analysis")); tabQ = tabQ.substring(0, tabQ.indexOf("3. Individual"));
             check(rowHas(tabQ, "Conventional Hartung-Knapp", "t (3 d.f.)", "0.0000", "[0.5000, 0.5000]", "0 (degenerate)") && rowHas(tabQ, "Hartung-Knapp, ad hoc se", "0.1085", "[0.1548, 0.8452]", "0.0192", "Yes", "unchanged") && rowHas(tabQ, "Hartung-Knapp, ad hoc ci", "normal", "[0.2874, 0.7126]", "Yes"), "q = 0: summary table marks the conventional variant as degenerate and lists the corrected variants");
         }
+        {   // Subgroups with plain Hartung-Knapp: a subgroup with q = 0 has SE = 0 (infinite weight), so the random-effects between-group test is not available (it used to be an accidental NaN)
+            final double[] sgSe = {0.25, 0.5, 0.125, 0.2, 0.3, 0.25}; final String[] sgLab = {"A", "A", "A", "B", "B", "B"};
+            for (String hkm : new String[]{"HK", "classic"}) for (int c = 0; c < 2; c++) {
+                double[] te = c == 0 ? new double[]{0.5, 0.5, 0.5, 0.2, 0.6, 0.4} : new double[]{0.5, 0.5, 0.5, 0.5, 0.5, 0.5};   // c = 1: both subgroups have q = 0
+                MetaSpec ms = hkSpec(hkm, ""); ms.methodTau = "DL"; MetaData md = gen(te, sgSe, false); md.subgroup = sgLab; MetaResult mr = Meta.run(ms, md);
+                String w = "subgroups, " + hkm + (c == 1 ? ", both subgroups with q = 0" : ", one subgroup with q = 0");
+                if (hkm.equals("HK")) {
+                    check(mr.sgPools.get(0).seRandom == 0 && (c == 1) == (mr.sgPools.get(1).seRandom == 0), w + ": the q = 0 subgroup(s) have SE 0");
+                    check(Double.isNaN(mr.qbRandom) && Double.isNaN(mr.pQbRandom) && mr.qbRandomNote.startsWith("not available: the random-effects standard error of subgroup" + (c == 1 ? "s A, B are" : " A is")) && mr.qbRandomNote.contains(c == 1 ? "their weights are infinite" : "its weight is infinite"), w + ": between-group test not available, with the reason");
+                    String sgt = Report.subgroupText(mr); check(sgt.contains("Between groups NA") && sgt.contains("Note: the test for subgroup differences is not available: the random-effects standard error of subgroup"), w + ": the report states why the test is missing");
+                    check(Plots.forest(mr, new Plots.Opts()).getWidth() > 0, w + ": the forest plot is drawn");
+                } else {
+                    check(mr.qbRandomNote.isEmpty() && !Double.isNaN(mr.qbRandom) && !Double.isNaN(mr.pQbRandom), w + ": classic CI has no such problem, test calculated");
+                    if (c == 0) { near(mr.qbRandom, 0.7558369783734388, 1e-9, w + ": Q between (reference: independent numpy / scipy calculation)"); near(mr.pQbRandom, 0.38463447781501214, 1e-9, w + ": p between"); } }
+            }
+            MetaSpec cs = hkSpec("HK", ""); cs.methodTau = "DL"; cs.common = true; cs.random = false; MetaData cd = gen(new double[]{0.5, 0.5, 0.5, 0.2, 0.6, 0.4}, sgSe, false); cd.subgroup = sgLab; MetaResult cr = Meta.run(cs, cd);
+            check(cr.qbRandomNote.isEmpty() && !Double.isNaN(cr.qbCommon), "subgroups, common-effect model only: the test is calculated (the random-effects SE plays no part)");
+        }
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);
     }

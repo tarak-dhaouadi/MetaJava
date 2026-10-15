@@ -67,7 +67,8 @@ public final class Plots {
             if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(P, s, false, o) : hetThemed(P, s, K, o); rows.add(t); }
             if (o.testOverall) { Row t = new Row(); t.type = 5; t.text = K == 1 || K == 2 ? testThemed(P, s, false, K) : "Test for overall effect: " + IT + (P.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(s.random ? P.statRandom : P.statCommon, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? P.pRandom : P.pCommon, 4) + ")"; rows.add(t); }
             if (hasSg && o.testSubgroup) { Row t = new Row(); t.type = 5; double q = s.random && !s.common ? r.qbRandom : r.qbCommon, pv = s.random && !s.common ? r.pQbRandom : r.pQbCommon;
-                t.text = K == 1 || K == 2 ? subgroupThemed(q, r.dfBetween, pv, K) : "Test for subgroup differences: \u03C7\u00B2" + sub(r.dfBetween) + " = " + Fmt.num(q, 2) + ", df = " + r.dfBetween + " (" + IT + "p" + IT + " " + Fmt.pvalEq(pv, 4) + ")"; rows.add(t); }
+                if (s.random && !s.common && !r.qbRandomNote.isEmpty()) t.text = "Test for subgroup differences: not available (a subgroup has standard error 0)";
+                else t.text = K == 1 || K == 2 ? subgroupThemed(q, r.dfBetween, pv, K) : "Test for subgroup differences: \u03C7\u00B2" + sub(r.dfBetween) + " = " + Fmt.num(q, 2) + ", df = " + r.dfBetween + " (" + IT + "p" + IT + " " + Fmt.pvalEq(pv, 4) + ")"; rows.add(t); }
         }
         if (K == 3 && !s.noWeights()) { Row t = new Row(); t.type = 5; t.text = "NOTE: Weights are from " + (s.random ? "random" : "common") + " effects analysis"; int at = rows.size(); while (at > 0 && rows.get(at - 1).type == 5) at--; rows.add(at, t); }   // STATA: note under the table, before the test lines
         return drawForest(rows, r, o, log, smL, !s.noWeights(), false);
