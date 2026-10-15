@@ -47,7 +47,7 @@ public final class BiasReport {
         List<String[]> rows = new ArrayList<>(); PubBias.Reg[] rg = {p.pet, p.peese}; String[] nm = {"PET (effect ~ SE)", "PEESE (effect ~ SE^2)"};
         for (int i = 0; i < 2; i++) { PubBias.Reg g = rg[i]; rows.add(new String[]{nm[i], Fmt.num(bt(r, g.b0), D), ci(r, g.lo0, g.up0), Fmt.pval(g.p0Null, 4), Fmt.num(g.b1, D), Fmt.pval(g.p1, 4)}); }
         Pool o = r.overall; boolean rnd = s.random; double te = rnd ? o.teRandom : o.teCommon, lo = rnd ? o.loRandom : o.loCommon, up = rnd ? o.upRandom : o.upCommon, pv = rnd ? o.pRandom : o.pCommon;
-        rows.add(new String[]{rnd ? "Random effects model (unadjusted)" : "Common effect model (unadjusted)", Fmt.num(bt(r, te), D), ci(r, lo, up), Fmt.pval(pv, 4), "", ""});
+        rows.add(new String[]{rnd ? "Random effects model (unadjusted)" : "Common effect model (unadjusted)", Fmt.num(bt(r, te), D), ci(r, lo, up), rnd && o.randomSe0() ? "NA" : Fmt.pval(pv, 4), "", ""});
         b.append(Report.table(head, rows, new boolean[]{false, true, true, true, true, true})).append(NL);
         b.append("Slope of PET: ").append(Fmt.num(p.pet.b1, D)).append(" (SE = ").append(Fmt.num(p.pet.se1, D)).append("), t = ").append(Fmt.num(p.pet.t1, 2)).append(", df = ").append(p.pet.df).append(", p ").append(Fmt.pvalEq(p.pet.p1, 4))
          .append(" - a significant slope indicates small-study effects / funnel plot asymmetry (this is the Egger regression test).").append(NL).append(NL);
@@ -56,7 +56,8 @@ public final class BiasReport {
             b.append("  PET intercept ").append(p.usePeese ? "differs significantly" : "does not differ significantly").append(" from the null value (p ").append(Fmt.pvalEq(p.pet.p0Null, 4)).append("), so ")
              .append(p.usePeese ? "PEESE" : "PET").append(" is used.").append(NL);
             b.append("  Bias-corrected effect: ").append(Fmt.num(bt(r, p.estimate), D)).append(" ").append(ci(r, p.lower, p.upper)).append(" (").append(p.usePeese ? "PEESE" : "PET").append(")").append(NL);
-        } else b.append("This effect measure has no natural null value, so the PET-PEESE decision rule is not applied; interpret PET and PEESE side by side.").append(NL);
+        } else if (p.exactFit) b.append("The PET-PEESE decision rule is not applied: the regression fits the data exactly (residual variance 0), so the p-values are not defined.").append(NL).append("  Estimate (PET intercept): ").append(Fmt.num(bt(r, p.estimate), D)).append(" ").append(ci(r, p.lower, p.upper)).append(NL);
+        else b.append("This effect measure has no natural null value, so the PET-PEESE decision rule is not applied; interpret PET and PEESE side by side.").append(NL);
         b.append(NL).append("Notes:").append(NL).append("- The residual variance is estimated (multiplicative error model); confidence limits use the t distribution with k - 2 degrees of freedom.").append(NL);
         b.append("- PET underestimates a true non-zero effect and PEESE overestimates a true zero effect; both can be misleading when heterogeneity is large or when the bias is not related to precision.").append(NL);
         if (!p.note.isEmpty()) b.append("- ").append(p.note).append(NL);

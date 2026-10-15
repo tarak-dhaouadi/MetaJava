@@ -107,6 +107,7 @@ public final class Report {
         }
         b.append(NL);
         b.append(pooledTable(r, p, "", false));
+        b.append(se0Note(s, List.of(s.textRandom), List.of(p)));
         b.append(hetText(r, p, s));
         b.append(predText(r, p, s));
         if (r.hasSubgroups()) b.append(subgroupText(r));
@@ -122,7 +123,7 @@ public final class Report {
         if (s.common) { List<String> row = new ArrayList<>(); row.add(s.textCommon + suffix); row.add(Fmt.num(bt(s, p.teCommon, p), d)); row.add(Fmt.ci(bt(s, p.loCommon, p), bt(s, p.upCommon, p), d));
             if (test) { row.add(Fmt.num(p.statCommon, 2)); row.add(Fmt.pval(p.pCommon, 4)); } rows.add(row.toArray(new String[0])); }
         if (s.random) { List<String> row = new ArrayList<>(); row.add(s.textRandom + p.randomLabelSuffix + suffix); row.add(Fmt.num(bt(s, p.teRandom, p), d)); row.add(Fmt.ci(bt(s, p.loRandom, p), bt(s, p.upRandom, p), d));
-            if (test) { row.add(Fmt.num(p.statRandom, 2)); row.add(Fmt.pval(p.pRandom, 4)); } rows.add(row.toArray(new String[0])); }
+            if (test) { boolean se0 = p.randomSe0(); row.add(se0 ? "NA" : Fmt.num(p.statRandom, 2)); row.add(se0 ? "NA" : Fmt.pval(p.pRandom, 4)); } rows.add(row.toArray(new String[0])); }
         if (s.prediction && pi && !Double.isNaN(p.loPred)) { List<String> row = new ArrayList<>(); row.add(s.textPredict); row.add(""); row.add(Fmt.ci(bt(s, p.loPred, p), bt(s, p.upPred, p), d)); if (test) { row.add(""); row.add(""); } rows.add(row.toArray(new String[0])); }
         // fix z/t header
         if (test) head.set(3, s.random && (p.testType.equals("t")) ? (s.common ? "z|t" : "t") : "z");
@@ -199,6 +200,7 @@ public final class Report {
         b.append("Test for subgroup differences (").append(s.random && !s.common ? "random effects" : "common effect").append(" model):").append(NL);
         double q = s.random && !s.common ? r.qbRandom : r.qbCommon, pv = s.random && !s.common ? r.pQbRandom : r.pQbCommon;
         b.append(table(List.of("", "Q", "d.f.", "p-value"), List.<String[]>of(new String[]{"Between groups", Fmt.num(q, 2), String.valueOf(r.dfBetween), Fmt.pval(pv, 4)}), new boolean[]{false, true, true, true})).append(NL);
+        { List<String> nm0 = new ArrayList<>(); for (String l : r.sgLevels) nm0.add(nm + s.sepSubgroup + l); b.append(se0Note(s, nm0, r.sgPools)); }
         if (s.random && !s.common && !r.qbRandomNote.isEmpty()) b.append("Note: the test for subgroup differences is ").append(r.qbRandomNote).append(".").append(NL);
         return b.toString();
     }
@@ -315,6 +317,14 @@ public final class Report {
         if (random && p.randomSe0()) return Double.isNaN(p.pRandom) ? "undefined (0/0)" : "0 (degenerate)";
         double pv = random ? p.pRandom : p.pCommon;
         return plot ? Fmt.num(pv, 4).replace("0.0000", "< 0.0001") : Fmt.pval(pv, 4);
+    }
+
+    /** Note under a results table: random-effects results whose standard error is exactly 0 (plain Hartung-Knapp with q = 0). Empty when there is none. */
+    static String se0Note(MetaSpec s, List<String> names, List<Pool> pools) {
+        if (!s.random) return "";
+        List<String> z = new ArrayList<>(); for (int i = 0; i < pools.size() && i < names.size(); i++) if (pools.get(i).k > 0 && pools.get(i).randomSe0()) z.add(names.get(i));
+        if (z.isEmpty()) return "";
+        return "Note: the random-effects standard error is 0 for " + String.join(", ", z) + " (Hartung-Knapp with q = 0: all weighted study effects are identical). The estimate is valid, but its confidence interval has zero width and its test statistic and p-value are not available (NA)." + NL + NL;
     }
 
     /** Explanation of the degenerate rows of a leave-one-out / cumulative analysis (empty when no row is degenerate). */

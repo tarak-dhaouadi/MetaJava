@@ -23,10 +23,11 @@ public final class PubBias {
     public static final class Reg {
         public double b0, se0, b1, se1, t0, p0, t1, p1, lo0, up0; public int df;
         public double p0Null;   // p-value of H0: corrected effect = null value
+        public boolean exact;   // the regression fits the data exactly (residual variance 0, e.g. all effects identical): SE 0, t and p are not defined (NaN)
     }
     public static final class PetPeese {
         public String error; public int k; public Reg pet, peese;
-        public boolean usePeese; public boolean decisionApplied; public double alpha = 0.05;
+        public boolean usePeese; public boolean decisionApplied; public boolean exactFit; public double alpha = 0.05;
         public double estimate, lower, upper;          // the recommended (conditional) estimate, working scale
         public double[] te, se; public String[] label; public double maxSe, nullValue;
         public String note = "";
@@ -39,9 +40,12 @@ public final class PubBias {
         double det = sw * swxx - swx * swx; Reg g = new Reg(); g.df = k - 2;
         g.b0 = (swxx * swy - swx * swxy) / det; g.b1 = (sw * swxy - swx * swy) / det;
         double rss = 0; for (int i = 0; i < k; i++) { double e = y[i] - g.b0 - g.b1 * x[i]; rss += w[i] * e * e; }
+        double syy = 0; for (int i = 0; i < k; i++) syy += w[i] * y[i] * y[i];
+        g.exact = rss <= 1e-18 * syy;   // zero residual variance: the t statistics are 0/0 or x/0, not numbers
         double s2 = rss / g.df; g.se0 = Math.sqrt(s2 * swxx / det); g.se1 = Math.sqrt(s2 * sw / det);
         g.t0 = g.b0 / g.se0; g.t1 = g.b1 / g.se1; g.p0 = Dist.ptTwoSided(g.t0, g.df); g.p1 = Dist.ptTwoSided(g.t1, g.df);
         g.p0Null = Dist.ptTwoSided((g.b0 - nullIntercept) / g.se0, g.df);
+        if (g.exact) { g.se0 = 0; g.se1 = 0; g.t0 = g.t1 = g.p0 = g.p1 = g.p0Null = Double.NaN; }
         double q = Dist.qt(1 - (1 - level) / 2, g.df); g.lo0 = g.b0 - q * g.se0; g.up0 = g.b0 + q * g.se0;
         return g;
     }
@@ -56,10 +60,12 @@ public final class PubBias {
         double lv = r.spec.levelMa, nv = nullValue(r); res.nullValue = nv; res.te = y; res.se = se; res.label = lab;
         res.pet = wls(y, se, w, lv, nv); res.peese = wls(y, se2, w, lv, nv);
         boolean hasNull = !Double.isNaN(r.spec.nullValue());
-        res.decisionApplied = hasNull;
-        res.usePeese = hasNull && res.pet.p0Null < res.alpha;   // PET intercept differs from the null: a genuine effect is likely, PEESE is less biased then
+        res.exactFit = res.pet.exact || res.peese.exact;
+        res.decisionApplied = hasNull && !res.exactFit;
+        res.usePeese = res.decisionApplied && res.pet.p0Null < res.alpha;   // PET intercept differs from the null: a genuine effect is likely, PEESE is less biased then
         Reg g = res.usePeese ? res.peese : res.pet; res.estimate = g.b0; res.lower = g.lo0; res.upper = g.up0;
-        if (k < 10) res.note = "Fewer than 10 studies: PET and PEESE have very low power and unstable estimates; interpret with great caution.";
+        if (res.exactFit) res.note = "The regression fits the data exactly (residual variance 0, e.g. all study effects are identical), so the standard errors, test statistics and p-values of PET and PEESE are not defined (NA) and the PET-PEESE decision rule is not applied; the estimate shown is the PET intercept.";
+        else if (k < 10) res.note = "Fewer than 10 studies: PET and PEESE have very low power and unstable estimates; interpret with great caution.";
         return res;
     }
 
