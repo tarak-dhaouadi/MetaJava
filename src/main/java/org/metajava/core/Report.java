@@ -190,18 +190,25 @@ public final class Report {
         for (int g = 0; g < r.sgLevels.size(); g++) {
             Pool p = r.sgPools.get(g); List<String> row = new ArrayList<>();
             row.add(nm + s.sepSubgroup + r.sgLevels.get(g)); row.add(String.valueOf(p.k));
+            if (s.random && s.common) {   // both models selected: one row per model (as meta prints them), Q and I^2 once, on the common-effect row
+                List<String> cr = new ArrayList<>(row); cr.set(0, row.get(0) + " (common)"); cr.add(Fmt.num(bt(s, p.teCommon, p), d)); cr.add(Fmt.ci(bt(s, p.loCommon, p), bt(s, p.upCommon, p), d)); cr.add(""); cr.add(""); cr.add(Fmt.num(p.Q, 2)); cr.add(Fmt.num(100 * p.I2, 1) + "%"); cr.add(""); rows.add(cr.toArray(new String[0]));
+                row.set(0, row.get(0) + " (random)");
+            }
             if (s.random) { row.add(Fmt.num(bt(s, p.teRandom, p), d)); row.add(Fmt.ci(bt(s, p.loRandom, p), bt(s, p.upRandom, p), d)); row.add(Fmt.num(p.tau2, 4)); row.add(Fmt.num(p.tau, 4)); }
             else { row.add(Fmt.num(bt(s, p.teCommon, p), d)); row.add(Fmt.ci(bt(s, p.loCommon, p), bt(s, p.upCommon, p), d)); }
-            row.add(Fmt.num(p.Q, 2)); row.add(Fmt.num(100 * p.I2, 1) + "%");
+            if (s.random && s.common) { row.add(""); row.add(""); } else { row.add(Fmt.num(p.Q, 2)); row.add(Fmt.num(100 * p.I2, 1) + "%"); }
             if (piCol) row.add(Double.isNaN(p.loPred) ? "NA" : Fmt.ci(bt(s, p.loPred, p), bt(s, p.upPred, p), d)); rows.add(row.toArray(new String[0]));
         }
         boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false;
         b.append(table(head, rows, right)).append(NL);
-        b.append("Test for subgroup differences (").append(s.random && !s.common ? "random effects" : "common effect").append(" model):").append(NL);
-        double q = s.random && !s.common ? r.qbRandom : r.qbCommon, pv = s.random && !s.common ? r.pQbRandom : r.pQbCommon;
-        b.append(table(List.of("", "Q", "d.f.", "p-value"), List.<String[]>of(new String[]{"Between groups", Fmt.num(q, 2), String.valueOf(r.dfBetween), Fmt.pval(pv, 4)}), new boolean[]{false, true, true, true})).append(NL);
+        boolean both = s.random && s.common;
+        b.append("Test for subgroup differences (").append(both ? "common effect model | random effects model" : s.random ? "random effects model" : "common effect model").append("):").append(NL);
+        List<String[]> tr = new ArrayList<>();
+        if (!s.random || both) tr.add(new String[]{both ? "Between groups (common)" : "Between groups", Fmt.num(r.qbCommon, 2), String.valueOf(r.dfBetween), Fmt.pval(r.pQbCommon, 4)});
+        if (s.random) tr.add(new String[]{both ? "Between groups (random)" : "Between groups", Fmt.num(r.qbRandom, 2), String.valueOf(r.dfBetween), Fmt.pval(r.pQbRandom, 4)});
+        b.append(table(List.of("", "Q", "d.f.", "p-value"), tr, new boolean[]{false, true, true, true})).append(NL);
         { List<String> nm0 = new ArrayList<>(); for (String l : r.sgLevels) nm0.add(nm + s.sepSubgroup + l); b.append(se0Note(s, nm0, r.sgPools)); }
-        if (s.random && !s.common && !r.qbRandomNote.isEmpty()) b.append("Note: the test for subgroup differences is ").append(r.qbRandomNote).append(".").append(NL);
+        if (s.random && !r.qbRandomNote.isEmpty()) b.append("Note: the test for subgroup differences is ").append(r.qbRandomNote).append(".").append(NL);
         return b.toString();
     }
 

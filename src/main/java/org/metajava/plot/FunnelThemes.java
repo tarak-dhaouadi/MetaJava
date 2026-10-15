@@ -44,8 +44,11 @@ public final class FunnelThemes {
     }
 
     /** Ticks on the effect scale: for ratio measures the labels are exp(value) at 1-2-5 positions, otherwise pretty numbers. Returns {value, label-number} pairs. */
-    static double[][] ticks(double lo, double hi, boolean log, int n) {
+    static double[][] ticks(double lo, double hi, boolean log, int n) { return ticks(lo, hi, log, n, false); }
+    /** dense: intermediate labels on a log axis (0.5, 0.6, 0.7, 0.8, 1, 1.2 ...), see {@link Plots#logTicksDense}. */
+    static double[][] ticks(double lo, double hi, boolean log, int n, boolean dense) {
         double[] t = log ? Plots.logTicks(Math.exp(lo), Math.exp(hi)) : Canvas.pretty(lo, hi, n);
+        if (log && dense) { double[] dt = Plots.logTicksDense(Math.exp(lo), Math.exp(hi)); if (dt.length > 0) t = dt; }
         if (log) { int inside = 0; for (double x : t) { double v = Math.log(x); if (v >= lo && v <= hi) inside++; } if (inside < 2) { t = Canvas.pretty(Math.exp(lo), Math.exp(hi), 5); } }
         List<double[]> out = new ArrayList<>(); for (double x : t) { double v = log ? Math.log(x) : x; if (v >= lo - 1e-9 && v <= hi + 1e-9) out.add(new double[]{v, x}); }
         return out.toArray(new double[0][]);
@@ -111,7 +114,7 @@ public final class FunnelThemes {
         // axes (left and bottom line, outward ticks)
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1.2f)); c.line(x0, y0, x0, y1); c.line(x0, y1, x1, y1);
         for (double t : yt) { if (t < 0 || t > yh + 1e-9) continue; double yy = Y.applyAsDouble(t); c.line(x0 - 5, yy, x0, yy); c.textRot(stataNum(t), x0 - 12, yy, 13f); }
-        for (double[] t : ticks(xl, xh, d.log, 6)) { double xx = X.applyAsDouble(t[0]); c.line(xx, y1, xx, y1 + 5); c.text(stataNum(t[1]), xx, y1 + 22, 13f, 1, false); }
+        for (double[] t : ticks(xl, xh, d.log, 6, true)) { double xx = X.applyAsDouble(t[0]); c.line(xx, y1, xx, y1 + 5); c.text(stataNum(t[1]), xx, y1 + 22, 13f, 1, false); }
         c.text(Plots.funnelXlab(s), (x0 + x1) / 2.0, y1 + 44, 13f, 1, false); c.textRot(d.prec ? "Precision (1/SE)" : "Standard error", 22, (y0 + y1) / 2.0, 13f);
         // legend
         double lx = (W - legW) / 2.0; g.setColor(Color.WHITE); g.fill(new Rectangle2D.Double(lx, legTop, legW, legH)); g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); g.draw(new Rectangle2D.Double(lx, legTop, legW, legH));
@@ -175,7 +178,7 @@ public final class FunnelThemes {
         // axes: left and bottom spines, outward ticks
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); c.line(x0, y0, x0, y1); c.line(x0, y1, x1, y1);
         for (double t : Canvas.pretty(0, yh, 6)) { if (t < 0 || t > yh + 1e-9) continue; double yy = Y.applyAsDouble(t); c.line(x0 - 4, yy, x0, yy); c.text(Canvas.tick(t), x0 - 8, yy + 4, 11f, 2, false); }
-        for (double[] t : ticks(xl, xh, d.log, 8)) { double xx = X.applyAsDouble(t[0]); c.line(xx, y1, xx, y1 + 4); c.text(Canvas.tick(t[1]), xx, y1 + 18, 11f, 1, false); }   // ratio measures: axis labelled on the OR / HR scale (positions stay logarithmic)
+        for (double[] t : ticks(xl, xh, d.log, 8, true)) { double xx = X.applyAsDouble(t[0]); c.line(xx, y1, xx, y1 + 4); c.text(Canvas.tick(t[1]), xx, y1 + 18, 11f, 1, false); }   // ratio measures: axis labelled on the OR / HR scale (positions stay logarithmic)
         c.text(Plots.funnelXlab(s), (x0 + x1) / 2.0, y1 + 40, 12f, 1, false); c.textRot(d.prec ? "precision (1/SE)" : "standard error", 16, (y0 + y1) / 2.0, 12f);
         // colour bar
         for (int py = 0; py < (y1 - y0); py++) { g.setColor(power(1 - (py + 0.5) / (y1 - y0))); g.fill(new Rectangle2D.Double(cb0, y0 + py, cb1 - cb0, 1.6)); }

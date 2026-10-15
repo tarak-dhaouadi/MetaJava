@@ -1,5 +1,19 @@
 # Changelog
 
+### Changed - Funnel plot (Default, MetaWin and STATA themes): more tick labels on the log axis
+- For ratio measures (HR, OR, RR ...) the x-axis of the funnel plot, the funnel plot of precision and their trim-and-fill versions now carries intermediate labels (e.g. 0.4, 0.5, 0.6, 0.7, 0.8, 1, 1.2 instead of only 0.5 and 1), thinned automatically (at most 8) when the range is wide. The MetaWin style (SE and precision versions, trim-and-fill included) gets the same intermediate labels; the STATA style as well.
+
+### Fixed - Contour-enhanced funnel plot (Default theme)
+- The contour bands are centred on the null value, but the x-axis was centred on the pooled effect only, so with effects far from the null (e.g. hazard ratios around 0.5) the bands fell outside the plot and nothing was drawn. With "Contour-enhanced" the axis now always includes the null value and its bands (as meta and the STATA style do). Applies to the funnel plot, the funnel plot of precision and the trim-and-fill versions.
+- The axis is only extended for measures that have a null value (ratios, differences, correlations); single-group measures (proportions, means, rates) keep their previous range.
+- The legend of the contour bands is now a framed row centred below the x-axis title (like the STATA style) instead of a box inside the plot; the figure is 56 px taller when "Contour-enhanced" is selected.
+
+### Fixed - Audit of outputs and plots (conceptual issues)
+- Contour-enhanced funnel plots (also trim-and-fill and funnel of precision, default theme) now carry a legend of the contour bands (p > 0.10, 0.10 > p > 0.05, 0.05 > p > 0.01, p < 0.01).
+- The pseudo confidence limits of the default funnel plot follow the confidence level of the analysis instead of always 95 %.
+- Subgroup results table with both the common-effect and the random-effects model selected: it now lists both rows per subgroup (the title announced both, but only the random-effects row was shown), and the test for subgroup differences is given for both models. Single-model output is unchanged.
+- Checked without finding a problem: 279 combinations of edge cases (k = 1, 2, 3, identical effects, equal or tiny SE, extreme heterogeneity, missing rows, MD / HR / COR scales, classic / HK / KR, common / random / both) over every report and plot: no exception except GOSH with fewer than 3 studies (expected message); Egger, trim-and-fill, LFK, PET-PEESE, selection model and fail-safe N checked by hand on a 12-study example.
+
 ### Fixed - Forest plot: "Test for overall effect" / "Test for effect in subgroup" with SE = 0
 - When the pooled random-effects SE is exactly 0 (plain Hartung-Knapp with q = 0), the line showed `t = Inf (p < 0.0001)`. It now reads `Test for overall effect: not available (standard error = 0, Hartung-Knapp with q = 0)` (same for the subgroup line), in all four themes (Default, RevMan 5, BMJ, STATA). Implemented in `Plots.testLine`.
 - Unchanged: every plot with a finite test statistic.

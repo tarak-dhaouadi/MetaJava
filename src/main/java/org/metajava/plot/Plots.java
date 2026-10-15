@@ -436,6 +436,13 @@ public final class Plots {
     /** Position of the point estimate of a row: event / n for single proportions and rates, else back(TE). */
     static double ptPos(MetaSpec s, boolean lin, Row w) { return !lin ? w.te : !Double.isNaN(w.ptBack) ? w.ptBack : Meta.back(s, w.te, w.n); }
 
+    /** Denser ticks for a log axis (funnel plots): 0.5, 0.6, 0.7, 0.8, 1, 1.2, 1.5, 2 ... thinned to at most 8 when the range is wide; empty when fewer than 3 fit (the caller then uses {@link #logTicks}). */
+    static double[] logTicksDense(double lo, double hi) {
+        double[][] lists = {{0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.5, 1.75, 2, 2.5, 3, 4, 5, 7, 10, 15, 20, 30, 50, 100}, {0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1, 1.2, 1.5, 2, 3, 4, 5, 7, 10, 15, 20, 30, 50, 100}, {0.1, 0.2, 0.3, 0.5, 0.7, 1, 1.5, 2, 3, 5, 7, 10, 20, 50}};
+        for (double[] cand : lists) { List<Double> u = new ArrayList<>(); for (double c : cand) if (c >= lo * 0.999 && c <= hi * 1.001) u.add(c);
+            if (u.size() >= 3 && u.size() <= 8) return u.stream().mapToDouble(Double::doubleValue).toArray(); }
+        return new double[0];
+    }
     static double[] logTicks(double lo, double hi) {
         double[] cand = {0.01, 0.02, 0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 4, 5, 10, 20, 50, 100};
         List<Double> t = new ArrayList<>(); for (double c : cand) if (c >= lo * 0.999 && c <= hi * 1.001) t.add(c);
@@ -467,10 +474,13 @@ public final class Plots {
 
     static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title) { return axes(c, xl, xh, yl, yh, yRev, xlab, ylab, logX, title, 60); }
     /** bottom: space (px) between the panel and the lower edge of the canvas. */
-    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom) {
+    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom) { return axes(c, xl, xh, yl, yh, yRev, xlab, ylab, logX, title, bottom, false); }
+    /** dense: denser tick labels on a log x-axis (funnel plots). */
+    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom, boolean dense) {
         Axes a = new Axes(); a.c = c; a.x0 = 70; a.x1 = c.w / c.scaleF() - 30; a.y0 = 40; a.y1 = c.h / c.scaleF() - bottom; a.xl = xl; a.xh = xh; a.yl = yl; a.yh = yh; a.yRev = yRev;
         Graphics2D g = c.g; g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
         double[] xt = logX ? logTicks(Math.exp(xl), Math.exp(xh)) : Canvas.pretty(xl, xh, 6), yt = Canvas.pretty(yl, yh, 6);
+        if (logX && dense) { double[] dt = logTicksDense(Math.exp(xl), Math.exp(xh)); if (dt.length > 0) xt = dt; }
         if (logX) { int inside = 0; for (double t : xt) { double v = Math.log(t); if (v >= xl && v <= xh) inside++; } if (inside < 2) xt = Canvas.pretty(Math.exp(xl), Math.exp(xh), 5); }   // narrow range: the 1-2-5 log ticks leave fewer than two labels
         for (double t : xt) { double v = logX ? Math.log(t) : t; if (v < xl || v > xh) continue; double xx = a.X(v); c.line(xx, a.y1, xx, a.y1 + 5); c.text(Canvas.tick(t), xx, a.y1 + 18, 10, 1, false); }
         for (double t : yt) { if (t < yl - 1e-9 || t > yh + 1e-9) continue; double yy = a.Y(t); c.line(a.x0 - 5, yy, a.x0, yy); c.textRot(Canvas.tick(t), a.x0 - 10, yy, 10); }
@@ -489,14 +499,16 @@ public final class Plots {
     public static BufferedImage funnel(MetaResult r, Opts o, TrimFill tf) {
         if (FunnelThemes.METAWIN.equals(o.funnelTheme)) return FunnelThemes.metawin(r, o, tf);
         if (FunnelThemes.STATA.equals(o.funnelTheme)) return FunnelThemes.stata(r, o, tf);
-        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); Canvas c = new Canvas(620, 520, o.scale);
+        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); final int extraH = o.contour ? 56 : 0; Canvas c = new Canvas(620, 520 + extraH, o.scale);   // contour-enhanced: room below the x-axis title for the legend
         double[] te = tf != null ? tf.TE : r.TE, se = tf != null ? tf.seTE : r.seTE; String[] lab = tf != null ? tf.studlab : r.studlab; boolean[] fl = tf != null ? tf.filled : null;
         double center = tf != null ? (s.random ? tf.pool.teRandom : tf.pool.teCommon) : (s.random ? r.overall.teRandom : r.overall.teCommon);
         double maxse = 0, mn = 1e300, mx = -1e300; for (int i = 0; i < te.length; i++) if (!Double.isNaN(te[i])) { maxse = Math.max(maxse, se[i]); mn = Math.min(mn, te[i]); mx = Math.max(mx, te[i]); }
-        double z = Dist.qnorm(0.975); double half = Math.max(z * maxse, Math.max(Math.abs(mx - center), Math.abs(mn - center))) * 1.05;
-        double xl = center - half, xh = center + half; { double[] cl = clampRaw(s, xl, xh); xl = cl[0]; xh = cl[1]; }
+        double z = Dist.qnorm(1 - (1 - s.levelMa) / 2); double half = Math.max(z * maxse, Math.max(Math.abs(mx - center), Math.abs(mn - center))) * 1.05;
+        double xl = center - half, xh = center + half;
+        if (o.contour && !Double.isNaN(s.nullValue())) { double ref = s.nullValue(); double pad = 0.05 * z * maxse; xl = Math.min(xl, ref - z * maxse - pad); xh = Math.max(xh, ref + z * maxse + pad); }   // the contour bands are centred on the null value: it must be inside the axis range (as in meta / STATA), e.g. hazard ratios far from 1
+        { double[] cl = clampRaw(s, xl, xh); xl = cl[0]; xh = cl[1]; }
         if (o.precision) return funnelPrecision(c, s, log, te, se, lab, fl, center, xl, xh, z, o);
-        Axes a = axes(c, xl, xh, 0, maxse * 1.05, true, funnelXlab(s), "Standard Error", log, "");
+        Axes a = axes(c, xl, xh, 0, maxse * 1.05, true, funnelXlab(s), "Standard Error", log, "", 60 + extraH, true);
         Graphics2D g = c.g; double ymax = maxse * 1.05;
         if (o.contour) { // contour-enhanced
             double[][] bands = {{1.96, 2.576, 0.0}, {1.645, 1.96, 0.0}};
@@ -515,13 +527,23 @@ public final class Plots {
             boolean f = fl != null && fl[i]; if (f) { g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); }
             else { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); }
             if (o.studyLabels) { g.setColor(Color.BLACK); c.text(lab[i], xx + 4, yy - 3, 8, 0, false); } }
+        if (o.contour) contourLegend(c, a);
         return c.img;
+    }
+
+    /** Legend of the contour bands of a contour-enhanced funnel plot (two-sided p-value of a study against the null value): framed, one row, centred below the x-axis title (as in the STATA style). */
+    static void contourLegend(Canvas c, Axes a) {
+        Graphics2D g = c.g; String[] tx = {"p > 0.10", "0.10 > p > 0.05", "0.05 > p > 0.01", "p < 0.01"}; Color[] fl = {new Color(235, 235, 235), new Color(215, 215, 215), new Color(195, 195, 195), Color.WHITE};
+        FontMetrics fm = g.getFontMetrics(Canvas.font(10f)); double[] w = new double[tx.length]; double tot = 0; for (int i = 0; i < tx.length; i++) { w[i] = 28 + fm.stringWidth(tx[i]) + 16; tot += w[i]; }
+        double bw = tot + 4, bh = 26, x = (a.x0 + a.x1) / 2 - bw / 2, y = a.y1 + 56;
+        g.setColor(Color.WHITE); g.fill(new Rectangle2D.Double(x, y, bw, bh)); g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); g.draw(new Rectangle2D.Double(x, y, bw, bh));
+        double cx = x + 10; for (int i = 0; i < tx.length; i++) { g.setColor(fl[i]); g.fill(new Rectangle2D.Double(cx, y + 7, 20, 12)); g.setColor(new Color(120, 120, 120)); g.draw(new Rectangle2D.Double(cx, y + 7, 20, 12)); g.setColor(Color.BLACK); c.text(tx[i], cx + 26, y + 17, 10, 0, false); cx += w[i]; }
     }
 
     /** Default (meta style) funnel plot of precision: precision 1 / SE on the vertical axis (largest at the top), pseudo confidence limits and contour bands are the curves x = centre +/- z / precision. */
     private static BufferedImage funnelPrecision(Canvas c, MetaSpec s, boolean log, double[] te, double[] se, String[] lab, boolean[] fl, double center, double xl, double xh, double z, Opts o) {
         double pmax = 0; for (int i = 0; i < te.length; i++) if (!Double.isNaN(te[i]) && se[i] > 0) pmax = Math.max(pmax, 1 / se[i]); if (pmax <= 0) pmax = 1;
-        Axes a = axes(c, xl, xh, 0, pmax * 1.05, false, funnelXlab(s), "Precision (1/SE)", log, ""); Graphics2D g = c.g; double ymax = pmax * 1.05, half = xh - xl;
+        Axes a = axes(c, xl, xh, 0, pmax * 1.05, false, funnelXlab(s), "Precision (1/SE)", log, "", 60 + (o.contour ? 56 : 0), true); Graphics2D g = c.g; double ymax = pmax * 1.05, half = xh - xl;
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
         if (o.contour) { double ref = s.nullValue(); if (Double.isNaN(ref)) ref = 0;
             double[] zz = {Dist.qnorm(0.995), Dist.qnorm(0.975), Dist.qnorm(0.95)}; Color[] fills = {new Color(235, 235, 235), new Color(215, 215, 215), new Color(195, 195, 195)};
@@ -534,6 +556,7 @@ public final class Plots {
             boolean f = fl != null && fl[i]; if (f) { g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); }
             else { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); }
             if (o.studyLabels) { g.setColor(Color.BLACK); c.text(lab[i], xx + 4, yy - 3, 8, 0, false); } }
+        if (o.contour) contourLegend(c, a);
         return c.img;
     }
 
