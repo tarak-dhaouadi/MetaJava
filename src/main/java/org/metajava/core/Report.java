@@ -306,6 +306,31 @@ public final class Report {
     static String coefIdx(Reg g) { int from = g.intercept ? 2 : 1; return g.dfQM == 1 ? String.valueOf(from) : from + ":" + g.p; }
     static String stars(double p) { return p < 0.001 ? "***" : p < 0.01 ? "**" : p < 0.05 ? "*" : p < 0.1 ? "." : ""; }
 
+    /**
+     * p-value of a pooled result for the leave-one-out / cumulative tables and forest plots. A degenerate random-effects result (SE = 0) is flagged instead of printing
+     * "< 0.0001" (which reads as strong evidence) or a bare NA: "0 (degenerate)" when the statistic is infinite, "undefined (0/0)" when the estimate equals the null effect.
+     * Every other result keeps the usual format (plot = true: the forest-plot style "< 0.0001").
+     */
+    public static String pooledP(Pool p, boolean random, boolean plot) {
+        if (random && p.randomSe0()) return Double.isNaN(p.pRandom) ? "undefined (0/0)" : "0 (degenerate)";
+        double pv = random ? p.pRandom : p.pCommon;
+        return plot ? Fmt.num(pv, 4).replace("0.0000", "< 0.0001") : Fmt.pval(pv, 4);
+    }
+
+    /** Explanation of the degenerate rows of a leave-one-out / cumulative analysis (empty when no row is degenerate). */
+    public static String degenerateNote(MetaSpec s, List<String> labels, List<Pool> pools, Pool overall) {
+        if (!s.random) return "";
+        List<String> inf = new ArrayList<>(), nul = new ArrayList<>();
+        for (int i = 0; i < pools.size(); i++) if (pools.get(i).randomSe0()) (Double.isNaN(pools.get(i).pRandom) ? nul : inf).add(labels.get(i));
+        if (overall != null && overall.randomSe0()) (Double.isNaN(overall.pRandom) ? nul : inf).add(s.textRandom);
+        if (inf.isEmpty() && nul.isEmpty()) return "";
+        List<String> all = new ArrayList<>(inf); all.addAll(nul);
+        StringBuilder b = new StringBuilder("Note: the random-effects standard error is 0 for " + String.join(", ", all) + " (Hartung-Knapp with q = 0: all weighted study effects are identical). The estimate is valid, but its confidence interval has zero width. ");
+        if (!inf.isEmpty()) b.append("For ").append(String.join(", ", inf)).append(" the test statistic is infinite and the p-value is 0 only as a numerical limit. ");
+        if (!nul.isEmpty()) b.append("For ").append(String.join(", ", nul)).append(" the estimate equals the null effect, so the test statistic is 0/0 and the p-value is undefined. ");
+        return b.append("These p-values are marked degenerate and must not be read as evidence of precision.").toString();
+    }
+
     public static String looText(MetaResult r) {
         MetaSpec s = r.spec; StringBuilder b = new StringBuilder(); int d = 4;
         b.append("Leave-One-Out Meta-Analysis Summary").append(NL).append(NL);
@@ -316,14 +341,14 @@ public final class Report {
         for (int i = 0; i < r.loo.size(); i++) {
             Pool p = r.loo.get(i); List<String> row = new ArrayList<>(); row.add(r.looLabels.get(i));
             double te = s.random ? p.teRandom : p.teCommon, lo = s.random ? p.loRandom : p.loCommon, up = s.random ? p.upRandom : p.upCommon, pv = s.random ? p.pRandom : p.pCommon;
-            row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); row.add(Fmt.pval(pv, 4));
+            row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); row.add(pooledP(p, s.random, false));
             if (s.random) { row.add(Fmt.num(p.tau2, 4)); row.add(Fmt.num(p.tau, 4)); } row.add(Fmt.num(100 * p.I2, 1) + "%");
             if (s.prediction && s.random) row.add(Fmt.ci(bt(s, p.loPred, p), bt(s, p.upPred, p), d));
             rows.add(row.toArray(new String[0]));
         }
         List<String> row = new ArrayList<>(); Pool p = r.overall; row.add(s.random ? s.textRandom : s.textCommon);
         double te = s.random ? p.teRandom : p.teCommon, lo = s.random ? p.loRandom : p.loCommon, up = s.random ? p.upRandom : p.upCommon, pv = s.random ? p.pRandom : p.pCommon;
-        row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); row.add(Fmt.pval(pv, 4));
+        row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); row.add(pooledP(p, s.random, false));
         if (s.random) { row.add(Fmt.num(p.tau2, 4)); row.add(Fmt.num(p.tau, 4)); } row.add(Fmt.num(100 * p.I2, 1) + "%"); if (s.prediction && s.random) row.add(Fmt.ci(bt(s, p.loPred, p), bt(s, p.upPred, p), d));
         boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false;
         MUTE.set(Boolean.TRUE); String t1, t2;
@@ -332,6 +357,7 @@ public final class Report {
         b.append(t1).append(NL); // overall row separately
         b.append(t2).append(NL).append(NL);
         recordManual(t1 + NL + t2, head, all, right);
+        String dn = degenerateNote(s, r.looLabels, r.loo, r.overall); if (!dn.isEmpty()) b.append(dn).append(NL).append(NL);
         b.append(details(r));
         return b.toString();
     }
@@ -345,11 +371,13 @@ public final class Report {
         for (int i = 0; i < r.cum.size(); i++) {
             Pool p = r.cum.get(i); List<String> row = new ArrayList<>(); row.add(r.cumLabels.get(i));
             double te = s.random ? p.teRandom : p.teCommon, lo = s.random ? p.loRandom : p.loCommon, up = s.random ? p.upRandom : p.upCommon, pv = s.random ? p.pRandom : p.pCommon;
-            row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); row.add(Fmt.pval(pv, 4));
+            row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); row.add(pooledP(p, s.random, false));
             if (s.random) { row.add(Fmt.num(p.tau2, 4)); row.add(Fmt.num(p.tau, 4)); } row.add(Fmt.num(100 * p.I2, 1) + "%"); rows.add(row.toArray(new String[0]));
         }
         boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false;
-        b.append(table(head, rows, right)).append(NL).append(details(r));
+        b.append(table(head, rows, right)).append(NL);
+        String dn = degenerateNote(s, r.cumLabels, r.cum, null); if (!dn.isEmpty()) b.append(dn).append(NL).append(NL);
+        b.append(details(r));
         return b.toString();
     }
 

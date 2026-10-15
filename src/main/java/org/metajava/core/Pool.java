@@ -14,6 +14,9 @@ public class Pool {
     public boolean hkPrimary = false;        // Hartung-Knapp (meta: method.random.ci = "HK"), with or without ad hoc correction, even when the ad hoc "ci" rule ended in the z interval
     public boolean hkZ = false;              // ... and the ad hoc "ci" rule replaced the t interval by the classic z interval
     public boolean krPrimary = false;        // Kenward-Roger (meta: method.random.ci = "KR") actually used (not the fallback to the classic interval)
+    /** The random-effects result is degenerate: its SE is exactly 0 (plain Hartung-Knapp with q = 0, all weighted study effects identical). The interval then has zero width and the
+     *  test statistic is infinite (p = 0 only as a numerical limit) or 0/0 (p undefined, estimate equal to the null effect), the numbers meta::ci() returns. */
+    public boolean randomSe0() { return seRandom == 0 && !Double.isNaN(teRandom); }
     public String randomLabelSuffix = "";
     public double altTau2 = Double.NaN, altGain = Double.NaN;   // tau^2 of a higher mode of the likelihood (NaN: none), see Rma.higherMode()
     public double tau2, tau, loTau2 = Double.NaN, upTau2 = Double.NaN, loTau = Double.NaN, upTau = Double.NaN;

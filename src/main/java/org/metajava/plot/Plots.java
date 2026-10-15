@@ -56,7 +56,7 @@ public final class Plots {
                 if (useRandom) rows.add(themed(K, poolRow(r, s, p, s.textRandom + p.randomLabelSuffix, false, dg, 100 * wsumFor(r, idx, false) / sr, idx), p, s, o, true, useCommon, false));
                 if (s.predictionSubgroup && !Double.isNaN(p.loPred)) rows.add(piRow(s, p, dg));
                 if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(p, s, true, o) : hetThemed(p, s, K, o); rows.add(t); }
-                if (o.testEffectSubgroup) { Row t = new Row(); t.type = 5; t.text = K == 1 || K == 2 ? testThemed(p, s, true, K) : "Test for effect in subgroup: " + IT + (p.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(s.random ? p.statRandom : p.statCommon, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? p.pRandom : p.pCommon, 4) + ")"; rows.add(t); }
+                if (o.testEffectSubgroup) { Row t = new Row(); t.type = 5; t.text = testLine(p, s, true, K); rows.add(t); }
                 rows.add(blank());
             }
         } else for (int i : ord) rows.add(studyRow(r, i, sc, sr, dg, log));
@@ -65,7 +65,7 @@ public final class Plots {
             if (useRandom) rows.add(themed(K, poolRow(r, s, P, s.textRandom + P.randomLabelSuffix, false, dg, 100, allIdx(n)), P, s, o, false, useCommon, false));
             if (s.prediction && !Double.isNaN(P.loPred)) rows.add(piRow(s, P, dg));
             if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(P, s, false, o) : hetThemed(P, s, K, o); rows.add(t); }
-            if (o.testOverall) { Row t = new Row(); t.type = 5; t.text = K == 1 || K == 2 ? testThemed(P, s, false, K) : "Test for overall effect: " + IT + (P.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(s.random ? P.statRandom : P.statCommon, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? P.pRandom : P.pCommon, 4) + ")"; rows.add(t); }
+            if (o.testOverall) { Row t = new Row(); t.type = 5; t.text = testLine(P, s, false, K); rows.add(t); }
             if (hasSg && o.testSubgroup) { Row t = new Row(); t.type = 5; double q = s.random && !s.common ? r.qbRandom : r.qbCommon, pv = s.random && !s.common ? r.pQbRandom : r.pQbCommon;
                 if (s.random && !s.common && !r.qbRandomNote.isEmpty()) t.text = "Test for subgroup differences: not available (a subgroup has standard error 0)";
                 else t.text = K == 1 || K == 2 ? subgroupThemed(q, r.dfBetween, pv, K) : "Test for subgroup differences: \u03C7\u00B2" + sub(r.dfBetween) + " = " + Fmt.num(q, 2) + ", df = " + r.dfBetween + " (" + IT + "p" + IT + " " + Fmt.pvalEq(pv, 4) + ")"; rows.add(t); }
@@ -111,6 +111,17 @@ public final class Plots {
     static String tauCi(Pool p, Opts o, int K) {
         if (!o.ciTau || Double.isNaN(p.loTau2) || Double.isNaN(p.upTau2)) return "";
         return K == 1 ? " [" + tau3(p.loTau2) + "; " + tau3(p.upTau2) + "]" : K == 2 ? " [" + Fmt.num(p.loTau2, 2) + "; " + Fmt.num(p.upTau2, 2) + "]" : " [" + t4(p.loTau2) + "; " + t4(p.upTau2) + "]";
+    }
+    /** Test line of the forest plot (all themes). A degenerate pooled result (SE = 0: plain Hartung-Knapp with q = 0, all weighted effects identical) has an infinite or undefined
+     *  statistic ("t = Inf (p < 0.0001)" is a numerical artefact), so it is reported as not available instead of as a number. */
+    static String testLine(Pool p, MetaSpec s, boolean sub, int K) {
+        double st = s.random ? p.statRandom : p.statCommon;
+        if (Double.isInfinite(st) || Double.isNaN(st)) {
+            double se = s.random ? p.seRandom : p.seCommon;
+            return (sub ? "Test for effect in subgroup: " : "Test for overall effect: ") + "not available (standard error = 0" + (s.random && se == 0 ? ", Hartung-Knapp with q = 0" : "") + ")";
+        }
+        if (K == 1 || K == 2) return testThemed(p, s, sub, K);
+        return (sub ? "Test for effect in subgroup: " : "Test for overall effect: ") + IT + (p.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(st, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? p.pRandom : p.pCommon, 4) + ")";
     }
     static String testThemed(Pool p, MetaSpec s, boolean sub, int K) {
         double st = s.random ? p.statRandom : p.statCommon, pv = s.random ? p.pRandom : p.pCommon; String L = p.testType.equals("t") && s.random ? "t" : "Z", head = sub ? "Test for effect in subgroup: " : "Test for overall effect: ";
@@ -441,10 +452,11 @@ public final class Plots {
             w.te = s.random ? p.teRandom : p.teCommon; w.lo = s.random ? p.loRandom : p.loCommon; w.up = s.random ? p.upRandom : p.upCommon; w.w = 0.3;
             w.n = p.nHarm; w.rcol1 = Fmt.num(Meta.back(s, w.te, w.n), dg); w.rcol2 = Fmt.ci(Meta.back(s, w.lo, w.n), Meta.back(s, w.up, w.n), dg);
             w.sEst = w.rcol1; w.sLo = Fmt.num(Meta.back(s, w.lo, w.n), dg); w.sUp = Fmt.num(Meta.back(s, w.up, w.n), dg);
-            w.lcols = new String[]{ Fmt.num(s.random ? p.pRandom : p.pCommon, 4).replace("0.0000", "< 0.0001"), Fmt.num(p.tau2, 4), Fmt.num(p.tau, 4), Fmt.num(100 * p.I2, 1) + "%" }; rows.add(w);
+            w.lcols = new String[]{ Report.pooledP(p, s.random, true), Fmt.num(p.tau2, 4), Fmt.num(p.tau, 4), Fmt.num(100 * p.I2, 1) + "%" }; rows.add(w);
             if (s.prediction && s.random && !Double.isNaN(p.loPred)) rows.add(piRow(s, p, dg)); }
         Pool p = r.overall; Row w = themed(ForestTheme.of(o).kind, poolRow(r, s, p, s.random ? s.textRandom : s.textCommon, !s.random, dg, 100, null), p, s, o, false, false, false); w.lcols = new String[]{ "", "", "", "" }; rows.add(w);
         if (s.prediction && s.random) rows.add(piRow(s, p, dg));
+        if (!Report.degenerateNote(s, labels, pools, r.overall).isEmpty()) { Row t = new Row(); t.type = 5; t.text = "Degenerate (SE = 0: Hartung-Knapp with q = 0): zero-width interval, p-value not interpretable"; rows.add(t); }
         MetaSpec s2 = s; BufferedImage im = drawForest(rows, r, o, log, Report.smLabel(s), false, true); return im;
     }
 
