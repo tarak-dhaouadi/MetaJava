@@ -10,6 +10,10 @@ public class Pool {
     // random effects
     public double teRandom, seRandom, loRandom, upRandom, statRandom, pRandom, dfRandom = Double.NaN;
     public String testType = "z";
+    /** Explicit record of the random-effects confidence-interval method that produced the reported result (do not infer it from labels). */
+    public boolean hkPrimary = false;        // Hartung-Knapp (meta: method.random.ci = "HK"), with or without ad hoc correction, even when the ad hoc "ci" rule ended in the z interval
+    public boolean hkZ = false;              // ... and the ad hoc "ci" rule replaced the t interval by the classic z interval
+    public boolean krPrimary = false;        // Kenward-Roger (meta: method.random.ci = "KR") actually used (not the fallback to the classic interval)
     public String randomLabelSuffix = "";
     public double altTau2 = Double.NaN, altGain = Double.NaN;   // tau^2 of a higher mode of the likelihood (NaN: none), see Rma.higherMode()
     public double tau2, tau, loTau2 = Double.NaN, upTau2 = Double.NaN, loTau = Double.NaN, upTau = Double.NaN;
@@ -129,13 +133,13 @@ public class Pool {
                 }
                 default:
             }
-            p.seRandom = seU;
+            p.seRandom = seU; p.hkPrimary = true; p.hkZ = !useT;
             if (useT) { p.dfRandom = dfh; p.testType = "t"; double q = Dist.qt(1 - alpha / 2, dfh); p.loRandom = p.teRandom - q * seU; p.upRandom = p.teRandom + q * seU;
                 p.statRandom = (p.teRandom - nv) / seU; p.pRandom = Dist.ptTwoSided(p.statRandom, dfh); }
             else { p.loRandom = p.teRandom - zc * seU; p.upRandom = p.teRandom + zc * seU; p.statRandom = (p.teRandom - nv) / seU; p.pRandom = Dist.pnormTwoSided(p.statRandom); }
             p.randomLabelSuffix = " (HK" + (s.adhocHakn.isEmpty() ? "" : "-" + s.adhocHakn.substring(0, 2).toUpperCase()) + ")";
         } else if (mr.equals("KR") && cnt > 1) {
-            p.seRandom = p.seKR; p.dfRandom = p.dfKR; p.testType = "t"; double q = Dist.qt(1 - alpha / 2, p.dfKR);
+            p.seRandom = p.seKR; p.dfRandom = p.dfKR; p.testType = "t"; p.krPrimary = true; double q = Dist.qt(1 - alpha / 2, p.dfKR);
             p.loRandom = p.teRandom - q * p.seKR; p.upRandom = p.teRandom + q * p.seKR; p.statRandom = (p.teRandom - nv) / p.seKR; p.pRandom = Dist.ptTwoSided(p.statRandom, p.dfKR); p.randomLabelSuffix = " (KR)";
         } else {
             p.loRandom = p.teRandom - zc * seClassic; p.upRandom = p.teRandom + zc * seClassic;

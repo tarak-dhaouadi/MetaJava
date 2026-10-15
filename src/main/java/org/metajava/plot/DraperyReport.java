@@ -57,7 +57,7 @@ public final class DraperyReport {
         final boolean rel = Drapery.relative(s.sm), zType = !Drapery.PVALUE.equals(o.drapType);
         int k = 0; for (int i = 0; i < r.TE.length; i++) if (ok(r.TE[i]) && ok(r.seTE[i]) && r.seTE[i] > 0) k++;
         if (k == 0) { R.available = false; return R; }
-        Drapery.Shown sh = Drapery.shown(r, o); boolean rnd = sh.random, com = sh.common, both = rnd && com, pred = sh.pred;
+        Drapery.Shown sh = Drapery.shown(r, o); boolean rnd = sh.random || sh.randomSe0, com = sh.common, both = rnd && com, pred = sh.pred;   // sh.randomSe0: the random-effects result is reported although its pooled curve cannot be drawn (SE = 0)
         final double nullW = Drapery.nullOf(s); final boolean hasNull = ok(nullW);
         final java.util.function.DoubleUnaryOperator v = x -> rel ? Math.exp(x) : x;   // plotted scale
         final String eff = rel ? Report.smLabel(s) : s.sm.isEmpty() ? "TE" : s.sm, cl = pct(s.levelMa) + "% CI";
@@ -206,23 +206,38 @@ public final class DraperyReport {
         if (both) b.append(random ? "Random-effects model" : "Common-effect model").append("\n");
         b.append("Pooled ").append(eff).append(": ").append(n4(v.applyAsDouble(te))).append("\n");
         b.append(cl).append(": ").append(ci(v.applyAsDouble(lo), v.applyAsDouble(up))).append("\n");
-        boolean tt = random && "t".equals(P.testType) && ok(P.dfRandom);
-        if (hasNull) {
+        boolean tt = random && "t".equals(P.testType) && ok(P.dfRandom), noCurve = random && ok(se) && se == 0;
+        if (noCurve) b.append("Pooled curve: not drawn. The standard error of the random-effects result is 0").append(P.hkPrimary ? " (the Hartung-Knapp variance factor q is 0: the weighted study estimates are identical)" : "").append(", so the normal-theory curve z(theta) = -|y - theta| / SE is undefined and would collapse to a vertical line at the estimate. The random-effects pooled curve and the prediction region are omitted from the plot; the study curves are unaffected.\n");
+        if (noCurve && hasNull) {
+            b.append("P-value: ").append(ok(p) ? "0" : "undefined (0/0)").append(tt ? " (t-test, d.f. = " + Fmt.num(P.dfRandom, 1) + ")" : " (z-test)").append("; degenerate: SE = 0 makes the test statistic ").append(ok(p) ? "infinite, so the p-value is 0 only as a numerical limit (as ci() of meta computes it)" : "0/0 because the estimate equals the null effect, so the p-value is undefined (NA in meta)").append(" and cannot be interpreted as evidence\n");
+            b.append("Statistical significance at alpha = 0.05: not assessable (degenerate result, SE = 0)\n");
+        } else if (hasNull) {
             b.append("P-value: ").append(Fmt.pval(p, 4)).append(tt ? " (t-test, d.f. = " + Fmt.num(P.dfRandom, 1) + ")" : " (z-test)").append("\n");
             b.append("Statistical significance at alpha = 0.05: ").append(ok(p) ? (p < ALPHA ? "yes" : "no") : "not available").append("\n");
             double pc = Drapery.curve(false, nullW, te, se);
             if (!Fmt.pval(pc, 4).equals(Fmt.pval(p, 4))) b.append("P-value of the plotted curve at the null effect (normal approximation): ").append(Fmt.pval(pc, 4)).append("\n");
         } else b.append("P-value: not available (no null effect defined for this measure)\n");
         double cLo = v.applyAsDouble(te - zc * se), cUp = v.applyAsDouble(te + zc * se);
-        if (!ci(cLo, cUp).equals(ci(v.applyAsDouble(lo), v.applyAsDouble(up))) || Math.abs(s.levelMa - 0.95) > 1e-9)
+        if (!noCurve && (!ci(cLo, cUp).equals(ci(v.applyAsDouble(lo), v.applyAsDouble(up))) || Math.abs(s.levelMa - 0.95) > 1e-9))
             b.append("Hypothetical effects with p >= 0.05 on the plotted curve: ").append(ci(cLo, cUp)).append("\n");
         Hk hk = random && hasNull ? hkSens(P, s, nullW) : null;
         if (hk != null) {
-            boolean sigMain = ok(p) ? p < ALPHA : Drapery.curve(false, nullW, te, se) < ALPHA;
-            b.append("\nSensitivity analysis: Hartung-Knapp adjustment. It is not the inferential method of the pooled curve (classic Wald z test, section 5.2); it only checks the robustness of the conclusion.\n");
+            boolean sigMain = noCurve ? false : ok(p) ? p < ALPHA : Drapery.curve(false, nullW, te, se) < ALPHA;
+            if (hk.primary) b.append(hk.primaryIdx == 0
+                ? "\nComparison of Hartung-Knapp variants. The reported result of the pooled curve already is the conventional Hartung-Knapp adjustment (no ad hoc correction, section 5.2), so this is not a sensitivity analysis against the classic Wald z test; "
+                + (hk.reportedDegenerate() ? "the ad hoc variants below are listed as alternatives (see the note on unavailable comparisons).\n" : "the ad hoc variants below only show how much the conclusion depends on the choice of ad hoc rule.\n")
+                : "\nComparison of Hartung-Knapp variants. The reported result of the pooled curve already is the Hartung-Knapp method with the ad hoc correction '" + hk.vars.get(hk.primaryIdx).name + "' (section 5.2), so this is not a sensitivity analysis against the classic Wald z test; the variants below are alternative Hartung-Knapp specifications that only show how much the conclusion depends on the choice of ad hoc rule.\n");
+            else if (hk.kr) b.append("\nSensitivity analysis: Hartung-Knapp variants. The reported result of the pooled curve uses the Kenward-Roger adjustment (section 5.2); the conventional Hartung-Knapp adjustment and its ad hoc variants below only check the robustness of the conclusion.\n");
+            else b.append("\nSensitivity analysis: Hartung-Knapp adjustment. It is not the inferential method of the pooled curve (classic Wald z test, section 5.2); it only checks the robustness of the conclusion.\n");
             b.append("  Variance factor q = sum w*_i (y_i - mu)^2 / (k - 1) = ").append(n4(hk.q)).append("; classic SE (analysis scale) = ").append(n4(hk.seClassic)).append("; conventional SE_HK = sqrt(q / sum w*_i) = ").append(n4(hk.conv().se)).append("\n");
-            for (HkVar x : hk.vars) b.append("  Ad hoc correction: ").append(x.name).append(" - ").append(x.rule).append("\n    Rule check: ").append(x.check).append("\n    SE = ").append(n4(x.se)).append("; ").append(x.t ? "t distribution, " + Fmt.num(x.df, 0) + " d.f." : "standard normal distribution").append("; ").append(cl).append(" ")
-                .append(ci(v.applyAsDouble(x.lo), v.applyAsDouble(x.up))).append("; P-value: ").append(Fmt.pval(x.p, 4)).append("; conclusion at alpha = 0.05 ").append((x.p < ALPHA) == sigMain ? "unchanged" : "changed").append("\n");
+            if (hk.reportedDegenerate()) b.append("  Comparisons with the reported result are UNAVAILABLE: it is degenerate (SE = 0, zero-width interval, no usable p-value), so it has no conclusion to compare with. The variants below are alternative calculations, each reported on its own; they were not compared with the reported result, and nothing here implies that they agree or differ.\n");
+            for (int j = 0; j < hk.vars.size(); j++) { HkVar x = hk.vars.get(j);
+                b.append("  Ad hoc correction: ").append(x.name).append(hk.primary && j == hk.primaryIdx ? " [reported result]" : hk.reportedDegenerate() ? " [alternative, not the reported result]" : "").append(" - ").append(x.rule).append("\n    Rule check: ").append(x.check).append(hk.reportedDegenerate() && j != hk.primaryIdx && x.applied ? " (this rule applies to this alternative only; it does not change the reported result)" : "").append("\n    SE = ").append(n4(x.se)).append("; ").append(x.t ? "t distribution, " + Fmt.num(x.df, 0) + " d.f." : "standard normal distribution").append("; ").append(cl).append(" ")
+                    .append(ci(v.applyAsDouble(x.lo), v.applyAsDouble(x.up)));
+                if (x.degenerate) b.append("; degenerate: SE_HK = 0 gives a zero-width interval; P-value: ").append(ok(x.p) ? "0 only as a numerical limit (infinite test statistic, as ci() of meta computes it)" : "undefined (0/0: the estimate equals the null effect)").append(", not interpretable; conclusion at alpha = 0.05 not assessable\n");
+                else b.append("; P-value: ").append(Fmt.pval(x.p, 4)).append("; ").append(hk.reportedDegenerate() ? NO_COMPARISON : "conclusion at alpha = 0.05 " + ((x.p < ALPHA) == sigMain ? "unchanged" : "changed")).append("\n"); }
+            b.append("\n").append(hk.primary ? "Summary of the comparison of Hartung-Knapp variants" : "Summary of the sensitivity analysis").append(" (analysis of the reported random-effects result):\n").append(hkTable(hk, P, p, te, se, lo, up, sigMain, cl, v)).append("\n")
+                .append(hk.reportedDegenerate() ? "Conclusion vs reported: Unavailable = the reported result is degenerate (SE = 0), so no comparison was made; the rows other than the reported one are alternatives shown with their own results, and 'Ad hoc rule triggered' refers to each alternative's own rule.\n" : "");
         }
         return b.toString();
     }
@@ -237,25 +252,69 @@ public final class DraperyReport {
     private static final String GROUPS = " in the experimental group than in the control group";
 
     /** One Hartung-Knapp variant: SE on the analysis scale, reference distribution (d.f. NaN = standard normal), CI and two-sided p-value for the null. */
-    private static final class HkVar {
+    private static final class HkVar { boolean degenerate;
         String name, rule, check; double se, df, lo, up, p; boolean t, applied;
         boolean same(HkVar o) { return Fmt.num(lo, 4).equals(Fmt.num(o.lo, 4)) && Fmt.num(up, 4).equals(Fmt.num(o.up, 4)) && Fmt.pval(p, 4).equals(Fmt.pval(o.p, 4)); }
     }
-    private static final class Hk { double q, seClassic; List<HkVar> vars = new ArrayList<>(); HkVar conv() { return vars.get(0); } }
+    private static final class Hk { double q, seClassic; boolean primary, kr; int primaryIdx = -1; List<HkVar> vars = new ArrayList<>(); HkVar conv() { return vars.get(0); }
+        /** The reported result is itself degenerate (plain Hartung-Knapp with q = 0): it cannot serve as the reference for "unchanged / changed". */
+        boolean reportedDegenerate() { return primary && primaryIdx >= 0 && vars.get(primaryIdx).degenerate; } }
+
+    /** Statement used wherever a comparison with a degenerate reported result is not possible: unavailable, never "equivalent". */
+    private static final String NO_COMPARISON = "comparison with the reported result unavailable (the reported result is degenerate, SE = 0)";
+
+    /** The random-effects result has a standard error of exactly 0 (Hartung-Knapp with q = 0): the pooled curve cannot be drawn. */
+    private static boolean zeroSe(Pool P) { return ok(P.teRandom) && ok(P.seRandom) && P.seRandom == 0; }
 
     /**
-     * Hartung-Knapp sensitivity analysis for a random-effects result obtained with the classic Wald z test (k >= 3): the conventional adjustment and each ad hoc
-     * variant (se, ci, IQWiG6), calculated exactly as MetaJava does when Hartung-Knapp is chosen as the reported method. Null when not applicable
-     * (t-based reported test, GLMM / LRP / SSW pooling, fewer than 3 studies).
+     * Summary table of the Hartung-Knapp block (also recorded for the Excel / Word export): the reported result (classic Wald z or Kenward-Roger; when the reported result is
+     * itself a Hartung-Knapp variant it is marked in the list of variants) and the four Hartung-Knapp variants, each with SE, reference distribution, CI, p-value, significance at
+     * 0.05, whether its ad hoc rule was triggered and whether the 5% conclusion differs from the reported one.
+     */
+    private static String hkTable(Hk hk, Pool P, double pRep, double teRep, double seRep, double loRep, double upRep, boolean sigMain, String cl, java.util.function.DoubleUnaryOperator v) {
+        List<String> head = new ArrayList<>(List.of("Method", "Distribution", "SE", cl, "p-value", "Significant at 0.05", "Ad hoc rule triggered", "Conclusion vs reported")); List<String[]> rows = new ArrayList<>();
+        if (!hk.primary) {
+            boolean t = "t".equals(P.testType) && ok(P.dfRandom);
+            rows.add(new String[]{(hk.kr ? "Kenward-Roger, t" : "Classic Wald, z") + " [reported]", t ? "t (" + Fmt.num(P.dfRandom, Math.abs(P.dfRandom - Math.rint(P.dfRandom)) < 1e-9 ? 0 : 2) + " d.f.)" : "normal", n4(seRep), ci(v.applyAsDouble(loRep), v.applyAsDouble(upRep)),
+                Fmt.pval(pRep, 4), ok(pRep) ? (pRep < ALPHA ? "Yes" : "No") : "NA", "-", "-"});
+        }
+        String[] lab = {"Conventional Hartung-Knapp", "Hartung-Knapp, ad hoc se", "Hartung-Knapp, ad hoc ci", "Hartung-Knapp, IQWiG 6"};
+        for (int j = 0; j < hk.vars.size(); j++) { HkVar x = hk.vars.get(j); boolean rep = hk.primary && j == hk.primaryIdx;
+            String dist = x.t ? "t (" + Fmt.num(x.df, 0) + " d.f.)" : "normal";
+            if (x.degenerate) rows.add(new String[]{lab[j] + (rep ? " [reported]" : ""), dist, n4(x.se), ci(v.applyAsDouble(x.lo), v.applyAsDouble(x.up)), ok(x.p) ? "0 (degenerate)" : "undefined (0/0)", "NA", j == 0 ? "-" : x.applied ? "Yes" : "No", rep ? "-" : hk.reportedDegenerate() ? "Unavailable" : "NA"});
+            else rows.add(new String[]{lab[j] + (rep ? " [reported]" : ""), dist, n4(x.se), ci(v.applyAsDouble(x.lo), v.applyAsDouble(x.up)), Fmt.pval(x.p, 4), x.p < ALPHA ? "Yes" : "No", j == 0 ? "-" : x.applied ? "Yes" : "No", rep ? "-" : hk.reportedDegenerate() ? "Unavailable" : (x.p < ALPHA) == sigMain ? "unchanged" : "changed"}); }
+        boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false; right[1] = false; right[6] = false; right[7] = false;
+        return Report.table(head, rows, right);
+    }
+
+    /**
+     * Hartung-Knapp block of the report: the conventional adjustment and each ad hoc variant (se, ci, IQWiG6), calculated exactly as meta::metagen does
+     * (adhoc.hakn.ci = "", "se", "ci", "IQWiG6") and as {@link Pool} does when Hartung-Knapp is chosen as the reported method.
+     * <ul>
+     * <li>Reported result = classic Wald z test: the block is a sensitivity analysis of that result.</li>
+     * <li>Reported result = Hartung-Knapp with an ad hoc correction (also when the "ci" rule has fallen back to the z distribution): the block is a comparison
+     *     of alternative Hartung-Knapp variants, the reported one is marked, and the classic Wald z test is not mentioned as the reported method.</li>
+     * <li>Reported result = plain Hartung-Knapp (no ad hoc correction): the block compares the reported conventional adjustment with the three ad hoc variants.</li>
+     * <li>Reported result = Kenward-Roger: the block is a sensitivity analysis of that result with the four Hartung-Knapp variants.</li>
+     * <li>Reported result = GLMM, LRP or sample-size weighting: no block. GLMM / LRP / SSW have no inverse-variance
+     *     q statistic, and meta does not offer the ad hoc corrections for GLMMs.</li>
+     * </ul>
+     * Boundary cases follow meta, each rule being evaluated on its own: Hartung-Knapp needs k >= 2 studies (t distribution with k - 1 d.f., so k = 2 gives 1 d.f.);
+     * with q = 0 (SE_HK = 0) the conventional interval has zero width and its p-value is 0 (undefined when the estimate equals the null), and the three ad hoc rules
+     * are all triggered (q &lt; 1, and a zero-width interval is narrower than any classic interval), which gives the classic SE. The IQWiG6 comparison interval is the
+     * DerSimonian-Laird interval of the studies that are pooled (studies with missing effect or SE are not pooled; a leave-one-out / subset analysis uses its own
+     * studies). meta::metagen also keeps studies removed with its argument 'exclude' in that comparison interval; MetaJava has no 'exclude' option, so this case cannot occur.
      */
     private static Hk hkSens(Pool P, MetaSpec s, double nullW) {
-        if (P.glmm || P.lrp || "t".equals(P.testType) || !ok(P.tau2) || P.k < 3 || P.idxTE == null || P.idxSE == null || "SSW".equals(s.method) || !ok(nullW)) return null;
+        if (P.glmm || P.lrp || !ok(P.tau2) || P.k < 2 || P.idxTE == null || P.idxSE == null || "SSW".equals(s.method) || !ok(nullW)) return null;
+        String ah = s.adhocHakn == null ? "" : s.adhocHakn; boolean prim = P.hkPrimary;   // explicit method flag set by Pool (never inferred from labels)
+        boolean kr = !prim && P.krPrimary;   // reported result = Kenward-Roger (t): the Hartung-Knapp variants are a sensitivity analysis of it
         int k = P.k; double sw = 0, swy = 0; double[] w = new double[k], vv = new double[k];
         for (int i = 0; i < k; i++) { vv[i] = P.idxSE[i] * P.idxSE[i]; w[i] = 1 / (vv[i] + P.tau2); sw += w[i]; swy += w[i] * P.idxTE[i]; }
         double mu = swy / sw, q = 0; for (int i = 0; i < k; i++) q += w[i] * (P.idxTE[i] - mu) * (P.idxTE[i] - mu);
         q /= (k - 1); double seHK = Math.sqrt(q / sw), seCl = 1 / Math.sqrt(sw), df = k - 1, alpha = 1 - s.levelMa, tc = Dist.qt(1 - alpha / 2, df), zc = Dist.qnorm(1 - alpha / 2);
-        if (!ok(seHK) || seHK <= 0) return null;
-        Hk h = new Hk(); h.q = q; h.seClassic = seCl;
+        if (!ok(seHK) || !ok(seCl)) return null;   // SE_HK = 0 (q = 0) is a valid boundary case of the conventional adjustment, see above
+        Hk h = new Hk(); h.q = q; h.seClassic = seCl; h.primary = prim; h.kr = kr; h.primaryIdx = prim ? Arrays.asList("", "se", "ci", "IQWiG6").indexOf(ah) : -1;
         double dl = Rma.fit(P.idxTE, vv, null, "DL").tau2, sd = 0; for (int i = 0; i < k; i++) sd += 1 / (vv[i] + dl);
         double wHK = 2 * tc * seHK, wCl = 2 * zc * seCl, wDL = 2 * zc / Math.sqrt(sd);
         String[] names = {"none (conventional Hartung-Knapp)", "se", "ci", "IQWiG6"};
@@ -273,7 +332,10 @@ public final class DraperyReport {
             if (j == 2 && trig[2]) { se = seCl; t = false; }
             if (j == 3 && trig[3]) se = seCl;
             HkVar x = new HkVar(); x.name = names[j]; x.rule = rules[j]; x.se = se; x.t = t; x.applied = trig[j]; x.check = checks[j] + (j == 0 ? "" : trig[j] ? ": correction applied" : ": correction not triggered, result identical to the conventional adjustment"); x.df = t ? df : Double.NaN; double c = t ? tc : zc;
-            x.lo = mu - c * se; x.up = mu + c * se; x.p = t ? Dist.ptTwoSided((mu - nullW) / se, df) : Dist.pnormTwoSided((mu - nullW) / se); h.vars.add(x);
+            x.lo = mu - c * se; x.up = mu + c * se;
+            if (se == 0) { x.degenerate = true; x.p = mu == nullW ? Double.NaN : 0.0; }   // as ci() of meta: statistic +-Inf gives p = 0, 0/0 gives NA
+            else x.p = t ? Dist.ptTwoSided((mu - nullW) / se, df) : Dist.pnormTwoSided((mu - nullW) / se);
+            h.vars.add(x);
         }
         return h;
     }
@@ -294,11 +356,34 @@ public final class DraperyReport {
 
     private static String rng0(double te, double se, double zc, java.util.function.DoubleUnaryOperator v) { return ci(v.applyAsDouble(te - zc * se), v.applyAsDouble(te + zc * se)); }
 
+    /** Narrative sentences of the Hartung-Knapp block (comparison of variants or sensitivity analysis), appended to b. */
+    private static void hkNarr(StringBuilder b, Hk hk, boolean sigModel, String cl, java.util.function.DoubleUnaryOperator v) {
+        if (hk != null) { HkVar c0 = hk.conv(); StringBuilder dv = new StringBuilder();
+            String lead = hk.primary ? (hk.primaryIdx == 0 ? "As a comparison of Hartung-Knapp variants (the reported pooled result already is the conventional Hartung-Knapp adjustment without ad hoc correction, so this is not a sensitivity analysis against the classic Wald z test), "
+                    : "As a comparison of Hartung-Knapp variants (the reported pooled result already uses the Hartung-Knapp method with the '" + hk.vars.get(hk.primaryIdx).name + "' ad hoc correction, so this is not a sensitivity analysis against the classic Wald z test), ")
+                : hk.kr ? "As a sensitivity analysis, and not as the inferential method behind the pooled result (the Kenward-Roger adjustment), " : "As a sensitivity analysis, and not as the inferential method behind the pooled curve (the classic Wald z test), ";
+            if (c0.degenerate) b.append(lead).append("the conventional Hartung-Knapp adjustment was degenerate (q = ").append(n4(hk.q)).append(" gives SE_HK = 0, an interval of zero width and a degenerate p-value (0 only as a numerical limit, or undefined when the estimate equals the null); t distribution with ").append(Fmt.num(c0.df, 0)).append(" d.f.), so its conclusion at the 5% level cannot be assessed. ");
+            else b.append(lead).append("the conventional Hartung-Knapp adjustment (SE = sqrt(q / sum w*_i) with q = ").append(n4(hk.q)).append("; t distribution with ").append(Fmt.num(c0.df, 0)).append(" d.f.) gave a ").append(cl).append(" of ")
+                .append(n4(v.applyAsDouble(c0.lo))).append(" to ").append(n4(v.applyAsDouble(c0.up))).append(" (").append(pEq(c0.p)).append(hk.primary && hk.primaryIdx == 0 ? "), which is the reported result. " : "), so the conclusion at the 5% level was " + ((c0.p < ALPHA) == sigModel ? "unchanged. " : "different. "));
+            String[] nm = {"", "'se'", "'ci'", "IQWiG 6"}; StringBuilder nt = new StringBuilder();
+            for (int j = 1; j < 4; j++) { HkVar x = hk.vars.get(j);
+                if (x.applied) dv.append(dv.length() > 0 ? "; " : "").append(nm[j]).append(" ad hoc correction: ").append(n4(v.applyAsDouble(x.lo))).append(" to ").append(n4(v.applyAsDouble(x.up))).append(" (").append(pEq(x.p)).append(")");
+                else nt.append(nt.length() > 0 ? ", " : "").append(nm[j]); }
+            if (dv.length() > 0) b.append(hk.reportedDegenerate() ? "As alternatives (not the reported result), the ad hoc corrections whose rules were triggered gave: " : "Ad hoc corrections that were triggered gave: ").append(dv).append(". ");
+            if (hk.reportedDegenerate()) b.append("These alternatives were not compared with the reported result, because that result is degenerate; comparisons are unavailable, and no statement is made about whether they agree or differ. ");
+            if (nt.length() > 0) b.append("The ad hoc correction").append(nt.indexOf(",") >= 0 ? "s " : " ").append(nt).append(nt.indexOf(",") >= 0 ? " were" : " was").append(" not triggered (the Hartung-Knapp result did not meet the condition of the rule; see the rule checks in section 2), so ").append(nt.indexOf(",") >= 0 ? "they coincide" : "it coincides").append(" with the conventional adjustment. "); }
+    }
+
     /** Narrative sentences for the pooled effect of one model, conditional on the plotted curve and on the reported test. */
     private static String poolNarr(MetaResult r, Pool P, MetaSpec s, boolean random, boolean both, String eff, String cl, double nullW, boolean hasNull, double zc, java.util.function.DoubleUnaryOperator v) {
         double te = random ? P.teRandom : P.teCommon, se = random ? P.seRandom : P.seCommon, lo = random ? P.loRandom : P.loCommon, up = random ? P.upRandom : P.upCommon, p = random ? P.pRandom : P.pCommon;
         boolean differs = !rng0(te, se, zc, v).equals(ci(v.applyAsDouble(lo), v.applyAsDouble(up)));
         String who = both ? (random ? "In the random-effects model" : "In the common-effect model") + ", the" : "The", rng = ci(v.applyAsDouble(te - zc * se), v.applyAsDouble(te + zc * se)).replace(", ", " to ");
+        if (random && ok(se) && se == 0) {   // zero standard error (plain Hartung-Knapp with q = 0): no curve, no significance statement from the degenerate test
+            StringBuilder nb = new StringBuilder(who).append(" pooled effect estimate was ").append(n4(v.applyAsDouble(te))).append(" (").append(cl).append(" ").append(n4(v.applyAsDouble(lo))).append(" to ").append(n4(v.applyAsDouble(up))).append("). ");
+            nb.append("The standard error of this estimate was 0").append(P.hkPrimary ? " (the Hartung-Knapp variance factor q was 0 because the weighted study estimates are identical)" : "").append(", so ").append(ok(p) ? "the test statistic is infinite and the p-value is 0 only as a numerical limit" : "the test statistic is 0/0 and the p-value is undefined").append("; no statement about statistical significance is made from this degenerate result. The random-effects pooled curve cannot be drawn and is omitted from the drapery plot, whereas the study curves are shown. ");
+            Hk hk0 = hasNull ? hkSens(P, s, nullW) : null; if (hk0 != null) hkNarr(nb, hk0, false, cl, v);
+            return nb.toString(); }
         StringBuilder b = new StringBuilder(who).append(" pooled effect estimate was ").append(n4(v.applyAsDouble(te))).append(" (").append(cl).append(" ").append(n4(v.applyAsDouble(lo))).append(" to ").append(n4(v.applyAsDouble(up)));
         if (hasNull) b.append("; ").append(pEq(p)); b.append("). ");
         if (!hasNull) return b.append("No null effect is defined for this measure, so no statement about statistical significance is made; at the 5% level, hypothetical effects from ").append(rng.replace("[", "").replace("]", "")).append(" are compatible with the data (pooled curve on or above the 5% line). ").toString();
@@ -311,15 +396,7 @@ public final class DraperyReport {
         else b.append("The null value (").append(nul).append(") lies within this interval, so the null hypothesis is not rejected and the pooled effect was not statistically significant at the 5% level").append(testTxt).append(". ");
         if (sd != null && ok(tev) && tev != 0) b.append("The point estimate corresponds to ").append(tev > 0 ? sd[1] : sd[0]).append(GROUPS).append(sigCurve ? ". " : ", but the data are also compatible with no effect. ");
         Hk hk = random && hasNull ? hkSens(P, s, nullW) : null;
-        if (hk != null) { HkVar c0 = hk.conv(); StringBuilder dv = new StringBuilder();
-            b.append("As a sensitivity analysis, and not as the inferential method behind the pooled curve (the classic Wald z test), the conventional Hartung-Knapp adjustment (SE = sqrt(q / sum w*_i) with q = ").append(n4(hk.q)).append("; t distribution with ").append(Fmt.num(c0.df, 0)).append(" d.f.) gave a ").append(cl).append(" of ")
-                .append(n4(v.applyAsDouble(c0.lo))).append(" to ").append(n4(v.applyAsDouble(c0.up))).append(" (").append(pEq(c0.p)).append("), so the conclusion at the 5% level was ").append((c0.p < ALPHA) == sigModel ? "unchanged. " : "different. ");
-            String[] nm = {"", "'se'", "'ci'", "IQWiG 6"}; StringBuilder nt = new StringBuilder();
-            for (int j = 1; j < 4; j++) { HkVar x = hk.vars.get(j);
-                if (x.applied) dv.append(dv.length() > 0 ? "; " : "").append(nm[j]).append(" ad hoc correction: ").append(n4(v.applyAsDouble(x.lo))).append(" to ").append(n4(v.applyAsDouble(x.up))).append(" (").append(pEq(x.p)).append(")");
-                else nt.append(nt.length() > 0 ? ", " : "").append(nm[j]); }
-            if (dv.length() > 0) b.append("Ad hoc corrections that were triggered gave: ").append(dv).append(". ");
-            if (nt.length() > 0) b.append("The ad hoc correction").append(nt.indexOf(",") >= 0 ? "s " : " ").append(nt).append(nt.indexOf(",") >= 0 ? " were" : " was").append(" not triggered (the Hartung-Knapp result did not meet the condition of the rule; see the rule checks in section 2), so ").append(nt.indexOf(",") >= 0 ? "they coincide" : "it coincides").append(" with the conventional adjustment. "); }
+        if (hk != null) hkNarr(b, hk, sigModel, cl, v);
         if (sigCurve != sigModel) b.append("Note that the reported p-value uses the t distribution").append(random && ok(P.dfRandom) ? " (d.f. = " + Fmt.num(P.dfRandom, 1) + ")" : "").append(", whereas the plotted curve uses the normal approximation (p = ").append(Fmt.pval(pc, 4)).append(" at the null); the two lead to different conclusions at the 5% level. ");
         return b.toString();
     }
@@ -335,7 +412,8 @@ public final class DraperyReport {
         b.append("  p(theta) = 2 * [1 - Phi(|y - theta| / se)] = 2 * Phi(z(theta)),  Phi = standard normal distribution function\n");
         b.append("The plot shows ").append(zType ? "z(theta); the right-hand axis displays 100 * [1 - p(theta)]%" : "p(theta)").append(". A hypothetical effect belongs to the normal-theory 100(1 - alpha)% confidence interval when p(theta) >= alpha (|z(theta)| <= 1.96 for alpha = 0.05).\n");
         b.append("Study curves use the study estimate and its standard error. ");
-        if (rnd) b.append("The random-effects pooled curve uses the pooled random-effects estimate and the standard error used by the model. ");
+        if (rnd && zeroSe(P)) b.append("The random-effects pooled curve cannot be drawn: the standard error used by the model is 0, so z(theta) = -|y - theta| / se is undefined away from the estimate and the curve would collapse to a vertical line at the estimate. It is omitted from the plot (so is the prediction region, which is drawn around it); the study curves are unaffected. ");
+        else if (rnd) b.append("The random-effects pooled curve uses the pooled random-effects estimate and the standard error used by the model. ");
         if (com) b.append("The common-effect pooled curve uses the pooled common-effect estimate and its standard error. ");
         b.append("The curves always use the normal distribution, whatever distribution the reported test uses.\n");
         if (pred) b.append("The prediction curve has the same form with se* = (c / 1.96) * SE_pred, where c is the critical value of the prediction interval (section 5.4). It is a graphical construction calibrated so that its 5% threshold coincides with the limits of the reported ").append(pct(s.levelPredict)).append("% prediction interval. It is not itself the predictive distribution of the true effect in a future study and should not be interpreted as an additional inferential procedure.\n");
@@ -364,10 +442,10 @@ public final class DraperyReport {
         if (P.glmm) return "generalised linear mixed model (" + s.modelGlmm + ", " + s.nAGQ + " quadrature points) with a random study effect; " + ("t".equals(P.testType) ? "Wald-type t test with k - 1 d.f." : "Wald-type z test") + "; no study weights.";
         String w = "pooled estimate = weighted mean with weights w*_i = 1/(s_i^2 + tau^2) (tau^2 = " + Report.tauLabel(s.methodTau) + " estimate, treated as known). ";
         String mr = s.methodRandomCi == null ? "classic" : s.methodRandomCi;
-        if ("t".equals(P.testType) && "KR".equals(P.randomLabelSuffix.trim().replaceAll("[() ]", ""))) return w + "Kenward-Roger adjustment (Partlett & Riley 2017): approximate small-sample variance of the pooled estimate and Satterthwaite-type degrees of freedom; t distribution.";
-        if (mr.equals("HK") && "t".equals(P.testType)) { String ah = s.adhocHakn == null ? "" : s.adhocHakn;
+        if (P.krPrimary) return w + "Kenward-Roger adjustment (Partlett & Riley 2017): approximate small-sample variance of the pooled estimate and Satterthwaite-type degrees of freedom; t distribution.";
+        if (mr.equals("HK") && ("t".equals(P.testType) || P.hkPrimary)) { String ah = s.adhocHakn == null ? "" : s.adhocHakn;
             return w + "Hartung-Knapp (Knapp-Hartung) adjustment: SE = sqrt( [sum w*_i (y_i - mu)^2 / (k - 1)] / sum w*_i ), t distribution with k - 1 d.f."
-                + (ah.equals("se") ? " Ad hoc correction: SE is not allowed to be smaller than the classic SE." : ah.equals("ci") ? " Ad hoc correction: the classic z interval is used when it is narrower than the Hartung-Knapp interval." : ah.equals("IQWiG6") ? " Ad hoc correction (IQWiG 6): classic SE used when the Hartung-Knapp interval is narrower than the DerSimonian-Laird interval." : ""); }
+                + (ah.equals("se") ? " Ad hoc correction: SE is not allowed to be smaller than the classic SE." : ah.equals("ci") ? " Ad hoc correction: the classic z interval is used when it is wider than the Hartung-Knapp interval." + (!P.hkZ ? "" : " Here the correction was triggered: the classic z interval is reported (standard normal distribution).") : ah.equals("IQWiG6") ? " Ad hoc correction (IQWiG 6): classic SE used when the Hartung-Knapp interval is narrower than the DerSimonian-Laird interval." : ""); }
         if (mr.equals("HK") && s.method.equals("SSW")) return w + "sample-size weights; t distribution with k - 1 d.f.";
         if (s.method.equals("SSW")) return "sample-size weights (n_E * n_C / (n_E + n_C)); SE includes tau^2; Wald z test.";
         return w + "Classic (Wald-type) inference: SE = 1 / sqrt(sum w*_i), standard normal distribution; the uncertainty of tau^2 is not propagated to the interval.";

@@ -34,20 +34,21 @@ public final class Drapery {
     public static Color colour(String name) { for (int i = 0; i < NAMES.length; i++) if (NAMES[i].equals(name)) return new Color(RGB[i]); return null; }
     private static Color colour(String name, Color dflt) { Color c = colour(name); return c != null ? c : dflt; }
 
-    /** Which curves the plot draws (the report of {@link DraperyReport} reads the same decision, so the two never disagree). */
-    public static final class Shown { public boolean random, common, okRandom, okCommon, pred; public String predReason = ""; }
+    /** Which curves the plot draws (the report of {@link DraperyReport} reads the same decision, so the two never disagree). randomSe0: the random-effects result is requested and finite, but its SE is exactly 0, so its pooled curve cannot be drawn. */
+    public static final class Shown { public boolean random, common, okRandom, okCommon, pred, randomSe0; public String predReason = ""; }
 
     public static Shown shown(MetaResult r, Plots.Opts o) {
         MetaSpec s = r.spec; Pool P = r.overall; Shown h = new Shown(); boolean showRandom, showCommon; String mo = o.drapModel == null ? MODEL_AUTO : o.drapModel;
         switch (mo) { case MODEL_RANDOM: showRandom = true; showCommon = false; break; case MODEL_COMMON: showRandom = false; showCommon = true; break; case MODEL_BOTH: showRandom = showCommon = true; break; default: showRandom = s.random; showCommon = s.common; }
         if (!showRandom && !showCommon) showRandom = true;   // nothing selected in the analysis: random effects, as the default of the analysis
         boolean okRandom = !Double.isNaN(P.teRandom) && !Double.isNaN(P.seRandom) && P.seRandom > 0, okCommon = !Double.isNaN(P.teCommon) && !Double.isNaN(P.seCommon) && P.seCommon > 0;
+        boolean se0 = showRandom && !okRandom && !Double.isNaN(P.teRandom) && !Double.isInfinite(P.teRandom) && P.seRandom == 0;
         showRandom &= okRandom; showCommon &= okCommon;
         double sePred = P.sePred, tq = (P.upPred - P.loPred) / sePred / 2;
         boolean predOk = !Double.isNaN(sePred) && sePred > 0 && !Double.isNaN(tq) && !Double.isInfinite(tq);
         h.pred = o.drapPrediction && showRandom && okRandom && predOk;
-        if (!h.pred) h.predReason = !o.drapPrediction ? "the option \"Prediction region\" is turned off" : !showRandom ? "the random-effects curve is not displayed (the prediction region belongs to the random-effects model)" : "no standard-error-based prediction interval is available (it needs enough studies for the chosen method, and the bootstrap method of Nagashima et al. gives no SE)";
-        h.random = showRandom; h.common = showCommon; h.okRandom = okRandom; h.okCommon = okCommon; return h;
+        if (!h.pred) h.predReason = !o.drapPrediction ? "the option \"Prediction region\" is turned off" : !showRandom ? (se0 ? "the random-effects pooled curve cannot be drawn (its standard error is 0), and the prediction region is drawn around that curve" : "the random-effects curve is not displayed (the prediction region belongs to the random-effects model)") : "no standard-error-based prediction interval is available (it needs enough studies for the chosen method, and the bootstrap method of Nagashima et al. gives no SE)";
+        h.randomSe0 = se0; h.random = showRandom; h.common = showCommon; h.okRandom = okRandom; h.okCommon = okCommon; return h;
     }
 
     /** Null effect on the working scale of the plot (log scale for relative effects), NaN when the measure has none. */
