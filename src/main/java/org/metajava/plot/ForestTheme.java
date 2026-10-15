@@ -28,6 +28,8 @@ public final class ForestTheme {
     }
     /** Items of the colour drop-down lists. */
     public static final String[] COLOURS = list(false), FILL_COLOURS = list(true);
+    /** Colour of a palette name (null for "Theme default", "None" and unknown names): used for the swatches of the colour drop-down lists. */
+    public static Color colourOf(String name) { return name == null ? null : PALETTE.get(name); }
     public static final String[] LINE_STYLES = {AUTO, "Solid", "Dotted", "Dashed"};
     private static String[] list(boolean none) { List<String> l = new ArrayList<>(); l.add(AUTO); l.addAll(PALETTE.keySet()); if (none) l.add(NONE); return l.toArray(new String[0]); }
 

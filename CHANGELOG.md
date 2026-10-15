@@ -1,5 +1,9 @@
 # Changelog
 
+### Changed - forest plot colours, precision trim-and-fill
+- The forest-plot drop-down lists *Diamond fill*, *Diamond border*, *Null-effect line colour* and *Pooled-effect line colour* now show a colour swatch in front of every colour, like the Baujat, radial and L'Abbe lists; "color" is spelled "colour" in their labels.
+- New check box *Trim and fill funnel plot of precision* just below *Trim and fill*: trim-and-fill funnel plot with precision (1/SE) on the vertical axis (imputed studies as open circles). It follows the trim-and-fill settings and the funnel-plot options (study labels, funnel theme, contour-enhanced) and can be used with or without the ordinary trim-and-fill plot.
+
 ### Added - Drapery Plot Analysis and Interpretation
 - New section **Drapery Plot Analysis and Interpretation** right below the drapery plot (check box *Drapery plot analysis and interpretation*, on by default, below *Prediction region*). It has two parts: the **Statistical report** (1. Analysis summary, 2. Pooled effect, 3. Individual studies, 4. Prediction region, 5. Interpretation) and the **Drapery plot analysis**, a manuscript-ready narrative (purpose and model, pooled effect and statistical significance, between-study variability and prediction, overall interpretation). Each part has its own *Copy* button; the whole section is included in the Word / Excel export and in the saved text.
 - The table of individual studies (estimate, CI, p-value of the study curve at the null effect, weights, observed power) is always visible.
