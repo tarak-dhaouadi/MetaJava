@@ -1,5 +1,20 @@
 # Changelog
 
+### Fixed - Forest plots: target effect-size of single-group measures (PRAW, PLN, PLOGIT, PAS, PFT, IR, IRLN, IRS, IRFT, MRAW, MLN)
+- The target is only a reference line: the axis is never centred on it and it never hides the studies (centring stays for ratios, differences and ZCOR). The target is drawn at the value entered (e.g. 0.9, or 60 for a rate with irscale = 1000) for every measure, including the Freeman-Tukey ones (PFT, IRFT), whose forest plot was empty with a target because the back-transformation needs n.
+- The axis uses the scale shown in the table (pscale / irscale included): minimum, maximum, tick interval, target, estimates and intervals use the same convention. Statistical results are unchanged.
+- Logarithmic axes of single-group measures (PLN, IRLN, MLN) with a narrow range get round tick values instead of a single tick; tick labels that would overlap are dropped.
+
+### Changed - Forest plots: axis limits of PLN, IRLN and MLN (log-transformed single-group measures)
+- The limits are round values of the 1-2-5 sequence (0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, ...) that always contain every interval drawn (studies, pooled CI, prediction interval, target): the lower limit is the largest such value <= the lowest lower bound (0.09 -> 0.05, 0.02 -> 0.02, 0.003 -> 0.002), the upper limit the smallest value >= the highest upper bound (12 -> 20, 80 -> 100, 663 -> 1000). PLN stays within the scaling factor. Ticks: both limits, every power of ten, then 5 x and 2 x of it when the labels fit. Typed limits still override this. Ratio measures (OR, RR, HR, ...) keep their symmetric axis around 1.
+- ForestAxisTest checks the containment (lower limit <= lowest bound, upper limit >= highest bound) for PLN, IRLN and MLN.
+
+### Added - Forest plots: arrows on truncated intervals
+- Study confidence intervals, prediction intervals and diamonds that run beyond the axis limits (automatic or typed) are cut at the limit and carry an arrow pointing outward, as in meta::forest; diamonds and prediction bars are clipped geometrically. An interval entirely outside the limits is not drawn; a study square is drawn only if its estimate is inside the axis.
+
+### Tests
+- New `ForestAxisTest` (src/test/java/org/metajava): 13 single-group configurations x targets 0.9 / 0.1 x four themes (studies visible), typed limits on both sides and outside, tick interval. Run: `java -cp build/classes:build/test-classes org.metajava.ForestAxisTest`.
+
 ### Added - Reset button
 - New **Reset** button in the header, between "CPU threads" and "Run analysis". It puts every check box, drop-down option, text field and number (meta-analysis settings, forest / funnel / regression / drapery options, export resolution and format, ...) back to its start-up default. The loaded data, the analysis type, the column assignments and the CPU thread count are kept; the covariate / factor selections go back to "none" and the analysis is re-run automatically.
 

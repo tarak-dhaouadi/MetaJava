@@ -255,7 +255,8 @@ public final class Meta {
         if (!s.backtransf) return x;
         double r;
         switch (s.sm) {
-            case "OR": case "RR": case "HR": case "IRR": case "DOR": case "ROM": case "MLN": case "IRLN": return Math.exp(x);
+            case "OR": case "RR": case "HR": case "IRR": case "DOR": case "ROM": case "MLN": return Math.exp(x);
+            case "IRLN": return Math.exp(x) * s.irscale;
             case "PLN": r = Math.exp(x); return (r < 0 ? 0 : r > 1 ? 1 : r) * s.pscale;
             case "VE": return 1 - Math.exp(x);
             case "PLOGIT": return 1 / (1 + Math.exp(-x)) * s.pscale;

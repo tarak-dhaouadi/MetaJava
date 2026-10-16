@@ -282,25 +282,33 @@ public final class Plots {
         int W = (post.isEmpty() ? px1 : post.get(post.size() - 1).xl + post.get(post.size() - 1).w) + M;
         // ---- axis range
         // For measures with a back-transformation (proportions, correlations, ...) the axis is drawn on the back-transformed (original) scale, as meta::forest does.
-        final boolean lin = s.backtransf && linBack(s.sm); final double[] bnd = linBounds(s);
+        final boolean sg = singleGroup(s.sm); final boolean lin = s.backtransf && (linBack(s.sm) || (log && sg)); final double[] bnd = linBounds(s);
         double lo = Double.POSITIVE_INFINITY, hi = Double.NEGATIVE_INFINITY, wmax = 0;
         for (Row w : rows) if (w.type == 0 || w.type == 1 || w.type == 3) { double pe = ptPos(s, lin, w), pl = lin ? P(s, true, w, w.lo) : w.lo, pu = lin ? P(s, true, w, w.up) : w.up; double a = Math.min(pl, pe), b = Math.max(pu, pe); if (!Double.isNaN(a) && !Double.isInfinite(a)) lo = Math.min(lo, a); if (!Double.isNaN(b) && !Double.isInfinite(b)) hi = Math.max(hi, b); if (w.type == 0) wmax = Math.max(wmax, w.w); }
-        double refT = s.nullValue(); final boolean hasRef = !lin || !Double.isNaN(refT);
-        double ref = Double.isNaN(refT) ? 0 : refT; if (lin && hasRef) ref = Meta.back(s, refT, Double.NaN);
+        double refT = s.nullValue(); final boolean hasRef = sg ? !Double.isNaN(refT) : (!lin || !Double.isNaN(refT));
+        double ref = Double.isNaN(refT) ? 0 : refT; if (lin && hasRef) ref = lg(s, sg && s.backtransf && !Double.isNaN(s.nullEffect) ? s.nullEffect : Meta.back(s, refT, Double.NaN));   // single-group: the target is already on the displayed scale (incl. pscale / irscale); PFT / IRFT cannot be back-transformed without n
         // The axis is centred on the null value (as meta::forest, xlim = "symmetric") for measures with a natural null value. For single proportions, rates and means the
         // "target effect size" is only a reference line: it must not squeeze the axis (an extreme target such as 0.9 would otherwise clip every study), so the axis covers the data and the target.
-        final boolean centre = hasRef && (!lin || "ZCOR".equals(s.sm));
+        final boolean centre = hasRef && !sg;
         if (hasRef) { lo = Math.min(lo, ref); hi = Math.max(hi, ref);
             if (centre) { double half = Math.max(ref - lo, hi - ref); if (lin) half = Math.min(half, Math.min(ref - bnd[0], bnd[1] - ref)); if (half > 0) { lo = ref - half; hi = ref + half; } } }
-        if (Double.isInfinite(lo) || Double.isInfinite(hi)) { lo = lin ? bnd[0] : -1; hi = lin ? bnd[1] : 1; }
-        double pad = (hi - lo) * 0.04 + 1e-9; lo -= pad; hi += pad;
+        if (!Double.isFinite(lo) || !Double.isFinite(hi)) { lo = lin ? bnd[0] : -1; hi = lin ? bnd[1] : 1; }
+        final double lo0 = lo, hi0 = hi; double pad = (hi - lo) * 0.04 + 1e-9; lo -= pad; hi += pad;
         if (lin) { if (centre) { double h2 = Math.min(hi - ref, ref - lo); h2 = Math.min(h2, Math.min(ref - bnd[0], bnd[1] - ref)); lo = ref - h2; hi = ref + h2; } else { lo = Math.max(lo, bnd[0]); hi = Math.min(hi, bnd[1]); } }
+        // Log-transformed single-group measures (PLN, IRLN, MLN): the limits are "round" values of the 1-2-5 sequence (..., 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, ...) that always
+        // contain every interval drawn (studies, pooled CI, prediction interval, target): the lower limit is the largest such value <= the lowest bound (0.09 -> 0.05, 0.02 -> 0.02, 0.003 -> 0.002),
+        // the upper limit the smallest value >= the highest bound (12 -> 20, 80 -> 100, 663 -> 1000). PLN stays within the scaling factor.
+        if (log && sg && Double.isFinite(lo0) && Double.isFinite(hi0)) {
+            double vLo = Math.exp(lo0), vHi = Math.exp(hi0); lo = Math.log(round125(vLo, false)); hi = Math.log(round125(vHi, true));
+            if (hi <= lo) hi = lo + Math.log(2); if (bnd[1] < hi) hi = Math.max(bnd[1], Math.max(hi0, lo + 1e-6));
+        }
         // ---- user-defined x-axis limits (given on the displayed scale; for ratio measures on the log axis they are ratios)
         { double uMin = parseAxis(o.xMin), uMax = parseAxis(o.xMax); double span = hi - lo;
           if (log) { if (!(uMin > 0)) uMin = Double.NaN; if (!(uMax > 0)) uMax = Double.NaN; if (!Double.isNaN(uMin)) uMin = Math.log(uMin); if (!Double.isNaN(uMax)) uMax = Math.log(uMax); }
           double nlo = Double.isNaN(uMin) ? lo : uMin, nhi = Double.isNaN(uMax) ? hi : uMax;
           if (!(nhi > nlo)) { if (!Double.isNaN(uMin) && Double.isNaN(uMax)) nhi = nlo + span; else if (Double.isNaN(uMin) && !Double.isNaN(uMax)) nlo = nhi - span; else { nlo = lo; nhi = hi; } }
           lo = nlo; hi = nhi; }
+        lastForestAxis = new double[]{log ? Math.exp(lo) : lo, log ? Math.exp(hi) : hi};
         final double lo2 = lo, hi2 = hi; final int fx0 = px0, fw = plotW; final double[] sh0 = {0}; java.util.function.DoubleUnaryOperator X = v -> fx0 + sh0[0] + (v - lo2) / (hi2 - lo2) * fw;
         if (wmax <= 0) wmax = 1;
         // ---- vertical layout of the table
@@ -317,6 +325,19 @@ public final class Plots {
         double[] ticks = log ? logTicks(Math.exp(lo), Math.exp(hi)) : userTicks(lo, hi, parseAxis(o.xTick)); if (ticks == null) ticks = Canvas.pretty(lo, hi, 5); double tmin = Double.POSITIVE_INFINITY, tmax = Double.NEGATIVE_INFINITY;
         double axL = Double.POSITIVE_INFINITY, axR = Double.NEGATIVE_INFINITY; FontMetrics ft = probe.g.getFontMetrics(Canvas.font(T.tickSize));
         java.util.function.Function<Double, String> TK = t -> K == 3 ? Canvas.tick(t).replaceFirst("^(-?)0\\.", "$1.") : Canvas.tick(t);
+        if (log && sg) {   // powers of ten first, then 5 x and 2 x of them if the labels do not overlap
+            List<double[]> cand = new ArrayList<>(); int kLo = (int) Math.floor(Math.log10(Math.exp(lo))) - 1, kHi = (int) Math.ceil(Math.log10(Math.exp(hi))) + 1;
+            for (int k = kLo; k <= kHi; k++) for (double mlt : new double[]{1, 5, 2}) { double val = mlt * Math.pow(10, k), v = Math.log(val); if (v >= lo - 1e-9 && v <= hi + 1e-9 && k >= -4) cand.add(new double[]{val, Math.abs(v - lo) < 1e-9 || Math.abs(v - hi) < 1e-9 ? -1 : mlt == 1 ? 0 : mlt == 5 ? 1 : 2}); }
+            cand.sort((p1, p2) -> Double.compare(p1[1], p2[1])); List<double[]> acc = new ArrayList<>();
+            for (double[] cd : cand) { double xx = X.applyAsDouble(Math.log(cd[0])), hw = ft.stringWidth(TK.apply(cd[0])) / 2.0; boolean ok = true;
+                for (double[] ac : acc) { double xa = X.applyAsDouble(Math.log(ac[0])), ha = ft.stringWidth(TK.apply(ac[0])) / 2.0; if (Math.abs(xx - xa) < hw + ha + 6) { ok = false; break; } }
+                if (ok) acc.add(cd); }
+            if (acc.size() >= 2) { acc.sort((p1, p2) -> Double.compare(p1[0], p2[0])); ticks = new double[acc.size()]; for (int i = 0; i < ticks.length; i++) ticks[i] = acc.get(i)[0]; }
+        }
+        { List<Double> keepT = new ArrayList<>(); double lastR = Double.NEGATIVE_INFINITY;   // drop tick labels that would overlap their left neighbour
+          for (double tk0 : ticks) { double v0 = log ? Math.log(tk0) : tk0; if (v0 < lo - 1e-9 || v0 > hi + 1e-9) { keepT.add(tk0); continue; }
+            double x0 = X.applyAsDouble(v0), h0 = ft.stringWidth(TK.apply(tk0)) / 2.0; if (x0 - h0 >= lastR + 5) { keepT.add(tk0); lastR = x0 + h0; } }
+          ticks = keepT.stream().mapToDouble(Double::doubleValue).toArray(); }
         for (double t : ticks) { double v = log ? Math.log(t) : t; if (v < lo - 1e-9 || v > hi + 1e-9) continue; tmin = Math.min(tmin, v); tmax = Math.max(tmax, v);
             double xx = X.applyAsDouble(v), hw = ft.stringWidth(TK.apply(t)) / 2.0; axL = Math.min(axL, xx - hw); axR = Math.max(axR, xx + hw); }
         boolean xlab2 = !o.xLeft.isEmpty() || !o.xRight.isEmpty();
@@ -385,7 +406,7 @@ public final class Plots {
         // ---- reference lines
         Pool P = r.overall; double pooled = s.random ? P.teRandom : P.teCommon;
         if (hasRef && ref >= lo - 1e-9 && ref <= hi + 1e-9) { g.setColor(T.nullCol); g.setStroke(T.nullStroke()); c.line(X.applyAsDouble(ref), yFirstTop, X.applyAsDouble(ref), ay); }
-        if (!Double.isNaN(pooled) && firstPool >= 0 && !loo) { double pp = lin ? Meta.back(s, pooled, P.nHarm) : pooled; if (pp >= lo - 1e-9 && pp <= hi + 1e-9) { double yd = K == 3 ? ay : cy[lastPool] - 6; g.setColor(T.pooledCol); g.setStroke(T.pooledStroke()); c.line(X.applyAsDouble(pp), yFirstTop, X.applyAsDouble(pp), yd); } }
+        if (!Double.isNaN(pooled) && firstPool >= 0 && !loo) { double pp = lin ? lg(s, Meta.back(s, pooled, P.nHarm)) : pooled; if (pp >= lo - 1e-9 && pp <= hi + 1e-9) { double yd = K == 3 ? ay : cy[lastPool] - 6; g.setColor(T.pooledCol); g.setStroke(T.pooledStroke()); c.line(X.applyAsDouble(pp), yFirstTop, X.applyAsDouble(pp), yd); } }
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
         // ---- rows
         for (int i = 0; i < tail; i++) {
@@ -405,7 +426,7 @@ public final class Plots {
                     final float LW = K == 3 ? 1.3f : K == 2 ? 1f : 1.1f, TW = 1.3f;
                     if (!(wu >= lo && wl <= hi)) { /* confidence interval entirely outside the axis limits: nothing is drawn */ }
                     else if (T.markerDiamond) {   // BMJ: diamonds in the colour of the CI line
-                        g.setColor(T.ciCol); g.setStroke(new BasicStroke(LW)); c.line(a, mid, b, mid);
+                        g.setColor(T.ciCol); g.setStroke(new BasicStroke(LW)); c.line(a, mid, b, mid); if (wl < lo - 1e-12) arrowHead(g, a, mid, true, 5); if (wu > hi + 1e-12) arrowHead(g, b, mid, false, 5);
                         if (inR) { Path2D d = new Path2D.Double(); double h = size / 2; d.moveTo(xm - h, mid); d.lineTo(xm, mid - h); d.lineTo(xm + h, mid); d.lineTo(xm, mid + h); d.closePath(); g.setColor(T.squareFill); g.fill(d); }
                     } else {
                         if (inR) { g.setColor(T.squareFill); g.fill(new Rectangle2D.Double(bl, mid - size / 2, size, size)); }
@@ -413,21 +434,26 @@ public final class Plots {
                         // if the whole CI fits inside the square, the horizontal line and the vertical tick are white (Default theme only).
                         boolean inside = K == 0 && a >= bl && b <= br;
                         g.setColor(inside ? Color.WHITE : Color.BLACK); g.setStroke(new BasicStroke(LW)); c.line(a, mid, b, mid);
+                        g.setColor(Color.BLACK); if (wl < lo - 1e-12) arrowHead(g, a, mid, true, 5); if (wu > hi + 1e-12) arrowHead(g, b, mid, false, 5); g.setColor(inside ? Color.WHITE : Color.BLACK);
                         if (!inR) { } else if (K == 3) { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xm - 2, mid - 2, 4, 4)); }
                         else { g.setStroke(new BasicStroke(TW)); c.line(xm, mid - 2.5, xm, mid + 2.5); }
                     }
                 }
             } else if (w.type == 1 || w.type == 3) {
-                double rl = lin ? P(s, true, w, w.lo) : w.lo, ru = lin ? P(s, true, w, w.up) : w.up;
-                if (!(ru >= lo && rl <= hi)) { /* entirely outside the axis limits */ }
-                else if (w.type == 1) {
-                double a = X.applyAsDouble(Math.max(lo, Math.min(hi, lin ? P(s, true, w, w.lo) : w.lo))), b = X.applyAsDouble(Math.max(lo, Math.min(hi, lin ? P(s, true, w, w.up) : w.up))), xm = X.applyAsDouble(Math.max(lo, Math.min(hi, lin ? P(s, true, w, w.te) : w.te)));
-                double hh = K == 3 ? 7 : 5; Path2D d = new Path2D.Double(); d.moveTo(a, mid); d.lineTo(xm, mid - hh); d.lineTo(b, mid); d.lineTo(xm, mid + hh); d.closePath();
-                if (T.diamondFill != null) { g.setColor(T.diamondFill); g.fill(d); }
-                if (T.diamondBorder != null) { g.setColor(T.diamondBorder); g.setStroke(new BasicStroke(K == 3 ? 1.1f : 0.9f)); g.draw(d); }
-                } else {
-                double a = X.applyAsDouble(Math.max(lo, Math.min(hi, lin ? P(s, true, w, w.lo) : w.lo))), b = X.applyAsDouble(Math.max(lo, Math.min(hi, lin ? P(s, true, w, w.up) : w.up)));
-                g.setColor(new Color(205, 0, 0)); g.fill(new Rectangle2D.Double(a, mid - 2.5, b - a, 5)); g.setColor(new Color(120, 0, 0)); g.setStroke(new BasicStroke(0.7f)); g.draw(new Rectangle2D.Double(a, mid - 2.5, b - a, 5));
+                double rl = lin ? P(s, true, w, w.lo) : w.lo, ru = lin ? P(s, true, w, w.up) : w.up, rt = lin ? P(s, true, w, w.te) : w.te;
+                if (!(ru >= lo && rl <= hi)) { /* entirely outside the axis limits: nothing is drawn */ }
+                else {
+                    // clipped to the axis (geometrically: the part of the diamond / bar inside the limits), with an arrow at each truncated end, as meta::forest
+                    final double span = hi - lo, cl = lo - 5 * span, ch = hi + 5 * span; final boolean tL = rl < lo - 1e-12, tR = ru > hi + 1e-12;
+                    double a = X.applyAsDouble(Math.max(cl, Math.min(ch, rl))), b = X.applyAsDouble(Math.max(cl, Math.min(ch, ru))), xm = X.applyAsDouble(Math.max(cl, Math.min(ch, rt)));
+                    final double xL = X.applyAsDouble(lo), xR = X.applyAsDouble(hi); java.awt.Shape oldClip = g.getClip(); g.clip(new Rectangle2D.Double(xL, 0, xR - xL, 1e6));
+                    if (w.type == 1) {
+                        double hh = K == 3 ? 7 : 5; Path2D d = new Path2D.Double(); d.moveTo(a, mid); d.lineTo(xm, mid - hh); d.lineTo(b, mid); d.lineTo(xm, mid + hh); d.closePath();
+                        if (T.diamondFill != null) { g.setColor(T.diamondFill); g.fill(d); }
+                        if (T.diamondBorder != null) { g.setColor(T.diamondBorder); g.setStroke(new BasicStroke(K == 3 ? 1.1f : 0.9f)); g.draw(d); }
+                    } else { g.setColor(new Color(205, 0, 0)); g.fill(new Rectangle2D.Double(a, mid - 2.5, b - a, 5)); g.setColor(new Color(120, 0, 0)); g.setStroke(new BasicStroke(0.7f)); g.draw(new Rectangle2D.Double(a, mid - 2.5, b - a, 5)); }
+                    g.setClip(oldClip);
+                    g.setColor(w.type == 3 ? new Color(120, 0, 0) : T.diamondBorder != null ? T.diamondBorder : Color.BLACK); if (tL) arrowHead(g, xL, mid, true, 5); if (tR) arrowHead(g, xR, mid, false, 5);
                 }
             }
             g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
@@ -456,18 +482,39 @@ public final class Plots {
         return t.isEmpty() ? null : t.stream().mapToDouble(Double::doubleValue).toArray();
     }
 
+    /** Limits (displayed scale) of the x-axis of the last forest plot drawn; for checks in the self tests. */
+    public static volatile double[] lastForestAxis;
+
+    /** Nearest value of the 1-2-5 sequence below (up = false) or above (up = true) v, v itself when it belongs to the sequence. */
+    public static double round125(double v, boolean up) {
+        if (!(v > 0) || Double.isInfinite(v)) return v;
+        int k = (int) Math.floor(Math.log10(v)) - 1; double best = Double.NaN;
+        for (int i = k; i <= k + 3; i++) for (double m : new double[]{1, 2, 5}) { double c = m * Math.pow(10, i);
+            if (up) { if (c >= v * (1 - 1e-9) && (Double.isNaN(best) || c < best)) best = c; } else { if (c <= v * (1 + 1e-9) && (Double.isNaN(best) || c > best)) best = c; } }
+        return Double.isNaN(best) ? v : best;
+    }
+
+    /** Small filled arrow head whose tip is at xTip, pointing left or right: marks a confidence interval truncated by the axis limits. */
+    static void arrowHead(Graphics2D g, double xTip, double y, boolean left, double sz) {
+        Path2D p = new Path2D.Double(); double d = left ? sz : -sz; p.moveTo(xTip, y); p.lineTo(xTip + d, y - sz * 0.55); p.lineTo(xTip + d, y + sz * 0.55); p.closePath(); g.fill(p); }
+
     static String plural(String m) { return m.endsWith("s") ? m : m.matches(".*[^aeiou]y") ? m.substring(0, m.length() - 1) + "ies" : m + "s"; }
 
     /** Measures whose forest plot axis is drawn on the back-transformed scale (as in meta::forest). */
-    static boolean linBack(String sm) { switch (sm) { case "PLOGIT": case "PAS": case "PFT": case "ZCOR": case "IRS": case "IRFT": return true; default: return false; } }
+    static boolean linBack(String sm) { switch (sm) { case "PRAW": case "PLOGIT": case "PAS": case "PFT": case "ZCOR": case "IR": case "IRS": case "IRFT": return true; default: return false; } }
+    /** Single-group measures (proportions, rates, means): no null effect unless a target is set, and the axis is never centred on it. */
+    static boolean singleGroup(String sm) { switch (sm) { case "PRAW": case "PLOGIT": case "PLN": case "PAS": case "PFT": case "IR": case "IRLN": case "IRS": case "IRFT": case "MRAW": case "MLN": return true; default: return false; } }
+    /** Axis coordinate of a displayed-scale value: logarithmic for the log-transformed single-group measures (PLN, IRLN, MLN), identity otherwise. */
+    static double lg(MetaSpec s, double v) { return s.backtransf && s.isRatioSm() ? Math.log(v) : v; }
     /** Natural limits of the back-transformed axis. */
     static double[] linBounds(MetaSpec s) {
-        switch (s.sm) { case "ZCOR": return new double[]{-1, 1}; case "IRS": case "IRFT": return new double[]{0, Double.MAX_VALUE}; default: return new double[]{0, s.pscale}; }
+        switch (s.sm) { case "ZCOR": return new double[]{-1, 1}; case "IR": case "IRS": case "IRFT": return new double[]{0, Double.MAX_VALUE};
+            case "PLN": return new double[]{Double.NEGATIVE_INFINITY, Math.log(s.pscale)}; case "IRLN": case "MLN": return new double[]{Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY}; default: return new double[]{0, s.pscale}; }
     }
     /** Position of a value on the back-transformed axis. */
-    static double P(MetaSpec s, boolean lin, Row w, double v) { return lin ? Meta.back(s, v, w.n) : v; }
+    static double P(MetaSpec s, boolean lin, Row w, double v) { return lin ? lg(s, Meta.back(s, v, w.n)) : v; }
     /** Position of the point estimate of a row: event / n for single proportions and rates, else back(TE). */
-    static double ptPos(MetaSpec s, boolean lin, Row w) { return !lin ? w.te : !Double.isNaN(w.ptBack) ? w.ptBack : Meta.back(s, w.te, w.n); }
+    static double ptPos(MetaSpec s, boolean lin, Row w) { return !lin ? w.te : lg(s, !Double.isNaN(w.ptBack) ? w.ptBack : Meta.back(s, w.te, w.n)); }
 
     /** Denser ticks for a log axis (funnel plots): 0.5, 0.6, 0.7, 0.8, 1, 1.2, 1.5, 2 ... thinned to at most 8 when the range is wide; empty when fewer than 3 fit (the caller then uses {@link #logTicks}). */
     static double[] logTicksDense(double lo, double hi) {
@@ -480,7 +527,7 @@ public final class Plots {
         double[] cand = {0.01, 0.02, 0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 4, 5, 10, 20, 50, 100};
         List<Double> t = new ArrayList<>(); for (double c : cand) if (c >= lo * 0.999 && c <= hi * 1.001) t.add(c);
         if (t.size() > 5) { List<Double> u = new ArrayList<>(); for (double c : new double[]{0.1, 0.2, 0.5, 1, 2, 5, 10}) if (c >= lo && c <= hi) u.add(c); t = u; }
-        if (t.size() < 2) { t.clear(); t.add(1.0); }
+        if (t.size() < 2) { t.clear(); if (hi > lo * 1.0001) for (double c : Canvas.pretty(lo, hi, 5)) if (c > 0 && c >= lo * 0.999 && c <= hi * 1.001) t.add(c); if (t.size() < 2) { t.clear(); t.add(1.0); } }
         return t.stream().mapToDouble(Double::doubleValue).toArray();
     }
 
