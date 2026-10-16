@@ -17,7 +17,7 @@ import java.util.List;
 public final class Drapery {
     private Drapery() {}
 
-    public static final String ZVALUE = "zvalue", PVALUE = "pvalue";
+    public static final String ZVALUE = "z-value", PVALUE = "p-value";
     public static final String GRAYSCALE = "grayscale", EQUAL = "equal", LINEWIDTH = "linewidth";
     public static final String LAB_NONE = "None", LAB_ID = "id", LAB_NAME = "study name";
     public static final String MODEL_AUTO = "As main analysis", MODEL_RANDOM = "Random", MODEL_COMMON = "Common", MODEL_BOTH = "Both";

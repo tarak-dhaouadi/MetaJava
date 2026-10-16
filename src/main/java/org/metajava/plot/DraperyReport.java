@@ -83,6 +83,12 @@ public final class DraperyReport {
         a.append("Studies in the data: ").append(r.kAll > 0 ? r.kAll : r.TE.length).append(" (used in the pooled analysis: ").append(k).append(")\n");
         a.append("Display: ").append(zType ? "Test-statistic curves, plotted as the negative absolute z-value -|z| (scaled p-value functions that peak at 0 at the estimate); the right-hand axis gives the confidence level" : "P-value functions").append("\n");
         a.append("Null effect: ").append(hasNull ? eff + " = " + nv(v.applyAsDouble(nullW)) : "not defined for this measure (no threshold statements are made)").append("\n");
+        final double thetaPooled = rnd ? P.teRandom : P.teCommon;
+        final String tgtTxt = o.drapTarget == null ? "" : o.drapTarget.trim(); double tgtW = Double.NaN;
+        if (!tgtTxt.isEmpty()) { double e = Plots.parseAxis(tgtTxt);
+            if (rel) tgtW = e > 0 ? Math.log(e) : Double.NaN; else if (!Double.isNaN(e)) { MetaSpec c = s.clone(); c.nullEffect = e; tgtW = Meta.nullWorking(c, P.nHarm); } }
+        final double targetW = tgtW; final boolean hasTarget = ok(targetW);
+        if (!tgtTxt.isEmpty()) a.append("Target effect (used only for the study-level power): ").append(hasTarget ? eff + " = " + tgtTxt : tgtTxt + " (cannot be used with this effect measure: outside the valid range)").append("\n");
         a.append("Scale of the estimates: ").append(rel ? "back-transformed (the x-axis of the plot is logarithmic)" : analysisScale(s) ? "analysis scale, as plotted (not back-transformed): " + Plots.xlabFor(s) : "as analysed").append("\n");
         a.append("\n2. Pooled effect\n");
         if (rnd) a.append(pooled(r, P, s, true, both, eff, cl, nullW, hasNull, zc, v));
@@ -92,9 +98,9 @@ public final class DraperyReport {
         // ------------------------------------------------------------------ 3. Individual studies (table; expandable in the window)
         R.studyTitle = "3. Individual studies";
         R.studyNote = "Study-level estimates and " + pct(s.level) + "% confidence intervals. P-value (null): the value of the study's own p-value curve at the null effect (normal approximation, as plotted)" + (hasNull ? "." : "; not available because the measure has no null effect.")
-            + " Observed power: power of the two-sided z-test at alpha = 0.05 if the true effect equalled the study's observed estimate (post hoc; it is a direct function of the study's p-value and adds no independent information).";
+            + " Observed power: power of the two-sided z-test at alpha = 0.05 if the true effect equalled the study's observed estimate (post hoc; it is a direct function of the study's p-value and adds no independent information). Power (pooled effect) and Power (target effect): power of the same two-sided z-test (alpha = 0.05, the study's own standard error) against the null effect if the true effect equalled the " + (rnd ? "random-effects" : "common-effect") + " pooled estimate, or the target effect set under \"Drapery plot\"; NA without a null effect" + (hasTarget ? "." : ", and Power (target effect) is NA because no valid target effect is set.");
         List<String> head = new ArrayList<>(List.of("#", "Study", eff, pct(s.level) + "% CI", "p (null)")); boolean wr = !s.noWeights() && rnd, wc = !s.noWeights() && com;
-        if (wr) head.add("%W(random)"); if (wc) head.add("%W(common)"); head.add("Observed power");
+        if (wr) head.add("%W(random)"); if (wc) head.add("%W(common)"); head.add("Observed power"); head.add("Power (pooled effect)"); head.add("Power (target effect)");
         double sumC = 0, sumR = 0; for (int i = 0; i < r.TE.length; i++) { if (r.wCommonFull != null && ok(r.wCommonFull[i])) sumC += r.wCommonFull[i]; if (r.wRandomFull != null && ok(r.wRandomFull[i])) sumR += r.wRandomFull[i]; }
         List<String[]> rows = new ArrayList<>(); int sigStudies = 0;
         for (int i = 0; i < r.TE.length; i++) {
@@ -106,6 +112,7 @@ public final class DraperyReport {
             if (wr) row.add(r.wRandomFull != null && ok(r.wRandomFull[i]) && sumR > 0 ? Fmt.num(100 * r.wRandomFull[i] / sumR, 1) : "NA");
             if (wc) row.add(r.wCommonFull != null && ok(r.wCommonFull[i]) && sumC > 0 ? Fmt.num(100 * r.wCommonFull[i] / sumC, 1) : "NA");
             if (good && hasNull) { double zs = Math.abs(r.TE[i] - nullW) / r.seTE[i]; row.add(Fmt.num(Dist.pnorm(zs - zc) + Dist.pnorm(-zs - zc), 3)); } else row.add("NA");
+            for (double th : new double[]{thetaPooled, targetW}) { if (good && hasNull && ok(th)) { double zs = Math.abs(th - nullW) / r.seTE[i]; row.add(Fmt.num(Dist.pnorm(zs - zc) + Dist.pnorm(-zs - zc), 3)); } else row.add("NA"); }
             rows.add(row.toArray(new String[0])); }
         boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[1] = false;
         R.studyRendered = Report.table(head, rows, right);   // Report.table also records the table for the Excel / Word export

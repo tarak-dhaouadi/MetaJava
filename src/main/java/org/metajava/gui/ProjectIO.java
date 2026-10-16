@@ -112,7 +112,8 @@ final class ProjectIO {
         if (table == null) w.showWelcome();
     }
 
-    private static void select(JComboBox<String> c, String v) { for (int i = 0; i < c.getItemCount(); i++) if (c.getItemAt(i).equals(v)) { c.setSelectedIndex(i); return; } }
+    private static void select(JComboBox<String> c, String v) { if (v.equals("zvalue")) v = "z-value"; else if (v.equals("pvalue")) v = "p-value";   // projects saved before the Drapery types were renamed
+        for (int i = 0; i < c.getItemCount(); i++) if (c.getItemAt(i).equals(v)) { c.setSelectedIndex(i); return; } }
     private static void selectList(JList<String> l, List<Object> want) {
         List<Integer> idx = new ArrayList<>(); ListModel<String> md = l.getModel();
         for (Object o : want) for (int i = 0; i < md.getSize(); i++) if (md.getElementAt(i).equals(String.valueOf(o))) { idx.add(i); break; }

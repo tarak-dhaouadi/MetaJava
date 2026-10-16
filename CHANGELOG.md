@@ -1,5 +1,12 @@
 # Changelog
 
+### Added - Drapery report: target effect-size and two power columns
+- New field "Drapery target effect-size" just below the "Drapery plot" check box (ratios as a ratio, e.g. 0.8; proportions, rates and means on the natural scale; blank = none). It is used only by the Drapery report: no other result or plot changes.
+- Table "3. Individual studies" gets two columns to the right of "Observed power": **Power (pooled effect)** and **Power (target effect)**: power of the two-sided z-test (alpha = 0.05, the study's own standard error) against the null effect if the true effect equalled the pooled estimate (random-effects when shown, else common-effect) or the target. NA when the measure has no null effect (single proportions, rates and means need the main "Target effect-size" as null) or when no valid target is set. Included in the Excel / Word exports.
+
+### Changed - Drapery type
+- The options "zvalue" / "pvalue" are now called "z-value" / "p-value" (projects saved with the old names still load).
+
 ### Fixed - Forest plots (all themes, main / subgroup / leave-one-out / cumulative): extreme target effect-size for single proportions, means and rates
 - The x-axis was centred on the target effect-size even for single proportions and rates, where it is only a reference line. With an extreme target (e.g. 0.9 or 0.1) the axis shrank to 0.8-1 (or 0-0.2), most studies fell outside it and their confidence-interval lines were drawn across the table. The axis now covers all studies, the pooled results and the target (limits stay inside 0 and the scaling factor); only measures with a natural null value (ratios, differences, correlations) remain centred on the null value.
 - Confidence intervals, diamonds and prediction intervals are clipped to the axis limits and drawn only when they overlap them; study squares and the null / pooled lines are drawn only when they lie inside the axis.
