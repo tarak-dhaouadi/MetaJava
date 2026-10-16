@@ -331,7 +331,7 @@ public final class Report {
         if (!s.random) return "";
         List<String> z = new ArrayList<>(); for (int i = 0; i < pools.size() && i < names.size(); i++) if (pools.get(i).k > 0 && pools.get(i).randomSe0()) z.add(names.get(i));
         if (z.isEmpty()) return "";
-        return "Note: the random-effects standard error is 0 for " + String.join(", ", z) + " (Hartung-Knapp with q = 0: all weighted study effects are identical). The estimate is valid, but its confidence interval has zero width and its test statistic and p-value are not available (NA)." + NL + NL;
+        return "Note: the random-effects standard error is 0 for " + String.join(", ", z) + " (Hartung-Knapp with q = 0: all weighted study effects are identical). The estimate is valid, but its confidence interval has zero width" + (s.hasNull() ? " and its test statistic and p-value are not available (NA)." : ".") + NL + NL;
     }
 
     /** Explanation of the degenerate rows of a leave-one-out / cumulative analysis (empty when no row is degenerate). */
@@ -342,6 +342,7 @@ public final class Report {
         if (overall != null && overall.randomSe0()) (Double.isNaN(overall.pRandom) ? nul : inf).add(s.textRandom);
         if (inf.isEmpty() && nul.isEmpty()) return "";
         List<String> all = new ArrayList<>(inf); all.addAll(nul);
+        if (!s.hasNull()) return "Note: the random-effects standard error is 0 for " + String.join(", ", all) + " (Hartung-Knapp with q = 0: all weighted study effects are identical). The estimate is valid, but its confidence interval has zero width.";
         StringBuilder b = new StringBuilder("Note: the random-effects standard error is 0 for " + String.join(", ", all) + " (Hartung-Knapp with q = 0: all weighted study effects are identical). The estimate is valid, but its confidence interval has zero width. ");
         if (!inf.isEmpty()) b.append("For ").append(String.join(", ", inf)).append(" the test statistic is infinite and the p-value is 0 only as a numerical limit. ");
         if (!nul.isEmpty()) b.append("For ").append(String.join(", ", nul)).append(" the estimate equals the null effect, so the test statistic is 0/0 and the p-value is undefined. ");
@@ -352,20 +353,21 @@ public final class Report {
         MetaSpec s = r.spec; StringBuilder b = new StringBuilder(); int d = 4;
         b.append("Leave-One-Out Meta-Analysis Summary").append(NL).append(NL);
         List<String> head = new ArrayList<>(List.of("", s.random ? "" : "", smLabel(s), s.levelMa == 0.95 ? "95% CI" : Fmt.num(s.levelMa * 100, 0) + "% CI", "p-value"));
-        head.remove(1); if (s.random) { head.add("tau^2"); head.add("tau"); } head.add("I^2");
+        head.remove(1); if (!s.hasNull()) head.remove("p-value");   // no null hypothesis (single proportions / means / rates without a target): no test, no p-value
+        if (s.random) { head.add("tau^2"); head.add("tau"); } head.add("I^2");
         if (s.prediction && s.random) head.add(pct(s.levelPredict) + "% PI");
         List<String[]> rows = new ArrayList<>();
         for (int i = 0; i < r.loo.size(); i++) {
             Pool p = r.loo.get(i); List<String> row = new ArrayList<>(); row.add(r.looLabels.get(i));
             double te = s.random ? p.teRandom : p.teCommon, lo = s.random ? p.loRandom : p.loCommon, up = s.random ? p.upRandom : p.upCommon, pv = s.random ? p.pRandom : p.pCommon;
-            row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); row.add(pooledP(p, s.random, false));
+            row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); if (s.hasNull()) row.add(pooledP(p, s.random, false));
             if (s.random) { row.add(Fmt.num(p.tau2, 4)); row.add(Fmt.num(p.tau, 4)); } row.add(Fmt.num(100 * p.I2, 1) + "%");
             if (s.prediction && s.random) row.add(Fmt.ci(bt(s, p.loPred, p), bt(s, p.upPred, p), d));
             rows.add(row.toArray(new String[0]));
         }
         List<String> row = new ArrayList<>(); Pool p = r.overall; row.add(s.random ? s.textRandom : s.textCommon);
         double te = s.random ? p.teRandom : p.teCommon, lo = s.random ? p.loRandom : p.loCommon, up = s.random ? p.upRandom : p.upCommon, pv = s.random ? p.pRandom : p.pCommon;
-        row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); row.add(pooledP(p, s.random, false));
+        row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); if (s.hasNull()) row.add(pooledP(p, s.random, false));
         if (s.random) { row.add(Fmt.num(p.tau2, 4)); row.add(Fmt.num(p.tau, 4)); } row.add(Fmt.num(100 * p.I2, 1) + "%"); if (s.prediction && s.random) row.add(Fmt.ci(bt(s, p.loPred, p), bt(s, p.upPred, p), d));
         boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false;
         MUTE.set(Boolean.TRUE); String t1, t2;
@@ -383,13 +385,17 @@ public final class Report {
         MetaSpec s = r.spec; StringBuilder b = new StringBuilder(); int d = 4;
         b.append("Cumulative Meta-Analysis Summary").append(NL).append(NL);
         List<String> head = new ArrayList<>(List.of("", smLabel(s), Fmt.num(s.levelMa * 100, 0) + "% CI", "p-value"));
+        if (!s.hasNull()) head.remove("p-value");
         if (s.random) { head.add("tau^2"); head.add("tau"); } head.add("I^2");
+        if (s.prediction && s.random) head.add(pct(s.levelPredict) + "% PI");   // as in the leave-one-out table (and the cumulative forest plot, which draws the prediction rows)
         List<String[]> rows = new ArrayList<>();
         for (int i = 0; i < r.cum.size(); i++) {
             Pool p = r.cum.get(i); List<String> row = new ArrayList<>(); row.add(r.cumLabels.get(i));
             double te = s.random ? p.teRandom : p.teCommon, lo = s.random ? p.loRandom : p.loCommon, up = s.random ? p.upRandom : p.upCommon, pv = s.random ? p.pRandom : p.pCommon;
-            row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); row.add(pooledP(p, s.random, false));
-            if (s.random) { row.add(Fmt.num(p.tau2, 4)); row.add(Fmt.num(p.tau, 4)); } row.add(Fmt.num(100 * p.I2, 1) + "%"); rows.add(row.toArray(new String[0]));
+            row.add(Fmt.num(bt(s, te, p), d)); row.add(Fmt.ci(bt(s, lo, p), bt(s, up, p), d)); if (s.hasNull()) row.add(pooledP(p, s.random, false));
+            if (s.random) { row.add(Fmt.num(p.tau2, 4)); row.add(Fmt.num(p.tau, 4)); } row.add(Fmt.num(100 * p.I2, 1) + "%");
+            if (s.prediction && s.random) row.add(Double.isNaN(p.loPred) ? "NA" : Fmt.ci(bt(s, p.loPred, p), bt(s, p.upPred, p), d));
+            rows.add(row.toArray(new String[0]));
         }
         boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false;
         b.append(table(head, rows, right)).append(NL);

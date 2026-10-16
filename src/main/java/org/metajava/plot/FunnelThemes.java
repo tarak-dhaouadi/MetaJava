@@ -80,7 +80,7 @@ public final class FunnelThemes {
 
     // =================================================================== STATA
     static BufferedImage stata(MetaResult r, Plots.Opts o, TrimFill tf) {
-        D d = new D(r, tf, o.precision); final boolean con = o.contour; MetaSpec s = d.s; final double z = Z95;
+        D d = new D(r, tf, o.precision); MetaSpec s = d.s; final boolean con = Plots.contourOn(o, s); final double z = Z95;
         // ---- legend items {kind, text}, filled row by row in two columns
         List<String[]> leg = new ArrayList<>();
         if (con) { leg.add(new String[]{"b1", "1% < p < 5%"}); leg.add(new String[]{"b2", "5% < p < 10%"}); leg.add(new String[]{"b3", "p > 10%"}); } else leg.add(new String[]{"ci", "Pseudo 95% CI"});

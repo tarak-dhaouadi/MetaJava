@@ -83,6 +83,7 @@ public final class PubBias {
     public static Selection selection(MetaResult r, String direction) {
         Selection res = new Selection(); int[] u = usable(r); int k = u.length; res.k = k;
         if (k < 5) { res.error = "The selection model needs at least 5 studies with a standard error (k = " + k + ")."; return res; }
+        if (!r.spec.hasNull()) { res.error = "The selection model needs a null effect (significance and the favoured direction are defined against it): this measure has none by default. Enter a 'Target effect-size' (section 2) to use it."; return res; }
         double nv = nullValue(r);
         double sw = 0, swy = 0; for (int i : u) { double w = 1 / (r.seTE[i] * r.seTE[i]); sw += w; swy += w * (r.TE[i] - nv); }
         boolean neg = "Negative".equals(direction) || (!"Positive".equals(direction) && swy < 0); res.flipped = neg;
@@ -161,6 +162,7 @@ public final class PubBias {
     public static FailSafe failSafe(MetaResult r) {
         FailSafe f = new FailSafe(); int[] u = usable(r); int k = u.length; f.k = k;
         if (k < 2) { f.error = "Fail-safe N needs at least 2 studies (k = " + k + ")."; return f; }
+        if (!r.spec.hasNull()) { f.error = "Fail-safe N needs a null effect (the combined test is against it): this measure has none by default. Enter a 'Target effect-size' (section 2) to use it."; return f; }
         double nv = nullValue(r); f.zAlpha = Dist.qnorm(1 - f.alpha);   // one-tailed 5 %: 1.645
         double sw = 0, swy = 0; for (int i : u) { double z = (r.TE[i] - nv) / r.seTE[i]; f.sumZ += z; double w = 1 / (r.seTE[i] * r.seTE[i]); sw += w; swy += w * (r.TE[i] - nv); }
         f.stouffer = f.sumZ / Math.sqrt(k); f.pStouffer = Dist.pnormTwoSided(f.stouffer);

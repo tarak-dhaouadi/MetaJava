@@ -69,23 +69,34 @@ public class MetaSpec implements Cloneable {
 
     public boolean isRatioSm() { return Arrays.asList("OR", "RR", "HR", "IRR", "DOR", "ROM", "MLN", "PLN", "IRLN").contains(sm); }
 
-    /** Default value of the null hypothesis on the working scale. */
+    /** True when a null hypothesis is defined: a null value is given ("Target effect-size" / null effect) or the measure has a natural one (ratios, differences, correlations).
+     *  Single proportions, means and rates have none by default, as in meta (null.effect = NA): no test and no p-value is reported for them. */
+    public boolean hasNull() { return !Double.isNaN(nullValue()); }
+
+    /** Null value on the working scale. The value entered (nullEffect) is on the natural scale (ratios, proportions, rates, means, correlations) when the results are back-transformed,
+     *  and on the working scale otherwise. NaN: no null hypothesis (or a target that cannot be transformed, e.g. a proportion outside (0, 1)). */
     public double nullValue() {
         if (!Double.isNaN(nullEffect)) {
-            // user supplies on back-transformed scale for ratio measures
-            if (isRatioSm() && backtransf) return Math.log(nullEffect);
-            if (backtransf) switch (sm) {
-                case "PLOGIT": return Math.log(nullEffect / (1 - nullEffect));
-                case "PAS": case "PFT": return Math.asin(Math.sqrt(nullEffect));
-                case "ZCOR": return 0.5 * Math.log((1 + nullEffect) / (1 - nullEffect));
+            double e = nullEffect;
+            if (backtransf) switch (sm) {   // single-group measures: the natural scale includes the scaling factor (pscale / irscale)
+                case "PRAW": { double p = e / pscale; return p >= 0 && p <= 1 ? p : Double.NaN; }
+                case "PLOGIT": { double p = e / pscale; return p > 0 && p < 1 ? Math.log(p / (1 - p)) : Double.NaN; }
+                case "PLN": { double p = e / pscale; return p > 0 && p <= 1 ? Math.log(p) : Double.NaN; }
+                case "PAS": case "PFT": { double p = e / pscale; return p >= 0 && p <= 1 ? Math.asin(Math.sqrt(p)) : Double.NaN; }   // PFT: refined with the harmonic mean n by Meta.nullWorking
+                case "IR": { double r = e / irscale; return r >= 0 ? r : Double.NaN; }
+                case "IRLN": { double r = e / irscale; return r > 0 ? Math.log(r) : Double.NaN; }
+                case "IRS": case "IRFT": { double r = e / irscale; return r >= 0 ? Math.sqrt(r) : Double.NaN; }   // IRFT: refined with the person-time by Meta.nullWorking
+                case "MLN": return e > 0 ? Math.log(e) : Double.NaN;
                 default:
             }
-            return nullEffect;
+            if (isRatioSm() && backtransf) return e > 0 ? Math.log(e) : Double.NaN;
+            if (backtransf && sm.equals("ZCOR")) return Math.abs(e) < 1 ? 0.5 * Math.log((1 + e) / (1 - e)) : Double.NaN;
+            return e;
         }
         switch (sm) {
             case "OR": case "RR": case "HR": case "IRR": case "DOR": case "ROM": case "RD": case "ASD": case "MD": case "SMD":
             case "IRD": case "IRSD": case "ZCOR": case "COR": case "": case "VE": return 0;
-            default: return Double.NaN; // single-group measures: no test by default
+            default: return Double.NaN; // single-group measures: no null hypothesis and no test by default
         }
     }
 

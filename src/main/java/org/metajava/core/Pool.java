@@ -50,7 +50,7 @@ public class Pool {
         double[] ssw = null;   // sample size weights (method = "SSW")
         if (s.method.equals("SSW") && s.sswW != null && s.sswW.length == te.length) { ssw = new double[cnt]; for (int i = 0; i < cnt; i++) ssw[i] = s.sswW[sel[i]]; }
         p.idxTE = y; p.idxSE = new double[cnt]; for (int i = 0; i < cnt; i++) p.idxSE[i] = Math.sqrt(v[i]);
-        double nullv = s.nullValue();
+        double nullv = Meta.nullWorking(s, p.nHarm);
         double zc = Dist.qnorm(1 - (1 - s.levelMa) / 2);
         // ---- common effect
         double sw = 0, swy = 0; p.wCommon = new double[cnt];

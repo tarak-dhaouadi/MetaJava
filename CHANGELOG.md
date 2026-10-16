@@ -1,5 +1,26 @@
 # Changelog
 
+### Fixed - Forest plots (all themes, main / subgroup / leave-one-out / cumulative): extreme target effect-size for single proportions, means and rates
+- The x-axis was centred on the target effect-size even for single proportions and rates, where it is only a reference line. With an extreme target (e.g. 0.9 or 0.1) the axis shrank to 0.8-1 (or 0-0.2), most studies fell outside it and their confidence-interval lines were drawn across the table. The axis now covers all studies, the pooled results and the target (limits stay inside 0 and the scaling factor); only measures with a natural null value (ratios, differences, correlations) remain centred on the null value.
+- Confidence intervals, diamonds and prediction intervals are clipped to the axis limits and drawn only when they overlap them; study squares and the null / pooled lines are drawn only when they lie inside the axis.
+
+### Added - "4. Forest plot": X-axis minimum, X-axis maximum, X-axis tick interval
+- Three optional fields above "X-axis left label" set the limits and the tick spacing of the x-axis (blank = automatic). Values are on the scale shown on the axis (ratios for OR/RR/HR, proportions for single proportions, ...). The tick interval is ignored on logarithmic axes. Invalid entries (not a number, minimum >= maximum, interval <= 0) are refused with a message; the fields are stored in project files.
+
+### Added - "Target effect-size" (section 2, below Type) for single proportions, means and rates
+- Single proportions, means and rates have no natural null hypothesis (meta: `null.effect = NA`), but MetaJava silently tested against 0 (logit(p) = 0, i.e. a proportion of 50 %). Now **no test and no p-value is reported unless a target is given**: results table, forest plots (main and subgroup test lines), leave-one-out and cumulative tables and forest columns, PET-PEESE "p (vs null)" cells; fail-safe N and the selection model report that they need a null effect; contour-enhanced funnel plots are drawn only when a null value exists. The test of subgroup differences is unaffected.
+- The new field "Target effect-size" (enabled for metamean, metaprop and metarate; the generic "Null effect" field of section 3 is disabled for them) is entered on the natural scale (a proportion, a mean, a rate; proportions in the units of the scaling factor) and converted to the working scale of every effect measure (PRAW, PLOGIT, PLN, PAS, PFT, IR, IRLN, IRS, IRFT, MRAW, MLN). For the Freeman-Tukey measures (PFT, IRFT) the conversion uses the harmonic mean sample size of each pool, so that the target back-transforms exactly. An invalid target (not a number, a proportion outside (0, 1), a non-positive mean or rate on the log scale) is refused with a message. With a target, the report and the forest plots show z and p against it and the plots draw the null line at the target. Checked: PLOGIT z equals the manual calculation to 15 digits.
+- The test is not shown at all when the target is empty; the saved project files store the new field automatically.
+
+### Fixed - Forest plots (all themes): test for overall effect with both models
+- With both the common-effect and the random-effects model selected, the forest plot showed one unlabelled test line (the random-effects one). It now shows one labelled line per model, as meta does: "Test for overall effect (common effect): ..." and "(random effects): ...", also for the subgroup lines ("Test for effect in subgroup (...)"), in the Default, RevMan 5, BMJ and STATA themes. With one model the line is unchanged.
+
+### Added - L'Abbe plot (Default theme): legend box
+- Reference line, common-effect line, random-effects line (the dash patterns as drawn) and the confidence / prediction areas when a colour was chosen. Like the ggplot2 style it sits at the top left while the estimated-effect line lies below the no-effect line and at the lower right when it lies above it.
+
+### Changed
+- The cumulative table now has the prediction-interval column (as the leave-one-out table); the fail-safe N text no longer says "zero" when a target effect-size is the null value.
+
 ### Changed - Funnel plot (Default, MetaWin and STATA themes): more tick labels on the log axis
 - For ratio measures (HR, OR, RR ...) the x-axis of the funnel plot, the funnel plot of precision and their trim-and-fill versions now carries intermediate labels (e.g. 0.4, 0.5, 0.6, 0.7, 0.8, 1, 1.2 instead of only 0.5 and 1), thinned automatically (at most 8) when the range is wide. The MetaWin style (SE and precision versions, trim-and-fill included) gets the same intermediate labels; the STATA style as well.
 

@@ -270,6 +270,18 @@ public final class Meta {
         }
     }
 
+    /** Null value on the working scale for a pool whose harmonic mean sample size (person-time) is nHarm. Same as {@link MetaSpec#nullValue()}, except for the Freeman-Tukey measures
+     *  (PFT, IRFT), whose back-transformation depends on nHarm: the working-scale value is then the one that back-transforms to the target (bisection; the back-transformation is increasing). */
+    public static double nullWorking(MetaSpec s, double nHarm) {
+        double nv = s.nullValue();
+        if (Double.isNaN(nv) || !s.backtransf || Double.isNaN(s.nullEffect) || !(nHarm > 0) || !(s.sm.equals("PFT") || s.sm.equals("IRFT"))) return nv;
+        boolean pft = s.sm.equals("PFT"); double target = s.nullEffect, lo = 0, hi = pft ? Math.PI / 2 : 4 * Math.sqrt(Math.max(1e-9, target / s.irscale) + 1) + 1;
+        double flo = back(s, lo, nHarm) - target, fhi = back(s, hi, nHarm) - target;
+        if (!(flo <= 0 && fhi >= 0)) return nv;   // not bracketed (target outside the range of the transformation): keep the large-sample value
+        for (int it = 0; it < 80; it++) { double mid = 0.5 * (lo + hi); if (back(s, mid, nHarm) - target < 0) lo = mid; else hi = mid; }
+        return 0.5 * (lo + hi);
+    }
+
     /** Harmonic mean of the sample sizes (or person-times) of the studies in idx; NaN if not applicable. */
     public static double harmonic(double[] n, int[] idx) {
         if (n == null) return Double.NaN; double s = 0; int c = 0;

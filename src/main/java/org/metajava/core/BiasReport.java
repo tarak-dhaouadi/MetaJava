@@ -45,9 +45,9 @@ public final class BiasReport {
         b.append("The intercept estimates the effect of a hypothetical study with infinite precision (standard error = 0), i.e. free of small-study effects.").append(NL).append(scaleNote(r)).append(NL);
         List<String> head = List.of("Model", "Corrected " + eff, lvl + "% CI", "p (vs null)", "Slope", "p (slope)");
         List<String[]> rows = new ArrayList<>(); PubBias.Reg[] rg = {p.pet, p.peese}; String[] nm = {"PET (effect ~ SE)", "PEESE (effect ~ SE^2)"};
-        for (int i = 0; i < 2; i++) { PubBias.Reg g = rg[i]; rows.add(new String[]{nm[i], Fmt.num(bt(r, g.b0), D), ci(r, g.lo0, g.up0), Fmt.pval(g.p0Null, 4), Fmt.num(g.b1, D), Fmt.pval(g.p1, 4)}); }
+        for (int i = 0; i < 2; i++) { PubBias.Reg g = rg[i]; rows.add(new String[]{nm[i], Fmt.num(bt(r, g.b0), D), ci(r, g.lo0, g.up0), s.hasNull() ? Fmt.pval(g.p0Null, 4) : "NA", Fmt.num(g.b1, D), Fmt.pval(g.p1, 4)}); }
         Pool o = r.overall; boolean rnd = s.random; double te = rnd ? o.teRandom : o.teCommon, lo = rnd ? o.loRandom : o.loCommon, up = rnd ? o.upRandom : o.upCommon, pv = rnd ? o.pRandom : o.pCommon;
-        rows.add(new String[]{rnd ? "Random effects model (unadjusted)" : "Common effect model (unadjusted)", Fmt.num(bt(r, te), D), ci(r, lo, up), rnd && o.randomSe0() ? "NA" : Fmt.pval(pv, 4), "", ""});
+        rows.add(new String[]{rnd ? "Random effects model (unadjusted)" : "Common effect model (unadjusted)", Fmt.num(bt(r, te), D), ci(r, lo, up), !s.hasNull() || rnd && o.randomSe0() ? "NA" : Fmt.pval(pv, 4), "", ""});
         b.append(Report.table(head, rows, new boolean[]{false, true, true, true, true, true})).append(NL);
         b.append("Slope of PET: ").append(Fmt.num(p.pet.b1, D)).append(" (SE = ").append(Fmt.num(p.pet.se1, D)).append("), t = ").append(Fmt.num(p.pet.t1, 2)).append(", df = ").append(p.pet.df).append(", p ").append(Fmt.pvalEq(p.pet.p1, 4))
          .append(" - a significant slope indicates small-study effects / funnel plot asymmetry (this is the Egger regression test).").append(NL).append(NL);
@@ -90,14 +90,14 @@ public final class BiasReport {
         StringBuilder b = new StringBuilder();
         b.append("Fail-safe N (file drawer analysis)").append(NL).append(NL);
         b.append("Number of studies: k = ").append(f.k).append(NL);
-        b.append("Number of unpublished studies with an average effect of zero (the null value) that would be needed to bring the combined result to non-significance (one-tailed alpha = ").append(Fmt.num(f.alpha, 2)).append(", z = ").append(Fmt.num(f.zAlpha, 3)).append(").").append(NL).append(NL);
+        b.append("Number of unpublished studies with an average effect equal to the null value (zero, or the target effect-size) that would be needed to bring the combined result to non-significance (one-tailed alpha = ").append(Fmt.num(f.alpha, 2)).append(", z = ").append(Fmt.num(f.zAlpha, 3)).append(").").append(NL).append(NL);
         List<String[]> rows = new ArrayList<>();
         rows.add(new String[]{"Rosenthal (1979)", "sum z = " + Fmt.num(f.sumZ, 3) + ", Stouffer z = " + Fmt.num(f.stouffer, 3) + ", p " + Fmt.pvalEq(f.pStouffer, 4), String.format(Locale.ROOT, "%.0f", f.nRosenthal)});
         rows.add(new String[]{"Rosenberg (2005)", "common-effect z = " + Fmt.num(f.zFixed, 3) + ", p " + Fmt.pvalEq(f.pFixed, 4), String.format(Locale.ROOT, "%.0f", f.nRosenberg)});
         b.append(Report.table(List.of("Method", "Combined test", "Fail-safe N"), rows, new boolean[]{false, false, true})).append(NL);
         b.append("Rosenthal's tolerance level 5k + 10 = ").append(String.format(Locale.ROOT, "%.0f", f.tolerance)).append(": ");
         b.append(f.nRosenthal > f.tolerance ? "the fail-safe N exceeds it, so the result is considered robust to the file drawer problem (by this rule)." : "the fail-safe N does not exceed it, so the result may not be robust to the file drawer problem (by this rule).").append(NL).append(NL);
-        b.append("Caution: the fail-safe N does not estimate bias and does not adjust the effect; it assumes that all missing studies have exactly zero effect and ignores study precision and heterogeneity. Use it as a rough descriptive measure only, next to the methods above.").append(NL);
+        b.append("Caution: the fail-safe N does not estimate bias and does not adjust the effect; it assumes that all missing studies have exactly the null effect and ignores study precision and heterogeneity. Use it as a rough descriptive measure only, next to the methods above.").append(NL);
         return wrapLines(b.toString(), WIDTH);
     }
 }

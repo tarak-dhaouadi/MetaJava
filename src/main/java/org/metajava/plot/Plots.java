@@ -14,7 +14,7 @@ public final class Plots {
 
     public static class Opts { public double scale = 1; public int width = 900; public String theme = "Default"; public String sortBy = "Original order"; public boolean ascending = true;
         public boolean overall = true, analysisDetails = false, testOverall = true, hetStats = true, studyLabels = true, regLine = true, contour = false, ciI2 = false, ciTau = false;
-        public String xLeft = "", xRight = "", xlab = ""; public boolean showSubgroupName = true, testSubgroup = true, testEffectSubgroup = false; public boolean overallResults = true;
+        public String xLeft = "", xRight = "", xlab = ""; public String xMin = "", xMax = "", xTick = ""; public boolean showSubgroupName = true, testSubgroup = true, testEffectSubgroup = false; public boolean overallResults = true;
         public boolean weightsCol = true, effectCol = true, seCol = true, teCol = true; public double spacing = 1.0; public int digits = 2; public boolean predictionLine = true; public boolean apexLine = false; public String goshPalette = "Default";
         /** Overrides of the forest-plot theme ("Theme default" keeps what the theme prescribes). */
         public boolean confInt = false; public String bubbleStyle = RegPlots.DEFAULT_STYLE, colPoints = RegPlots.POINTS_DEFAULT, colLine = RegPlots.LINE_DEFAULT, colBand = RegPlots.BAND_DEFAULT, colBandLine = RegPlots.BANDLINE_DEFAULT;   // regression plots
@@ -56,7 +56,7 @@ public final class Plots {
                 if (useRandom) rows.add(themed(K, poolRow(r, s, p, s.textRandom + p.randomLabelSuffix, false, dg, 100 * wsumFor(r, idx, false) / sr, idx), p, s, o, true, useCommon, false));
                 if (s.predictionSubgroup && !Double.isNaN(p.loPred)) rows.add(piRow(s, p, dg));
                 if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(p, s, true, o) : hetThemed(p, s, K, o); rows.add(t); }
-                if (o.testEffectSubgroup) { Row t = new Row(); t.type = 5; t.text = testLine(p, s, true, K); rows.add(t); }
+                if (o.testEffectSubgroup) for (String tx : testLines(p, s, true, K)) { Row t = new Row(); t.type = 5; t.text = tx; rows.add(t); }
                 rows.add(blank());
             }
         } else for (int i : ord) rows.add(studyRow(r, i, sc, sr, dg, log));
@@ -65,7 +65,7 @@ public final class Plots {
             if (useRandom) rows.add(themed(K, poolRow(r, s, P, s.textRandom + P.randomLabelSuffix, false, dg, 100, allIdx(n)), P, s, o, false, useCommon, false));
             if (s.prediction && !Double.isNaN(P.loPred)) rows.add(piRow(s, P, dg));
             if (o.hetStats && K != 3) { Row t = new Row(); t.type = 5; t.text = K == 0 ? hetLine(P, s, false, o) : hetThemed(P, s, K, o); rows.add(t); }
-            if (o.testOverall) { Row t = new Row(); t.type = 5; t.text = testLine(P, s, false, K); rows.add(t); }
+            if (o.testOverall) for (String tx : testLines(P, s, false, K)) { Row t = new Row(); t.type = 5; t.text = tx; rows.add(t); }
             if (hasSg && o.testSubgroup) { Row t = new Row(); t.type = 5; double q = s.random && !s.common ? r.qbRandom : r.qbCommon, pv = s.random && !s.common ? r.pQbRandom : r.pQbCommon;
                 if (s.random && !s.common && !r.qbRandomNote.isEmpty()) t.text = "Test for subgroup differences: not available (a subgroup has standard error 0)";
                 else t.text = K == 1 || K == 2 ? subgroupThemed(q, r.dfBetween, pv, K) : "Test for subgroup differences: \u03C7\u00B2" + sub(r.dfBetween) + " = " + Fmt.num(q, 2) + ", df = " + r.dfBetween + " (" + IT + "p" + IT + " " + Fmt.pvalEq(pv, 4) + ")"; rows.add(t); }
@@ -112,20 +112,27 @@ public final class Plots {
         if (!o.ciTau || Double.isNaN(p.loTau2) || Double.isNaN(p.upTau2)) return "";
         return K == 1 ? " [" + tau3(p.loTau2) + "; " + tau3(p.upTau2) + "]" : K == 2 ? " [" + Fmt.num(p.loTau2, 2) + "; " + Fmt.num(p.upTau2, 2) + "]" : " [" + t4(p.loTau2) + "; " + t4(p.upTau2) + "]";
     }
-    /** Test line of the forest plot (all themes). A degenerate pooled result (SE = 0: plain Hartung-Knapp with q = 0, all weighted effects identical) has an infinite or undefined
-     *  statistic ("t = Inf (p < 0.0001)" is a numerical artefact), so it is reported as not available instead of as a number. */
-    static String testLine(Pool p, MetaSpec s, boolean sub, int K) {
-        double st = s.random ? p.statRandom : p.statCommon;
-        if (Double.isInfinite(st) || Double.isNaN(st)) {
-            double se = s.random ? p.seRandom : p.seCommon;
-            return (sub ? "Test for effect in subgroup: " : "Test for overall effect: ") + "not available (standard error = 0" + (s.random && se == 0 ? ", Hartung-Knapp with q = 0" : "") + ")";
-        }
-        if (K == 1 || K == 2) return testThemed(p, s, sub, K);
-        return (sub ? "Test for effect in subgroup: " : "Test for overall effect: ") + IT + (p.testType.equals("t") && s.random ? "t" : "z") + IT + " = " + Fmt.num(st, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(s.random ? p.pRandom : p.pCommon, 4) + ")";
+    /** Test line(s) of the forest plot (all themes). None when there is no null hypothesis (single proportions / means / rates without a "Target effect-size"). With both models selected one
+     *  labelled line per model, as in meta ("Test for overall effect (common effect): ..." / "(random effects)"); otherwise one line. */
+    static List<String> testLines(Pool p, MetaSpec s, boolean sub, int K) {
+        List<String> out = new ArrayList<>(); if (!s.hasNull()) return out;
+        if (s.common && s.random) { out.add(testLine(p, s, sub, K, false, "common effect")); out.add(testLine(p, s, sub, K, true, "random effects")); }
+        else out.add(testLine(p, s, sub, K, s.random, null));
+        return out;
     }
-    static String testThemed(Pool p, MetaSpec s, boolean sub, int K) {
-        double st = s.random ? p.statRandom : p.statCommon, pv = s.random ? p.pRandom : p.pCommon; String L = p.testType.equals("t") && s.random ? "t" : "Z", head = sub ? "Test for effect in subgroup: " : "Test for overall effect: ";
-        return K == 1 ? head + L + " = " + Fmt.num(st, 2) + " (P " + Fmt.pvalEq(pv, 4) + ")" : head + L + "=" + Fmt.num(st, 2) + ", P " + Fmt.pvalEq(pv, 3);
+    /** One test line. A degenerate pooled result (SE = 0: plain Hartung-Knapp with q = 0, all weighted effects identical) has an infinite or undefined statistic ("t = Inf (p < 0.0001)" is a
+     *  numerical artefact), so it is reported as not available instead of as a number. */
+    static String testLine(Pool p, MetaSpec s, boolean sub, int K, boolean rnd, String model) {
+        String head = (sub ? "Test for effect in subgroup" : "Test for overall effect") + (model == null ? "" : " (" + model + ")") + ": ";
+        double st = rnd ? p.statRandom : p.statCommon, pv = rnd ? p.pRandom : p.pCommon;
+        if (Double.isInfinite(st) || Double.isNaN(st)) {
+            double se = rnd ? p.seRandom : p.seCommon;
+            return head + "not available (standard error = 0" + (rnd && se == 0 ? ", Hartung-Knapp with q = 0" : "") + ")";
+        }
+        boolean tt = p.testType.equals("t") && rnd;
+        if (K == 1) return head + (tt ? "t" : "Z") + " = " + Fmt.num(st, 2) + " (P " + Fmt.pvalEq(pv, 4) + ")";
+        if (K == 2) return head + (tt ? "t" : "Z") + "=" + Fmt.num(st, 2) + ", P " + Fmt.pvalEq(pv, 3);
+        return head + IT + (tt ? "t" : "z") + IT + " = " + Fmt.num(st, 2) + " (" + IT + "p" + IT + " " + Fmt.pvalEq(pv, 4) + ")";
     }
     static String subgroupThemed(double q, int df, double pv, int K) {
         if (K == 1) return "Test for subgroup differences: Chi\u00B2 = " + Fmt.num(q, 2) + ", df = " + df + " (P " + Fmt.pvalEq(pv, 4) + "), I\u00B2 = " + Fmt.num(q > df ? 100 * (q - df) / q : 0, 1) + "%";
@@ -240,7 +247,7 @@ public final class Plots {
         MetaSpec s = r.spec; final ForestTheme T = ForestTheme.of(o); final int K = T.kind; final float FS = 12f; int rowH = (int) Math.round(T.rowBase * o.spacing), M = 14, nrow = rows.size();
         final String measure = xlabFor(s), lvl = Fmt.num(s.levelMa * 100, 0) + "% CI", mt = methodTag(s), mdl = s.random ? "Random" : "Fixed";
         // ---- left-hand data columns (events, totals, means ...). BMJ merges events and total into "e / n"; STATA shows no data columns.
-        String[] lh0 = loo ? new String[]{"P-value", "Tau²", "Tau", "I²"} : leftHead(s);
+        String[] lh0 = loo ? (s.hasNull() ? new String[]{"P-value", "Tau²", "Tau", "I²"} : new String[]{"Tau²", "Tau", "I²"}) : leftHead(s);
         final boolean merge = K == 2 && !loo && (s.type.equals("bin") || s.type.equals("inc") || s.type.equals("prop") || s.type.equals("rate")), noData = T.noDataCols;
         final String[] lh = noData ? new String[0] : merge ? (s.type.equals("bin") || s.type.equals("inc") ? new String[]{ s.labelE == null ? "" : s.labelE, s.labelC == null ? "" : s.labelC } : new String[]{ "" }) : lh0;
         final int nl = lh.length;
@@ -280,9 +287,20 @@ public final class Plots {
         for (Row w : rows) if (w.type == 0 || w.type == 1 || w.type == 3) { double pe = ptPos(s, lin, w), pl = lin ? P(s, true, w, w.lo) : w.lo, pu = lin ? P(s, true, w, w.up) : w.up; double a = Math.min(pl, pe), b = Math.max(pu, pe); if (!Double.isNaN(a) && !Double.isInfinite(a)) lo = Math.min(lo, a); if (!Double.isNaN(b) && !Double.isInfinite(b)) hi = Math.max(hi, b); if (w.type == 0) wmax = Math.max(wmax, w.w); }
         double refT = s.nullValue(); final boolean hasRef = !lin || !Double.isNaN(refT);
         double ref = Double.isNaN(refT) ? 0 : refT; if (lin && hasRef) ref = Meta.back(s, refT, Double.NaN);
-        if (hasRef) { lo = Math.min(lo, ref); hi = Math.max(hi, ref); double half = Math.max(ref - lo, hi - ref); if (lin) half = Math.min(half, Math.min(ref - bnd[0], bnd[1] - ref)); if (half > 0) { lo = ref - half; hi = ref + half; } }   // axis centred on the null value (as meta::forest, xlim = "symmetric")
+        // The axis is centred on the null value (as meta::forest, xlim = "symmetric") for measures with a natural null value. For single proportions, rates and means the
+        // "target effect size" is only a reference line: it must not squeeze the axis (an extreme target such as 0.9 would otherwise clip every study), so the axis covers the data and the target.
+        final boolean centre = hasRef && (!lin || "ZCOR".equals(s.sm));
+        if (hasRef) { lo = Math.min(lo, ref); hi = Math.max(hi, ref);
+            if (centre) { double half = Math.max(ref - lo, hi - ref); if (lin) half = Math.min(half, Math.min(ref - bnd[0], bnd[1] - ref)); if (half > 0) { lo = ref - half; hi = ref + half; } } }
         if (Double.isInfinite(lo) || Double.isInfinite(hi)) { lo = lin ? bnd[0] : -1; hi = lin ? bnd[1] : 1; }
-        double pad = (hi - lo) * 0.04 + 1e-9; lo -= pad; hi += pad; if (lin) { if (hasRef) { double h2 = Math.min(hi - ref, ref - lo); h2 = Math.min(h2, Math.min(ref - bnd[0], bnd[1] - ref)); lo = ref - h2; hi = ref + h2; } else { lo = Math.max(lo, bnd[0]); hi = Math.min(hi, bnd[1]); } }
+        double pad = (hi - lo) * 0.04 + 1e-9; lo -= pad; hi += pad;
+        if (lin) { if (centre) { double h2 = Math.min(hi - ref, ref - lo); h2 = Math.min(h2, Math.min(ref - bnd[0], bnd[1] - ref)); lo = ref - h2; hi = ref + h2; } else { lo = Math.max(lo, bnd[0]); hi = Math.min(hi, bnd[1]); } }
+        // ---- user-defined x-axis limits (given on the displayed scale; for ratio measures on the log axis they are ratios)
+        { double uMin = parseAxis(o.xMin), uMax = parseAxis(o.xMax); double span = hi - lo;
+          if (log) { if (!(uMin > 0)) uMin = Double.NaN; if (!(uMax > 0)) uMax = Double.NaN; if (!Double.isNaN(uMin)) uMin = Math.log(uMin); if (!Double.isNaN(uMax)) uMax = Math.log(uMax); }
+          double nlo = Double.isNaN(uMin) ? lo : uMin, nhi = Double.isNaN(uMax) ? hi : uMax;
+          if (!(nhi > nlo)) { if (!Double.isNaN(uMin) && Double.isNaN(uMax)) nhi = nlo + span; else if (Double.isNaN(uMin) && !Double.isNaN(uMax)) nlo = nhi - span; else { nlo = lo; nhi = hi; } }
+          lo = nlo; hi = nhi; }
         final double lo2 = lo, hi2 = hi; final int fx0 = px0, fw = plotW; final double[] sh0 = {0}; java.util.function.DoubleUnaryOperator X = v -> fx0 + sh0[0] + (v - lo2) / (hi2 - lo2) * fw;
         if (wmax <= 0) wmax = 1;
         // ---- vertical layout of the table
@@ -296,7 +314,7 @@ public final class Plots {
         }
         final double yFirstTop = (T.headRule != null ? ruleY : 12 + gh + 14 + rowH * 0.9 - 4), yTableEnd = y;
         // ---- axis ticks (computed up-front: the footer layout depends on the axis extent)
-        double[] ticks = log ? logTicks(Math.exp(lo), Math.exp(hi)) : Canvas.pretty(lo, hi, 5); double tmin = Double.POSITIVE_INFINITY, tmax = Double.NEGATIVE_INFINITY;
+        double[] ticks = log ? logTicks(Math.exp(lo), Math.exp(hi)) : userTicks(lo, hi, parseAxis(o.xTick)); if (ticks == null) ticks = Canvas.pretty(lo, hi, 5); double tmin = Double.POSITIVE_INFINITY, tmax = Double.NEGATIVE_INFINITY;
         double axL = Double.POSITIVE_INFINITY, axR = Double.NEGATIVE_INFINITY; FontMetrics ft = probe.g.getFontMetrics(Canvas.font(T.tickSize));
         java.util.function.Function<Double, String> TK = t -> K == 3 ? Canvas.tick(t).replaceFirst("^(-?)0\\.", "$1.") : Canvas.tick(t);
         for (double t : ticks) { double v = log ? Math.log(t) : t; if (v < lo - 1e-9 || v > hi + 1e-9) continue; tmin = Math.min(tmin, v); tmax = Math.max(tmax, v);
@@ -366,8 +384,8 @@ public final class Plots {
         if (K == 3 && ruleNote >= 0 && fy.length > 0) { g.setColor(T.boxBorder); g.setStroke(new BasicStroke(1f)); c.line(0, ruleNote, Wc, ruleNote); }
         // ---- reference lines
         Pool P = r.overall; double pooled = s.random ? P.teRandom : P.teCommon;
-        if (hasRef) { g.setColor(T.nullCol); g.setStroke(T.nullStroke()); c.line(X.applyAsDouble(ref), yFirstTop, X.applyAsDouble(ref), ay); }
-        if (!Double.isNaN(pooled) && firstPool >= 0 && !loo) { double pp = lin ? Meta.back(s, pooled, P.nHarm) : pooled; double yd = K == 3 ? ay : cy[lastPool] - 6; g.setColor(T.pooledCol); g.setStroke(T.pooledStroke()); c.line(X.applyAsDouble(pp), yFirstTop, X.applyAsDouble(pp), yd); }
+        if (hasRef && ref >= lo - 1e-9 && ref <= hi + 1e-9) { g.setColor(T.nullCol); g.setStroke(T.nullStroke()); c.line(X.applyAsDouble(ref), yFirstTop, X.applyAsDouble(ref), ay); }
+        if (!Double.isNaN(pooled) && firstPool >= 0 && !loo) { double pp = lin ? Meta.back(s, pooled, P.nHarm) : pooled; if (pp >= lo - 1e-9 && pp <= hi + 1e-9) { double yd = K == 3 ? ay : cy[lastPool] - 6; g.setColor(T.pooledCol); g.setStroke(T.pooledStroke()); c.line(X.applyAsDouble(pp), yFirstTop, X.applyAsDouble(pp), yd); } }
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
         // ---- rows
         for (int i = 0; i < tail; i++) {
@@ -382,30 +400,35 @@ public final class Plots {
             if (w.type == 0) {
                 if (!Double.isNaN(w.te)) {
                     double wl = lin ? P(s, true, w, w.lo) : w.lo, wu = lin ? P(s, true, w, w.up) : w.up;
-                    double a = X.applyAsDouble(Math.max(wl, lo)), b = X.applyAsDouble(Math.min(wu, hi)), xm = X.applyAsDouble(ptPos(s, lin, w));
+                    double a = X.applyAsDouble(Math.max(wl, lo)), b = X.applyAsDouble(Math.min(wu, hi)), xm = X.applyAsDouble(ptPos(s, lin, w)); final double ptv = ptPos(s, lin, w); final boolean inR = ptv >= lo - 1e-9 && ptv <= hi + 1e-9;   // point estimate inside the axis limits?
                     double size = Math.max(K == 3 ? 2 : 3, T.markerMax * Math.sqrt(w.w / wmax)), bl = xm - size / 2, br = xm + size / 2;
                     final float LW = K == 3 ? 1.3f : K == 2 ? 1f : 1.1f, TW = 1.3f;
-                    if (T.markerDiamond) {   // BMJ: diamonds in the colour of the CI line
+                    if (!(wu >= lo && wl <= hi)) { /* confidence interval entirely outside the axis limits: nothing is drawn */ }
+                    else if (T.markerDiamond) {   // BMJ: diamonds in the colour of the CI line
                         g.setColor(T.ciCol); g.setStroke(new BasicStroke(LW)); c.line(a, mid, b, mid);
-                        Path2D d = new Path2D.Double(); double h = size / 2; d.moveTo(xm - h, mid); d.lineTo(xm, mid - h); d.lineTo(xm + h, mid); d.lineTo(xm, mid + h); d.closePath(); g.setColor(T.squareFill); g.fill(d);
+                        if (inR) { Path2D d = new Path2D.Double(); double h = size / 2; d.moveTo(xm - h, mid); d.lineTo(xm, mid - h); d.lineTo(xm + h, mid); d.lineTo(xm, mid + h); d.closePath(); g.setColor(T.squareFill); g.fill(d); }
                     } else {
-                        g.setColor(T.squareFill); g.fill(new Rectangle2D.Double(bl, mid - size / 2, size, size));
+                        if (inR) { g.setColor(T.squareFill); g.fill(new Rectangle2D.Double(bl, mid - size / 2, size, size)); }
                         // as meta::forest: the CI line and the vertical tick stay visible on top of the square (solid black);
                         // if the whole CI fits inside the square, the horizontal line and the vertical tick are white (Default theme only).
                         boolean inside = K == 0 && a >= bl && b <= br;
                         g.setColor(inside ? Color.WHITE : Color.BLACK); g.setStroke(new BasicStroke(LW)); c.line(a, mid, b, mid);
-                        if (K == 3) { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xm - 2, mid - 2, 4, 4)); }
+                        if (!inR) { } else if (K == 3) { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xm - 2, mid - 2, 4, 4)); }
                         else { g.setStroke(new BasicStroke(TW)); c.line(xm, mid - 2.5, xm, mid + 2.5); }
                     }
                 }
-            } else if (w.type == 1) {
-                double a = X.applyAsDouble(lin ? P(s, true, w, w.lo) : w.lo), b = X.applyAsDouble(lin ? P(s, true, w, w.up) : w.up), xm = X.applyAsDouble(lin ? P(s, true, w, w.te) : w.te);
+            } else if (w.type == 1 || w.type == 3) {
+                double rl = lin ? P(s, true, w, w.lo) : w.lo, ru = lin ? P(s, true, w, w.up) : w.up;
+                if (!(ru >= lo && rl <= hi)) { /* entirely outside the axis limits */ }
+                else if (w.type == 1) {
+                double a = X.applyAsDouble(Math.max(lo, Math.min(hi, lin ? P(s, true, w, w.lo) : w.lo))), b = X.applyAsDouble(Math.max(lo, Math.min(hi, lin ? P(s, true, w, w.up) : w.up))), xm = X.applyAsDouble(Math.max(lo, Math.min(hi, lin ? P(s, true, w, w.te) : w.te)));
                 double hh = K == 3 ? 7 : 5; Path2D d = new Path2D.Double(); d.moveTo(a, mid); d.lineTo(xm, mid - hh); d.lineTo(b, mid); d.lineTo(xm, mid + hh); d.closePath();
                 if (T.diamondFill != null) { g.setColor(T.diamondFill); g.fill(d); }
                 if (T.diamondBorder != null) { g.setColor(T.diamondBorder); g.setStroke(new BasicStroke(K == 3 ? 1.1f : 0.9f)); g.draw(d); }
-            } else if (w.type == 3) {
-                double a = X.applyAsDouble(lin ? P(s, true, w, w.lo) : w.lo), b = X.applyAsDouble(lin ? P(s, true, w, w.up) : w.up);
+                } else {
+                double a = X.applyAsDouble(Math.max(lo, Math.min(hi, lin ? P(s, true, w, w.lo) : w.lo))), b = X.applyAsDouble(Math.max(lo, Math.min(hi, lin ? P(s, true, w, w.up) : w.up)));
                 g.setColor(new Color(205, 0, 0)); g.fill(new Rectangle2D.Double(a, mid - 2.5, b - a, 5)); g.setColor(new Color(120, 0, 0)); g.setStroke(new BasicStroke(0.7f)); g.draw(new Rectangle2D.Double(a, mid - 2.5, b - a, 5));
+                }
             }
             g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
             for (Col col : pre) c.text(col.val.apply(w), col.ax(col.align), base, FS, col.align, bold);
@@ -421,6 +444,16 @@ public final class Plots {
         if (K == 3) for (int i = 0; i < nNote; i++) { double tw = f11.stringWidth(fTxt.get(i)) + 4; if (M + tw > px0 - 4) { g.setColor(Color.WHITE); g.fill(new Rectangle2D.Double(M - 2, fy[i] - 11, tw + 2, 15)); g.setColor(Color.BLACK); } }   // keep long note lines readable where they cross the reference lines
         for (int i = 0; i < fy.length; i++) { if (fRich.get(i)) rich(c, fTxt.get(i), M, fy[i], 11f, false); else c.text(fTxt.get(i), M, fy[i], 11f, 0, fBold.get(i)); }
         return c.img;
+    }
+
+    /** Parses an x-axis setting typed by the user (blank, or not a finite number: NaN = automatic). Accepts a decimal comma. */
+    static double parseAxis(String s) { if (s == null || s.isBlank()) return Double.NaN; try { double v = Double.parseDouble(s.trim().replace(',', '.')); return Double.isFinite(v) ? v : Double.NaN; } catch (NumberFormatException e) { return Double.NaN; } }
+    /** Ticks every {@code step} units from the first multiple of step inside [lo, hi]; null (= automatic ticks) when step is not set, not positive, or would give more than 60 ticks. */
+    static double[] userTicks(double lo, double hi, double step) {
+        if (!(step > 0) || !((hi - lo) / step <= 60)) return null;
+        double first = Math.ceil(lo / step - 1e-9) * step; List<Double> t = new ArrayList<>();
+        for (int i = 0; first + i * step <= hi + step * 1e-9 && i <= 61; i++) t.add(Math.round((first + i * step) / step * 1e6) / 1e6 * step);
+        return t.isEmpty() ? null : t.stream().mapToDouble(Double::doubleValue).toArray();
     }
 
     static String plural(String m) { return m.endsWith("s") ? m : m.matches(".*[^aeiou]y") ? m.substring(0, m.length() - 1) + "ies" : m + "s"; }
@@ -459,11 +492,11 @@ public final class Plots {
             w.te = s.random ? p.teRandom : p.teCommon; w.lo = s.random ? p.loRandom : p.loCommon; w.up = s.random ? p.upRandom : p.upCommon; w.w = 0.3;
             w.n = p.nHarm; w.rcol1 = Fmt.num(Meta.back(s, w.te, w.n), dg); w.rcol2 = Fmt.ci(Meta.back(s, w.lo, w.n), Meta.back(s, w.up, w.n), dg);
             w.sEst = w.rcol1; w.sLo = Fmt.num(Meta.back(s, w.lo, w.n), dg); w.sUp = Fmt.num(Meta.back(s, w.up, w.n), dg);
-            w.lcols = new String[]{ Report.pooledP(p, s.random, true), Fmt.num(p.tau2, 4), Fmt.num(p.tau, 4), Fmt.num(100 * p.I2, 1) + "%" }; rows.add(w);
+            w.lcols = s.hasNull() ? new String[]{ Report.pooledP(p, s.random, true), Fmt.num(p.tau2, 4), Fmt.num(p.tau, 4), Fmt.num(100 * p.I2, 1) + "%" } : new String[]{ Fmt.num(p.tau2, 4), Fmt.num(p.tau, 4), Fmt.num(100 * p.I2, 1) + "%" }; rows.add(w);
             if (s.prediction && s.random && !Double.isNaN(p.loPred)) rows.add(piRow(s, p, dg)); }
-        Pool p = r.overall; Row w = themed(ForestTheme.of(o).kind, poolRow(r, s, p, s.random ? s.textRandom : s.textCommon, !s.random, dg, 100, null), p, s, o, false, false, false); w.lcols = new String[]{ "", "", "", "" }; rows.add(w);
+        Pool p = r.overall; Row w = themed(ForestTheme.of(o).kind, poolRow(r, s, p, s.random ? s.textRandom : s.textCommon, !s.random, dg, 100, null), p, s, o, false, false, false); w.lcols = s.hasNull() ? new String[]{ "", "", "", "" } : new String[]{ "", "", "" }; rows.add(w);
         if (s.prediction && s.random) rows.add(piRow(s, p, dg));
-        if (!Report.degenerateNote(s, labels, pools, r.overall).isEmpty()) { Row t = new Row(); t.type = 5; t.text = "Degenerate (SE = 0: Hartung-Knapp with q = 0): zero-width interval, p-value not interpretable"; rows.add(t); }
+        if (!Report.degenerateNote(s, labels, pools, r.overall).isEmpty()) { Row t = new Row(); t.type = 5; t.text = s.hasNull() ? "Degenerate (SE = 0: Hartung-Knapp with q = 0): zero-width interval, p-value not interpretable" : "Degenerate (SE = 0: Hartung-Knapp with q = 0): zero-width interval"; rows.add(t); }
         MetaSpec s2 = s; BufferedImage im = drawForest(rows, r, o, log, Report.smLabel(s), false, true); return im;
     }
 
@@ -499,18 +532,18 @@ public final class Plots {
     public static BufferedImage funnel(MetaResult r, Opts o, TrimFill tf) {
         if (FunnelThemes.METAWIN.equals(o.funnelTheme)) return FunnelThemes.metawin(r, o, tf);
         if (FunnelThemes.STATA.equals(o.funnelTheme)) return FunnelThemes.stata(r, o, tf);
-        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); final int extraH = o.contour ? 56 : 0; Canvas c = new Canvas(620, 520 + extraH, o.scale);   // contour-enhanced: room below the x-axis title for the legend
+        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); final int extraH = contourOn(o, s) ? 56 : 0; Canvas c = new Canvas(620, 520 + extraH, o.scale);   // contour-enhanced: room below the x-axis title for the legend
         double[] te = tf != null ? tf.TE : r.TE, se = tf != null ? tf.seTE : r.seTE; String[] lab = tf != null ? tf.studlab : r.studlab; boolean[] fl = tf != null ? tf.filled : null;
         double center = tf != null ? (s.random ? tf.pool.teRandom : tf.pool.teCommon) : (s.random ? r.overall.teRandom : r.overall.teCommon);
         double maxse = 0, mn = 1e300, mx = -1e300; for (int i = 0; i < te.length; i++) if (!Double.isNaN(te[i])) { maxse = Math.max(maxse, se[i]); mn = Math.min(mn, te[i]); mx = Math.max(mx, te[i]); }
         double z = Dist.qnorm(1 - (1 - s.levelMa) / 2); double half = Math.max(z * maxse, Math.max(Math.abs(mx - center), Math.abs(mn - center))) * 1.05;
         double xl = center - half, xh = center + half;
-        if (o.contour && !Double.isNaN(s.nullValue())) { double ref = s.nullValue(); double pad = 0.05 * z * maxse; xl = Math.min(xl, ref - z * maxse - pad); xh = Math.max(xh, ref + z * maxse + pad); }   // the contour bands are centred on the null value: it must be inside the axis range (as in meta / STATA), e.g. hazard ratios far from 1
+        if (contourOn(o, s) && !Double.isNaN(s.nullValue())) { double ref = s.nullValue(); double pad = 0.05 * z * maxse; xl = Math.min(xl, ref - z * maxse - pad); xh = Math.max(xh, ref + z * maxse + pad); }   // the contour bands are centred on the null value: it must be inside the axis range (as in meta / STATA), e.g. hazard ratios far from 1
         { double[] cl = clampRaw(s, xl, xh); xl = cl[0]; xh = cl[1]; }
         if (o.precision) return funnelPrecision(c, s, log, te, se, lab, fl, center, xl, xh, z, o);
         Axes a = axes(c, xl, xh, 0, maxse * 1.05, true, funnelXlab(s), "Standard Error", log, "", 60 + extraH, true);
         Graphics2D g = c.g; double ymax = maxse * 1.05;
-        if (o.contour) { // contour-enhanced
+        if (contourOn(o, s)) { // contour-enhanced
             double[][] bands = {{1.96, 2.576, 0.0}, {1.645, 1.96, 0.0}};
             Color[] cols = {new Color(150, 150, 150), new Color(190, 190, 190), new Color(225, 225, 225)}; double[] zs = {Dist.qnorm(0.995), Dist.qnorm(0.975), Dist.qnorm(0.95)};
             for (int i = 0; i < 3; i++) { Path2D p = new Path2D.Double(); p.moveTo(a.X(-zs[i] * ymax), a.Y(ymax)); p.lineTo(a.X(0), a.Y(0)); p.lineTo(a.X(zs[i] * ymax), a.Y(ymax)); p.closePath(); }
@@ -527,9 +560,12 @@ public final class Plots {
             boolean f = fl != null && fl[i]; if (f) { g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); }
             else { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); }
             if (o.studyLabels) { g.setColor(Color.BLACK); c.text(lab[i], xx + 4, yy - 3, 8, 0, false); } }
-        if (o.contour) contourLegend(c, a);
+        if (contourOn(o, s)) contourLegend(c, a);
         return c.img;
     }
+
+    /** Contour bands are centred on the null value: without one (single proportions / means / rates and no target) the option is ignored. */
+    public static boolean contourOn(Opts o, MetaSpec s) { return o.contour && s.hasNull(); }
 
     /** Legend of the contour bands of a contour-enhanced funnel plot (two-sided p-value of a study against the null value): framed, one row, centred below the x-axis title (as in the STATA style). */
     static void contourLegend(Canvas c, Axes a) {
@@ -543,20 +579,20 @@ public final class Plots {
     /** Default (meta style) funnel plot of precision: precision 1 / SE on the vertical axis (largest at the top), pseudo confidence limits and contour bands are the curves x = centre +/- z / precision. */
     private static BufferedImage funnelPrecision(Canvas c, MetaSpec s, boolean log, double[] te, double[] se, String[] lab, boolean[] fl, double center, double xl, double xh, double z, Opts o) {
         double pmax = 0; for (int i = 0; i < te.length; i++) if (!Double.isNaN(te[i]) && se[i] > 0) pmax = Math.max(pmax, 1 / se[i]); if (pmax <= 0) pmax = 1;
-        Axes a = axes(c, xl, xh, 0, pmax * 1.05, false, funnelXlab(s), "Precision (1/SE)", log, "", 60 + (o.contour ? 56 : 0), true); Graphics2D g = c.g; double ymax = pmax * 1.05, half = xh - xl;
+        Axes a = axes(c, xl, xh, 0, pmax * 1.05, false, funnelXlab(s), "Precision (1/SE)", log, "", 60 + (contourOn(o, s) ? 56 : 0), true); Graphics2D g = c.g; double ymax = pmax * 1.05, half = xh - xl;
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
-        if (o.contour) { double ref = s.nullValue(); if (Double.isNaN(ref)) ref = 0;
+        if (contourOn(o, s)) { double ref = s.nullValue(); if (Double.isNaN(ref)) ref = 0;
             double[] zz = {Dist.qnorm(0.995), Dist.qnorm(0.975), Dist.qnorm(0.95)}; Color[] fills = {new Color(235, 235, 235), new Color(215, 215, 215), new Color(195, 195, 195)};
             for (int i = 0; i < 3; i++) { g.setColor(fills[2 - i]); g.fill(FunnelThemes.curvePoly(a::X, a::Y, ref, zz[i], 0, ymax, half)); } }
         g.setColor(Color.BLACK); c.dashed(a.X(center), a.y0, a.X(center), a.y1);
         g.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{5, 4}, 0));
         g.draw(FunnelThemes.curve(a::X, a::Y, center, -z, 0, ymax, half, true)); g.draw(FunnelThemes.curve(a::X, a::Y, center, z, 0, ymax, half, true)); g.setStroke(new BasicStroke(1f)); g.setClip(clip);
-        if (o.contour) { g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0)); }
+        if (contourOn(o, s)) { g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0)); }
         for (int i = 0; i < te.length; i++) { if (Double.isNaN(te[i]) || !(se[i] > 0)) continue; double xx = a.X(te[i]), yy = a.Y(1 / se[i]);
             boolean f = fl != null && fl[i]; if (f) { g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); }
             else { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); }
             if (o.studyLabels) { g.setColor(Color.BLACK); c.text(lab[i], xx + 4, yy - 3, 8, 0, false); } }
-        if (o.contour) contourLegend(c, a);
+        if (contourOn(o, s)) contourLegend(c, a);
         return c.img;
     }
 
@@ -712,7 +748,31 @@ public final class Plots {
             double xx = a.X(ec[i] / nc[i]), yy = a.Y(ee[i] / ne[i]), dia = 4 * w[i], rad = dia / 2;   // metafor: cex = psize in [0.5, 3.5] -> diameter 2 to 14 px
             g.setColor(LabbePlot.pick(o.labbeCircle, LabbePlot.DEF_CIRCLE)); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia)); g.setColor(LabbePlot.pick(o.labbeSymbol, Color.BLACK)); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia));
             if (o.studyLabels) { g.setColor(Color.BLACK); c.text(r.studlab[i], xx - rad - 3, yy + 3, 8, 2, false); } }
+        labbeLegend(c, a, r, o, lim);
         g.setColor(Color.BLACK); return c.img;
+    }
+    /** Legend box of the Default L'Abbe plot: reference line, line(s) of the pooled effect (common / random: dash patterns as drawn) and the confidence / prediction areas when drawn. As in the ggplot2
+     *  style it sits at the top left while the estimated-effect line lies below the no-effect line and at the lower right when it lies above it, where it never covers the studies. */
+    private static void labbeLegend(Canvas c, Axes a, MetaResult r, Opts o, double lim) {
+        MetaSpec s = r.spec; Graphics2D g = c.g; LabbePlot.Model mo = LabbePlot.model(r);
+        boolean line = LabbePlot.hasLine(s.sm) && !Double.isNaN(mo.te); Color pc = LabbePlot.chosen(o.labbePI), cc = LabbePlot.chosen(o.labbeCI);
+        List<String> labs = new ArrayList<>(); List<Integer> kinds = new ArrayList<>();   // 0 reference, 1 common-effect line, 2 random-effects line, 3 confidence area, 4 prediction area
+        labs.add("Reference line (no effect)"); kinds.add(0);
+        if (line) { if (s.common && !Double.isNaN(r.overall.teCommon)) { labs.add(s.textCommon); kinds.add(1); } if (s.random && !Double.isNaN(r.overall.teRandom)) { labs.add(s.textRandom); kinds.add(2); } }
+        if (line && cc != null && mo.hasCi()) { labs.add(Report.pct(s.levelMa) + "% confidence interval"); kinds.add(3); }
+        if (line && pc != null && mo.hasPi()) { labs.add(Report.pct(s.levelPredict) + "% prediction interval"); kinds.add(4); }
+        FontMetrics fm = g.getFontMetrics(Canvas.font(11f)); double tw = 0; for (String x : labs) tw = Math.max(tw, fm.stringWidth(x));
+        double sample = 36, rowH = 18, bw = 10 + sample + 10 + tw + 12, bh = 8 + rowH * labs.size();
+        boolean upper = line && LabbePlot.lineY(s.sm, mo.te, lim / 2) > lim / 2;
+        double bx = upper ? a.x1 - 10 - bw : a.x0 + 10, by = upper ? a.y1 - 10 - bh : a.y0 + 10;
+        g.setColor(Color.WHITE); g.fill(new Rectangle2D.Double(bx, by, bw, bh)); g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); g.draw(new Rectangle2D.Double(bx, by, bw, bh));
+        for (int i = 0; i < labs.size(); i++) { double cy = by + 4 + rowH * (i + 0.5), sx = bx + 10;
+            switch (kinds.get(i)) {
+                case 0: g.setColor(LabbePlot.pick(o.labbeRef, new Color(211, 211, 211))); g.setStroke(new BasicStroke(1f)); c.line(sx, cy, sx + sample, cy); break;
+                case 1: case 2: g.setColor(LabbePlot.pick(o.labbeEst, Color.BLACK)); g.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, kinds.get(i) == 2 ? new float[]{9, 3} : new float[]{5, 4}, 0)); c.line(sx, cy, sx + sample, cy); break;
+                case 3: g.setColor(cc); g.fill(new Rectangle2D.Double(sx + sample / 2 - 9, cy - 6, 18, 12)); break;
+                default: g.setColor(pc); g.fill(new Rectangle2D.Double(sx + sample / 2 - 9, cy - 6, 18, 12)); }
+            g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); c.text(labs.get(i), sx + sample + 10, cy + 4, 11f, 0, false); }
     }
     /** Symbol sizes of metafor::labbe.rma (plim = c(0.5, 3.5)): wi = sqrt(1/vi) with vi the sum of the arm-level sampling variances (escalc measures PLN for RR, PLO for OR, PR for RD, PAS for ASD, continuity correction as add/to of the model), rescaled linearly to [0.5, 3.5]; all 1 when every wi is equal. */
     public static double[] labbeMetaforPsize(MetaSpec s, double[] ee, double[] ne, double[] ec, double[] nc, double[] te) {

@@ -129,6 +129,7 @@ effect test, heterogeneity statistics (with optional CIs for I² and tau²) and 
 meta-analysis methods" block); left/right axis labels, number of digits, row spacing.
 The x-axis is **centred on the null value** (1 for ratios such as OR, RR, HR, IRR; 0 for MD, SMD, RD, correlations),
 as in `meta::forest`; for single means, proportions and rates, which have no natural null value, the axis is not centred.
+The limits and the tick spacing can be set with *X-axis minimum*, *X-axis maximum* and *X-axis tick interval* (blank = automatic; the tick interval is ignored on logarithmic axes).
 
 **Theme** (applies to every forest plot: main, subgroup, leave-one-out and cumulative; also in the PNG / TIFF / JPG / SVG / PDF exports):
 
