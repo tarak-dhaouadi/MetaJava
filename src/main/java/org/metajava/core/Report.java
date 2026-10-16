@@ -112,7 +112,40 @@ public final class Report {
         b.append(predText(r, p, s));
         if (r.hasSubgroups()) b.append(subgroupText(r));
         b.append(details(r));
+        b.append(tauSensitivity(r));
         return b.toString();
+    }
+
+    /** Estimators of tau^2 compared in {@link #tauSensitivity}. */
+    static final String[] TAU_SENS = {"DL", "REML", "PM", "ML", "HS", "SJ", "HE", "EB"};
+
+    /**
+     * Sensitivity table by tau^2 estimator (random-effects model): the pooled effect, its confidence interval and p-value, I^2, the p-value of the test of heterogeneity,
+     * tau^2 and the prediction interval, re-estimated with each estimator. Everything else (pooling method, CI method of the pooled effect, levels) is kept as in the main analysis.
+     * Empty for common-effect-only analyses, GLMM and penalised-likelihood pooling (no tau^2 estimator to choose) and fewer than two studies.
+     */
+    static String tauSensitivity(MetaResult r) {
+        MetaSpec s = r.spec; Pool p0 = r.overall;
+        if (!s.random || s.isGlmm() || s.isLrp() || p0.k < 2 || r.commonFn == null && s.method.equals("MH")) return "";
+        int d = 4; boolean test = s.hasNull(); int[] all = new int[r.TE.length]; for (int i = 0; i < all.length; i++) all[i] = i;
+        List<String> head = new ArrayList<>(List.of("Tau^2 estimator", smLabel(s), pct(s.levelMa) + "% CI")); if (test) head.add("p-value");
+        head.add("I^2"); head.add("Het. p-value"); head.add("tau^2"); head.add(pct(s.levelPredict) + "% PI");
+        List<String[]> rows = new ArrayList<>(); boolean any = false;
+        for (String m : TAU_SENS) {
+            List<String> row = new ArrayList<>(); row.add(m + (m.equals(s.methodTau) ? " *" : ""));
+            Pool p = null;
+            try { MetaSpec c = s.clone(); c.methodTau = m; c.methodTauCi = ""; c.prediction = true; p = Pool.compute(c, r.TE, r.seTE, all, r.commonFn); } catch (RuntimeException e) { p = null; }
+            if (p == null || Double.isNaN(p.teRandom)) { for (int j = 1; j < head.size(); j++) row.add("NA"); rows.add(row.toArray(new String[0])); continue; }
+            any = true; boolean se0 = p.randomSe0();
+            row.add(Fmt.num(bt(s, p.teRandom, p), d)); row.add(se0 ? "NA" : Fmt.ci(bt(s, p.loRandom, p), bt(s, p.upRandom, p), d));
+            if (test) row.add(se0 ? "NA" : Fmt.pval(p.pRandom, 4));
+            row.add(Double.isNaN(p.I2) ? "NA" : Fmt.num(100 * p.I2, 1) + "%"); row.add(Fmt.pval(p.pQ, 4)); row.add(Fmt.num(p.tau2, 4));
+            row.add(Double.isNaN(p.loPred) ? "NA" : Fmt.ci(bt(s, p.loPred, p), bt(s, p.upPred, p), d));
+            rows.add(row.toArray(new String[0]));
+        }
+        if (!any) return "";
+        boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false;
+        return NL + "Sensitivity analysis by tau^2 estimator (random effects model):" + NL + NL + table(head, rows, right) + NL + "* estimator used in the main analysis. Other settings (pooling method, CI method, levels) are those of the main analysis; PI: prediction interval." + NL;
     }
 
     static String pooledTable(MetaResult r, Pool p, String suffix, boolean pi) {

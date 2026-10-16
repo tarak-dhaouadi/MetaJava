@@ -1,5 +1,8 @@
 # Changelog
 
+### Added - Sensitivity analysis by tau^2 estimator
+- New table at the end of the "Meta-Analysis" text, just below "Details of meta-analysis methods:" and above the forest plot: one row per tau^2 estimator (DL, REML, PM, ML, HS, SJ, HE, EB; the one used in the main analysis is starred) with the pooled effect, CI, p-value (only when a null effect is defined), I^2, heterogeneity p-value, tau^2 and PI. The column names carry the levels in use ("95% CI", "99% PI"). The pooling method, CI method and levels are those of the main analysis. Shown for the random-effects model with inverse-variance type pooling (not for GLMM or penalised likelihood). Included in the Excel / Word exports.
+
 ### Added - Drapery report: target effect-size and two power columns
 - New field "Drapery target effect-size (power computation only)" just below the "Drapery plot" check box (ratios as a ratio, e.g. 0.8; proportions, rates and means on the natural scale; blank = none). It is used only by the Drapery report: no other result or plot changes.
 - Table "3. Individual studies" gets two columns to the right of "Observed power": **Power (pooled effect)** and **Power (target effect)**: power of the two-sided z-test (alpha = 0.05, the study's own standard error) against the null effect if the true effect equalled the pooled estimate (random-effects when shown, else common-effect) or the target. NA when the measure has no null effect (single proportions, rates and means need the main "Target effect-size" as null) or when no valid target is set. Included in the Excel / Word exports.
