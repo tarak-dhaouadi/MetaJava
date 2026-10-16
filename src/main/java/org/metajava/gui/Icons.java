@@ -36,6 +36,14 @@ final class Icons {
         } };
     }
 
+    /** Counter-clockwise circular arrow (reset). */
+    static Icon reset(int size, Color color) {
+        return new Base(size, color) { void draw(Graphics2D g) {
+            g.draw(new Arc2D.Double(2.5, 2.5, 11, 11, 120, -285, Arc2D.OPEN));
+            Path2D head = new Path2D.Double(); head.moveTo(2.3, 1.8); head.lineTo(2.9, 5.3); head.lineTo(6.3, 4.4); g.draw(head);
+        } };
+    }
+
     /** Filled play triangle. */
     static Icon play(int size, Color color) {
         return new Base(size, color) { void draw(Graphics2D g) { Path2D t = new Path2D.Double(); t.moveTo(4, 2.5); t.lineTo(13.5, 8); t.lineTo(4, 13.5); t.closePath(); g.fill(t); } };

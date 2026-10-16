@@ -112,6 +112,29 @@ final class ProjectIO {
         if (table == null) w.showWelcome();
     }
 
+
+    // ------------------------------------------------------------------ reset to defaults
+    /** Settings that a reset leaves alone: data structure, column assignments and boxes rebuilt from the data or from the analysis type. */
+    private static final Set<String> KEEP = new HashSet<>(Arrays.asList("studlabBox", "subgroupBox", "orderBox", "cfgFactorBox", "refBox", "smBox", "methodBox", "glmmModelBox"));
+
+    /** Current value of every plain setting (check boxes, options, text fields, spinners), taken once at start-up as the default state. */
+    static Map<String, Object> defaults(MainWindow w) throws Exception {
+        Map<String, Object> d = new LinkedHashMap<>();
+        for (Field f : widgetFields()) {
+            Object o = f.get(w); String n = f.getName(); if (o == null || LISTS.contains(n) || KEEP.contains(n)) continue;
+            if (o instanceof JComboBox) { Object s = ((JComboBox<?>) o).getSelectedItem(); if (s != null) d.put(n, s.toString()); }
+            else if (o instanceof JCheckBox) d.put(n, ((JCheckBox) o).isSelected());
+            else if (o instanceof JTextField) d.put(n, ((JTextField) o).getText());
+            else if (o instanceof JSpinner) d.put(n, (Number) ((JSpinner) o).getValue());
+        }
+        return d;
+    }
+
+    /** Puts every plain setting back to the stored default. */
+    static void restore(MainWindow w, Map<String, Object> d) throws Exception {
+        for (Field f : widgetFields()) { String n = f.getName(); if (d.containsKey(n)) apply(f.get(w), d.get(n)); }
+    }
+
     private static void select(JComboBox<String> c, String v) { if (v.equals("zvalue")) v = "z-value"; else if (v.equals("pvalue")) v = "p-value";   // projects saved before the Drapery types were renamed
         for (int i = 0; i < c.getItemCount(); i++) if (c.getItemAt(i).equals(v)) { c.setSelectedIndex(i); return; } }
     private static void selectList(JList<String> l, List<Object> want) {

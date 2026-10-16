@@ -1,5 +1,8 @@
 # Changelog
 
+### Added - Reset button
+- New **Reset** button in the header, between "CPU threads" and "Run analysis". It puts every check box, drop-down option, text field and number (meta-analysis settings, forest / funnel / regression / drapery options, export resolution and format, ...) back to its start-up default. The loaded data, the analysis type, the column assignments and the CPU thread count are kept; the covariate / factor selections go back to "none" and the analysis is re-run automatically.
+
 ### Added - Sensitivity analysis by tau^2 estimator
 - New table at the end of the "Meta-Analysis" text, just below "Details of meta-analysis methods:" and above the forest plot: one row per tau^2 estimator (DL, REML, PM, ML, HS, SJ, HE, EB; the one used in the main analysis is starred) with the pooled effect, CI, p-value (only when a null effect is defined), I^2, heterogeneity p-value, tau^2 and PI. The column names carry the levels in use ("95% CI", "99% PI"). The pooling method, CI method and levels are those of the main analysis. Shown for the random-effects model with inverse-variance type pooling (not for GLMM or penalised likelihood). Included in the Excel / Word exports.
 

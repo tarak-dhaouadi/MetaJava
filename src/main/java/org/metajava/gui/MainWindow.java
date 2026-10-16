@@ -128,6 +128,7 @@ public class MainWindow extends JFrame {
         JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 5)); bar.setBackground(Ui.BG); bar.add(status); busy.setPreferredSize(new Dimension(160, 12)); busy.setVisible(false); bar.add(busy); add(bar, BorderLayout.SOUTH);
         autoTimer.setRepeats(false); typeBox.addActionListener(e -> typeChanged()); typeChanged(); hook(left);
         showWelcome();
+        try { defaultSettings = ProjectIO.defaults(this); } catch (Exception ex) { defaultSettings = null; }
     }
 
     JComponent header() {
@@ -142,7 +143,8 @@ public class MainWindow extends JFrame {
         th.setFont(Ui.BOLD.deriveFont(20f)); th.setPreferredSize(new Dimension(76, 38));
         { JFormattedTextField tf = ((JSpinner.DefaultEditor) th.getEditor()).getTextField(); tf.setFont(Ui.BOLD.deriveFont(20f)); tf.setHorizontalAlignment(JTextField.CENTER); }   // number centred in the white box
         th.addChangeListener(e -> { int v = (Integer) th.getValue(); Par.setThreads(v); try { PREFS.putInt("threads", v); } catch (Exception ex) { } });
-        JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0)); east.setOpaque(false); east.add(cl); east.add(th); east.add(run);
+        PillButton reset = new PillButton("Reset", Icons.reset(17, Ui.PRIMARY_DARK), "Reset all options and check boxes to their default values (the data, analysis type and column assignments are kept)"); reset.addActionListener(e -> resetSettings());
+        JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0)); east.setOpaque(false); east.add(cl); east.add(th); east.add(reset); east.add(run);
         PillButton load = new PillButton("Load project", Icons.folderOpen(17, Ui.PRIMARY_DARK), "Open a saved MetaJava project (.json): data, assignments and all settings"), save = new PillButton("Save project", Icons.floppy(17, Ui.PRIMARY_DARK), "Save the session (data, assignments and all settings) to a .json file");
         load.addActionListener(e -> loadProject()); save.addActionListener(e -> saveProject());
         JPanel btns = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0)); btns.setOpaque(false); btns.add(load); btns.add(save);
@@ -197,7 +199,7 @@ public class MainWindow extends JFrame {
         regStyleBox.setToolTipText("Default = meta style; ggplot2 style = look of a ggplot2 plot (minimal theme, coloured circles, line and confidence band). The colours below apply to the ggplot2 style and to the adjusted regression plot");
         adjChk.setToolTipText("Regression plot of the model of this section with all selected covariates and factors: x = the first numeric covariate, study symbols coloured by the first factor; the line (and confidence band) is the prediction for the reference category of each factor, the other numeric covariates held at their mean. Without a numeric covariate no plot can be drawn");
         rg.row("Bubble plot style", regStyleBox); rg.row("Study symbol", regSymbolBox); rg.row("Size of study symbol", regSymSize); rg.row("Study symbol colour", regColPoints); rg.row("Regression line colour", regColLine); rg.row("Confidence area colour", regColBand); rg.row("Confidence lines colour", regColBandLine); rg.row("Prediction area colour", regColPred); rg.row("Prediction line colour", regColPredLine);
-        java.awt.event.ActionListener regStyleEn = e -> { boolean on = RegPlots.GG.equals(regStyleBox.getSelectedItem()) || adjChk.isSelected(); regColPoints.setEnabled(on); regColLine.setEnabled(on); regColBand.setEnabled(on); regColBandLine.setEnabled(on); regColPred.setEnabled(on); regColPredLine.setEnabled(on); };
+        regStyleEn = e -> { boolean on = RegPlots.GG.equals(regStyleBox.getSelectedItem()) || adjChk.isSelected(); regColPoints.setEnabled(on); regColLine.setEnabled(on); regColBand.setEnabled(on); regColBandLine.setEnabled(on); regColPred.setEnabled(on); regColPredLine.setEnabled(on); };
         regStyleBox.addActionListener(regStyleEn); adjChk.addActionListener(regStyleEn); regStyleEn.actionPerformed(null);
         permChk.setToolTipText("Permutation test for the moderators (metafor::permutest): the rows of the model matrix are permuted and the model is refitted each time. Applies to the model of this section.");
         permIterSp.setToolTipText("Number of random permutations (ignored by the exact test). Precision of the p-value is about 1/iterations."); permSeedF.setToolTipText("Seed of the random number generator: the same seed gives the same p-values");
@@ -266,6 +268,28 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
     private static JPanel cell(String label, JComboBox<String> c) { JPanel cell = new JPanel(new BorderLayout(0, 3)); cell.setOpaque(false); cell.add(Ui.label(label), BorderLayout.NORTH); cell.add(c, BorderLayout.CENTER); return cell; }
 
     boolean loading = false;
+    java.awt.event.ActionListener regStyleEn;   // enables the regression-plot colour boxes (also called after a reset)
+    Map<String, Object> defaultSettings;   // start-up state of every plain setting, restored by the Reset button
+
+    /** Reset button: every check box, option, text field and number goes back to its start-up default; data, analysis type and column assignments are kept. */
+    void resetSettings() {
+        if (defaultSettings == null) return;
+        suppress = true; autoTimer.stop();
+        try {
+            refChoice.clear();
+            // the boxes that depend on the analysis type (effect measure, pooling method, GLMM model) and the covariate / factor lists are rebuilt by the type; the column assignments are put back afterwards
+            Map<String, Object> keep = new LinkedHashMap<>(); for (Map.Entry<String, JComboBox<String>> e : maps.entrySet()) keep.put(e.getKey(), e.getValue().getSelectedItem());
+            Object sl = studlabBox.getSelectedItem(), sg = subgroupBox.getSelectedItem(), od = orderBox.getSelectedItem();
+            typeChanged(); suppress = true;
+            for (Map.Entry<String, Object> e : keep.entrySet()) { JComboBox<String> c = maps.get(e.getKey()); if (c != null && e.getValue() != null) c.setSelectedItem(e.getValue()); }
+            studlabBox.setSelectedItem(sl); subgroupBox.setSelectedItem(sg); orderBox.setSelectedItem(od);
+            ProjectIO.restore(this, defaultSettings);
+            regStyleEn.actionPerformed(null); updateRefPanel();
+            covList.setSelectedIndex(0); facList.setSelectedIndex(0);
+        } catch (Exception ex) { error(ex); }
+        finally { suppress = false; loading = false; }
+        status.setText("Settings reset to defaults"); schedule();
+    }
     void schedule() { if (!suppress && table != null) autoTimer.restart(); }
     void hook(Component c) {
         if (c == dpiSp || c == fmtBox || (c instanceof JComponent && c.getParent() == dpiSp)) return;
