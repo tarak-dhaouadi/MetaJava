@@ -28,13 +28,15 @@ public final class TrimFill {
         double[] te = new double[k], se = new double[k]; String[] lab = new String[k];
         for (int j = 0; j < k; j++) { te[j] = r.TE[sel.get(j)]; se[j] = r.seTE[sel.get(j)]; lab[j] = r.studlab[sel.get(j)]; }
         final String method = maCommon ? "FE" : s.methodTau;
+        int[] selIdx = new int[k]; for (int j = 0; j < k; j++) selIdx[j] = sel.get(j);
+        final double[] gwSel = maCommon ? null : Pool.genqWeightsFor(s, selIdx);   // GENQ / GENQM weights of the studies (metafor: trimfill passes x$weights to every refit)
         // ---- side: slope of yi on sqrt(vi) (metafor: rma.uni(yi, vi, mods = sqrt(vi))); beta[2] < 0 -> right, otherwise left
         boolean left;
         if (leftArg != null) left = leftArg;
         else {
             double[][] X = new double[k][2]; double[] v = new double[k];
             for (int i = 0; i < k; i++) { X[i][0] = 1; X[i][1] = se[i]; v[i] = se[i] * se[i]; }
-            double slope; try { slope = Rma.fit(te, v, X, method).beta[1]; } catch (RuntimeException e) { slope = Double.NaN; }
+            double slope; try { slope = Rma.fit(te, v, X, method, gwSel).beta[1]; } catch (RuntimeException e) { slope = Double.NaN; }
             left = !(slope < 0);
         }
         if (!left) for (int j = 0; j < k; j++) te[j] = -te[j];
@@ -42,7 +44,8 @@ public final class TrimFill {
         Integer[] ord = new Integer[k]; for (int i = 0; i < k; i++) ord[i] = i;
         final double[] teF = te; Arrays.sort(ord, Comparator.comparingDouble(i -> teF[i]));
         double[] t1 = new double[k], s1 = new double[k]; String[] l1 = new String[k];
-        for (int j = 0; j < k; j++) { t1[j] = te[ord[j]]; s1[j] = se[ord[j]]; l1[j] = lab[ord[j]]; }
+        double[] w1 = gwSel == null ? null : new double[k];
+        for (int j = 0; j < k; j++) { t1[j] = te[ord[j]]; s1[j] = se[ord[j]]; l1[j] = lab[ord[j]]; if (w1 != null) w1[j] = gwSel[ord[j]]; }
         // ---- iterate (metafor: while (abs(k0 - k0.sav) > 0), maxiter = 100)
         int k0 = 0, k0sav = -1, iter = 0; double beta = 0, seK0 = Double.NaN;
         while (k0 != k0sav) {
@@ -50,7 +53,7 @@ public final class TrimFill {
             if (iter > 100) throw new IllegalStateException("Trim and fill algorithm did not converge.");
             int m = k - k0;
             if (m < 2) beta = t1[0];
-            else { double[] y = Arrays.copyOf(t1, m), v = new double[m]; for (int i = 0; i < m; i++) v[i] = s1[i] * s1[i]; beta = Rma.fit(y, v, null, method).beta[0]; }
+            else { double[] y = Arrays.copyOf(t1, m), v = new double[m]; for (int i = 0; i < m; i++) v[i] = s1[i] * s1[i]; beta = Rma.fit(y, v, null, method, w1 == null ? null : Arrays.copyOf(w1, m)).beta[0]; }
             double[] yc = new double[k], ab = new double[k];
             for (int i = 0; i < k; i++) { yc[i] = t1[i] - beta; ab[i] = Math.abs(yc[i]); }
             double[] rk = rankFirst(ab); double[] rs = new double[k];
@@ -78,6 +81,7 @@ public final class TrimFill {
         TrimFill tf = new TrimFill(); tf.TE = T; tf.seTE = S; tf.filled = f; tf.left = left; tf.type = type; tf.k0 = k0; tf.studlab = L; tf.teSum = left ? beta : -beta;
         tf.seK0 = seK0; tf.pK0 = type.equals("R") ? Math.pow(0.5, k0 + 1) : Double.NaN; tf.model = maCommon ? "common effect (FE)" : "random effects (" + method + ")";
         MetaSpec s2 = s.forAux(); s2.common = commonOut; s2.random = randomOut; tf.spec = s2;
+        if (w1 != null) { double[] wt = new double[tot]; for (int j = 0; j < k; j++) wt[ord[j]] = w1[j]; for (int j = 0; j < k0; j++) wt[k + j] = w1[k - k0 + j]; s2.genqW = wt; s2.genqInverse = false; }   // filled studies carry the weight of the study they mirror
         int[] all = new int[tot]; for (int i = 0; i < tot; i++) all[i] = i;
         tf.pool = Pool.compute(s2, T, S, all, null);
         return tf;

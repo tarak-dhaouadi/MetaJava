@@ -33,7 +33,7 @@ public final class Perm {
             int[] pi = exact ? unrank(k, b) : perms[b];
             double[][] Xp = new double[k][]; for (int i = 0; i < k; i++) Xp[i] = X[pi[i]];
             try {
-                Rma m = Rma.fit(y, v, Xp, method);
+                Rma m = Rma.fit(y, v, Xp, method, f.aw);   // GENQ / GENQM: the weights stay with the studies (metafor: permutest keeps the weights, permutes the moderators)
                 Reg.Wald W = Reg.wald(m, knha, adhoc, icpt);
                 boolean bad = Double.isNaN(W.QM); for (double zz : W.z) bad |= Double.isNaN(zz);
                 if (bad) return; zp[b] = W.z; qp[b] = W.QM;

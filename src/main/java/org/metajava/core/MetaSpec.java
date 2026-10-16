@@ -12,6 +12,11 @@ public class MetaSpec implements Cloneable {
     public boolean skipHet = false;   // internal: Baujat reads only the common-effect estimate, so skip the GLMM Wald-type heterogeneity statistic (UM.RS needs its saturated-model fit)
     public boolean skipTauCi = false;   // internal: leave-one-out / cumulative never display tau2/H/I2 CIs, so skip the (slow) tau2 CI unless I2 is derived from tau2
     public String methodTau = "REML";
+    /** Weights of the generalised Q-statistic estimators GENQ / GENQM only (ignored by every other tau2 estimator): see {@link #GENQ_WEIGHTS}. */
+    public String genqWeights = "Inverse sampling variance: wi = 1/vi";
+    /** Custom GENQ / GENQM weights (genqWeights = "Custom"): one number per study, in the order of the data, separated by commas, semicolons or white space; a single number is used for every study. */
+    public String genqCustom = "";
+    public static final String[] GENQ_WEIGHTS = {"Inverse sampling variance: wi = 1/vi", "Equal weights: wi = 1", "Total sample size: wi = ni", "Custom"};
     public String methodTauCi = null;         // null => default (J for DL, QP otherwise); "" = none
     public String methodI2 = "Q";
     public String methodCommonCi = "classic"; // classic, IVhet
@@ -39,6 +44,11 @@ public class MetaSpec implements Cloneable {
     public String labelE = "Experimental", labelC = "Control", labelLeft = "", labelRight = "";
     /** Auxiliary data attached by Meta.run (not user settings): GLMM data, sample-size weights, n / time for Freeman-Tukey back-transformation. */
     public transient Glmm.Data glmm; public transient double[] sswW, nPft;
+    /** GENQ / GENQM weights, one per study of the data (null when they cannot be formed: see {@link #genqError}); set by Meta.run. */
+    public transient double[] genqW; public transient String genqError; public transient boolean genqInverse = true;
+    public static boolean isGenq(String m) { return "GENQ".equals(m) || "GENQM".equals(m); }
+    /** Weights of the studies at the given indices (null when the GENQ weights are unavailable). */
+    public double[] genqFor(int[] idx) { if (genqW == null) return null; double[] w = new double[idx.length]; for (int i = 0; i < idx.length; i++) { if (idx[i] >= genqW.length) return null; w[i] = genqW[idx[i]]; } return w; }
     /** GLMM model as in metafor::rma.glmm (UM.FS, UM.RS, CM.EL, CM.AL; meta argument model.glmm) and number of quadrature points (nAGQ). */
     public String modelGlmm = "UM.FS"; public int nAGQ = 7;
 

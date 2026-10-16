@@ -65,7 +65,8 @@ public final class GoshReg {
         if (k > 400) throw new IllegalArgumentException("The GOSH analysis is limited to 400 studies.");
         if (rank(D.X) < p) throw new IllegalArgumentException("The meta-regression model cannot be estimated with all studies (the moderators are collinear or a factor level is empty).");
         GoshReg g = new GoshReg(); g.k = k; g.p = p; g.seed = seed; g.method = s.methodTau; g.i2Def = s.methodI2; g.coefNames = D.names; g.intercept = intercept;
-        final double[][] X = D.X; final double[] y = D.y, v = D.v; g.labels = new String[k]; for (int j = 0; j < k; j++) g.labels[j] = r.studlab[D.rows[j]];
+        final double[][] X = D.X; final double[] y = D.y, v = D.v; final double[] gwAll = Pool.genqWeightsFor(s, D.rows);   // GENQ / GENQM weights chosen by the user
+         g.labels = new String[k]; for (int j = 0; j < k; j++) g.labels[j] = r.studlab[D.rows[j]];
         final int W = (k + 63) / 64; g.nTotal = totalSubsets(k, p); int want = Math.max(Gosh.MIN_SUBSETS, Math.min(Gosh.MAX_SUBSETS, maxSubsets));
         List<long[]> masks = new ArrayList<>();
         if (g.nTotal <= want) {
@@ -89,12 +90,12 @@ public final class GoshReg {
         Par.forRange(n, b -> {
             long[] m = M[b]; int c = 0; for (long x : m) c += Long.bitCount(x); G.size[b] = c;
             for (int a = 0; a < p; a++) G.coef[a][b] = Double.NaN; G.i2[b] = G.tau2[b] = G.qe[b] = Double.NaN;
-            double[][] Xs = new double[c][]; double[] yy = new double[c], vv = new double[c]; int t = 0;
-            for (int j = 0; j < k; j++) if ((m[j >> 6] >>> (j & 63) & 1L) != 0) { Xs[t] = X[j]; yy[t] = y[j]; vv[t] = v[j]; t++; }
+            double[][] Xs = new double[c][]; double[] yy = new double[c], vv = new double[c], ww = gwAll == null ? null : new double[c]; int t = 0;
+            for (int j = 0; j < k; j++) if ((m[j >> 6] >>> (j & 63) & 1L) != 0) { Xs[t] = X[j]; yy[t] = y[j]; vv[t] = v[j]; if (ww != null) ww[t] = gwAll[j]; t++; }
             if (rank(Xs) < p) { G.status[b] = RANK_DEFICIENT; return; }
             if (c <= p) { G.status[b] = SATURATED; return; }
             try {
-                Rma f = Rma.fit(yy, vv, Xs, method);
+                Rma f = Rma.fit(yy, vv, Xs, method, ww);
                 double ii = qDef ? (f.QE > 0 ? Math.max(0, (f.QE - (c - p)) / f.QE) : 0) : f.tau2 / (f.tau2 + Rma.typicalV(c, p, vv, Xs));
                 boolean good = !Double.isNaN(ii) && !Double.isNaN(f.tau2); for (int a = 0; a < p; a++) good &= Double.isFinite(f.beta[a]);
                 if (!good) { G.status[b] = FAILED; return; }
@@ -104,7 +105,7 @@ public final class GoshReg {
         for (int b = 0; b < n; b++) switch (g.status[b]) { case OK: g.nValid++; break; case SATURATED: g.nSaturated++; break; case RANK_DEFICIENT: g.nRankDef++; break; default: g.nFailed++; }
         if (g.nValid == 0) throw new IllegalArgumentException("No subset gave an estimable model (" + g.nRankDef + " not estimable, " + g.nSaturated + " saturated, " + g.nFailed + " failed fits).");
         // the model with all studies
-        Rma f = Rma.fit(y, v, X, method); g.fullCoef = f.beta.clone(); g.fullTau2 = f.tau2; g.fullQE = f.QE;
+        Rma f = Rma.fit(y, v, X, method, gwAll); g.fullCoef = f.beta.clone(); g.fullTau2 = f.tau2; g.fullQE = f.QE;
         g.fullI2 = 100 * (qDef ? (f.QE > 0 ? Math.max(0, (f.QE - (k - p)) / f.QE) : 0) : f.tau2 / (f.tau2 + Rma.typicalV(k, p, v, X)));
         // in / out means
         g.i2In = new double[k]; g.i2Out = new double[k]; g.coefIn = new double[p][k]; g.coefOut = new double[p][k]; g.nIn = new int[k];

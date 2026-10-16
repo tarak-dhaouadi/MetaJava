@@ -9,6 +9,10 @@ public final class Rma {
     public double[] beta, se; public double[][] vb;
     public double QE; public int dfQ;
     public double[] wTilde;
+    /** GENQ / GENQM only: the weights A of the fit (metafor: rma(..., weights = A, method = "GENQ"/"GENQM")); null for every other estimator. */
+    public double[] aw;
+    /** (X'AX)^-1 of the weighted fit (aw != null); for the usual fit it is vb itself, (X'WX)^-1 with W = 1/(vi + tau2). */
+    public double[][] bread;
 
     private Rma() {}
 
@@ -21,9 +25,41 @@ public final class Rma {
         m.X = X; m.p = X[0].length;
         double[] w0 = new double[m.k]; for (int i = 0; i < m.k; i++) w0[i] = 1 / v[i];
         m.QE = rss(y, X, w0); m.dfQ = m.k - m.p;
-        m.tau2 = estimateTau2(m, genqWeights);
+        if (MetaSpec.isGenq(method)) m.aw = genqW(genqWeights, w0).clone();
+        m.tau2 = estimateTau2(m, m.aw);
         m.refit(m.tau2);
         return m;
+    }
+
+    /** Fit with a given tau2 (metafor: rma(..., tau2 = value)); the weights of GENQ / GENQM are those of the fit. */
+    public static Rma withTau2(double[] y, double[] v, double[][] X, String method, double[] genqWeights, double t2) {
+        Rma m = new Rma();
+        m.yi = y; m.vi = v; m.k = y.length; m.method = method;
+        if (X == null) { X = new double[m.k][1]; for (double[] r : X) r[0] = 1; }
+        m.X = X; m.p = X[0].length;
+        double[] w0 = new double[m.k]; for (int i = 0; i < m.k; i++) w0[i] = 1 / v[i];
+        m.QE = rss(y, X, w0); m.dfQ = m.k - m.p;
+        if (MetaSpec.isGenq(method)) m.aw = genqW(genqWeights, w0).clone();
+        m.tau2 = t2; m.refit(t2);
+        return m;
+    }
+
+    /** Coefficients of the fit with the weights 1/(vi + tau2) (what the Knapp-Hartung scale factor is based on, also when the model is fitted with the weights of GENQ / GENQM). */
+    public double[] betaW() {
+        if (aw == null) return beta;
+        double[][] xtwx = new double[p][p]; double[] xtwy = new double[p];
+        for (int i = 0; i < k; i++) for (int a = 0; a < p; a++) { xtwy[a] += X[i][a] * wTilde[i] * yi[i]; for (int b = 0; b < p; b++) xtwx[a][b] += X[i][a] * wTilde[i] * X[i][b]; }
+        return Lin.mulv(Lin.inv(xtwx), xtwy);
+    }
+
+    /** Weights the model was fitted with: A for GENQ / GENQM, 1/(vi + tau2) otherwise. */
+    public double[] fitWeights() { return aw != null ? aw : wTilde; }
+
+    /** Hat values: diagonal of H = X (X'AX)^-1 X'A (A = 1/(vi + tau2) for the usual fit). */
+    public double[] hatDiag() {
+        double[] a = fitWeights(); double[][] br = bread != null ? bread : vb; double[] h = new double[k];
+        for (int i = 0; i < k; i++) { double s = 0; for (int c = 0; c < p; c++) for (int d = 0; d < p; d++) s += X[i][c] * br[c][d] * X[i][d]; h[i] = s * a[i]; }
+        return h;
     }
 
     /** y'Py with P = W - WX(X'WX)^-1 X'W. */
@@ -50,10 +86,19 @@ public final class Rma {
 
     void refit(double t2) {
         wTilde = new double[k]; for (int i = 0; i < k; i++) wTilde[i] = 1 / (vi[i] + t2);
+        double[] a = aw != null ? aw : wTilde;
         double[][] xtwx = new double[p][p]; double[] xtwy = new double[p];
-        for (int i = 0; i < k; i++) for (int a = 0; a < p; a++) { xtwy[a] += X[i][a] * wTilde[i] * yi[i]; for (int b = 0; b < p; b++) xtwx[a][b] += X[i][a] * wTilde[i] * X[i][b]; }
-        vb = Lin.inv(xtwx); beta = Lin.mulv(vb, xtwy);
-        se = new double[p]; for (int a = 0; a < p; a++) se[a] = Math.sqrt(vb[a][a]);
+        for (int i = 0; i < k; i++) for (int c = 0; c < p; c++) { xtwy[c] += X[i][c] * a[i] * yi[i]; for (int b = 0; b < p; b++) xtwx[c][b] += X[i][c] * a[i] * X[i][b]; }
+        double[][] inv = Lin.inv(xtwx); beta = Lin.mulv(inv, xtwy); bread = inv;
+        if (aw == null) vb = inv;
+        else {   // metafor: vb = (X'AX)^-1 X'A M A X (X'AX)^-1, M = diag(vi + tau2)
+            double[][] mid = new double[p][p];
+            for (int i = 0; i < k; i++) { double f = a[i] * a[i] * (vi[i] + t2); for (int c = 0; c < p; c++) for (int b = 0; b < p; b++) mid[c][b] += f * X[i][c] * X[i][b]; }
+            double[][] tmp = new double[p][p]; vb = new double[p][p];
+            for (int c = 0; c < p; c++) for (int b = 0; b < p; b++) { double t = 0; for (int d = 0; d < p; d++) t += inv[c][d] * mid[d][b]; tmp[c][b] = t; }
+            for (int c = 0; c < p; c++) for (int b = 0; b < p; b++) { double t = 0; for (int d = 0; d < p; d++) t += tmp[c][d] * inv[d][b]; vb[c][b] = t; }
+        }
+        se = new double[p]; for (int c = 0; c < p; c++) se[c] = Math.sqrt(vb[c][c]);
     }
 
     private static double estimateTau2(Rma m, double[] gw) {
@@ -63,6 +108,7 @@ public final class Rma {
             case "FE": return 0;
             case "DL": return Math.max(0, (m.QE - (k - p)) / trP(X, w));
             case "HS": return Math.max(0, (m.QE - k) / sw);
+            case "HSk": return Math.max(0, ((double) k / (k - p) * m.QE - k) / sw);   // metafor: (k/(k-p) * RSS - k) / sum(1/vi), Brannick et al. (2019)
             case "HE": {
                 double[] one = new double[k]; Arrays.fill(one, 1);
                 double rssu = rss(y, X, one);
@@ -92,10 +138,8 @@ public final class Rma {
                 double hi = 1; while (sc.applyAsDouble(hi) > 0 && hi < 1e12) hi *= 2;
                 return Dist.brent(sc, 0, hi, 1e-12, 500);
             }
-            case "GENQ": {
-                double[] a = gw;
-                return Math.max(0, genqTau2(y, v, X, a));
-            }
+            case "GENQ": return Math.max(0, genqTau2(y, v, X, genqW(gw, w)));
+            case "GENQM": return genqmTau2(y, v, X, genqW(gw, w));
             default: throw new IllegalArgumentException("Unknown tau2 estimator: " + m.method);
         }
     }
@@ -150,6 +194,40 @@ public final class Rma {
         if (reml) { double[][] M = new double[p][]; for (int a = 0; a < p; a++) M[a] = A[a].clone(); for (int a = 0; a < p; a++) { int pv = a; for (int r = a + 1; r < p; r++) if (Math.abs(M[r][a]) > Math.abs(M[pv][a])) pv = r; double[] tmp = M[a]; M[a] = M[pv]; M[pv] = tmp;
             ld += Math.log(Math.abs(M[a][a])); for (int r = a + 1; r < p; r++) { double f = M[r][a] / M[a][a]; for (int c = a; c < p; c++) M[r][c] -= f * M[a][c]; } } }
         return -0.5 * (sl + ld + rss);
+    }
+
+    /** Weights of the generalised Q-statistic estimators; metafor requires them to be specified, here the inverse sampling variances (GENQ = DL) when none are given. */
+    private static double[] genqW(double[] gw, double[] inv) {
+        if (gw == null) return inv;
+        for (double x : gw) if (Double.isNaN(x) || Double.isInfinite(x)) throw new IllegalArgumentException("Weights must be finite numbers.");
+        for (double x : gw) if (x < 0) throw new IllegalArgumentException("Negative weights not allowed.");
+        return gw;
+    }
+
+    /** tau2.max of metafor's control list: max(100, 10 * mad(yi)^2), mad = 1.4826 * median(|yi - median(yi)|). */
+    static double tau2MaxMetafor(double[] y) {
+        double[] t = y.clone(); Arrays.sort(t); double med = median(t); double[] d = new double[t.length];
+        for (int i = 0; i < t.length; i++) d[i] = Math.abs(y[i] - med);
+        Arrays.sort(d); double mad = 1.4826 * median(d);
+        return Math.max(100, 10 * mad * mad);
+    }
+    private static double median(double[] sorted) { int n = sorted.length; return n % 2 == 1 ? sorted[n / 2] : 0.5 * (sorted[n / 2 - 1] + sorted[n / 2]); }
+
+    /**
+     * Median-unbiased generalised Q-statistic estimator (GENQM, Viechtbauer 2021) exactly as metafor: the tau2 for which the observed generalised Q statistic y'P_a y is the
+     * median of its distribution, i.e. P(sum lambda_j chi2_1 <= Q) = 0.5 with lambda the k-p eigenvalues of S^(1/2) P_a S^(1/2), S = diag(vi + tau2).
+     * The root is searched in [tau2.min = 0, tau2.max] with R's uniroot defaults (tol = .Machine$double.eps^0.25, 100 iterations); Q at or below the median
+     * for tau2 = 0 gives 0, and a median not reached at tau2.max is an error (as in metafor: "Value of 'tau2.max' too low").
+     */
+    static double genqmTau2(double[] y, double[] v, double[][] X, double[] a) {
+        final double Q = rss(y, X, a); final GenqCtx ctx = new GenqCtx(a, v, X);
+        java.util.function.DoubleUnaryOperator cdfMinusHalf = t -> quadCdf(Q, ctx.lambdas(t)) - 0.5;   // metafor: (1 - Qq) - level with level = 0.5, Qq the upper tail
+        final double lo = 0, hi = tau2MaxMetafor(y);
+        double flo = cdfMinusHalf.applyAsDouble(lo);
+        if (1 - (flo + 0.5) > 0.5) return lo;                      // upper tail at tau2.min > 0.5: estimate below tau2.min
+        double fhi = cdfMinusHalf.applyAsDouble(hi);
+        if (1 - (fhi + 0.5) < 0.5) throw new IllegalArgumentException("Value of 'tau2.max' too low (GENQM): the median-unbiased estimate exceeds " + hi + ". Switch to another tau\u00B2 estimator.");
+        return Dist.brent(cdfMinusHalf, lo, flo, hi, fhi, Math.pow(2.220446049250313e-16, 0.25), 100);
     }
 
     static double genqTau2(double[] y, double[] v, double[][] X, double[] a) {

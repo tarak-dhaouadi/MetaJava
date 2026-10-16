@@ -30,6 +30,7 @@ public final class Meta {
     /** Attaches the auxiliary data needed by special pooling methods (GLMM, SSW) and by the Freeman-Tukey back-transformation. */
     static void setupAux(MetaSpec s, MetaData d) {
         s.glmm = null; s.sswW = null; s.nPft = null;
+        setupGenq(s, d);
         if (s.type.equals("prop")) s.nPft = d.get("n");
         else if (s.type.equals("rate")) s.nPft = d.get("time");
         if (s.method.equals("SSW")) {
@@ -63,6 +64,42 @@ public final class Meta {
             s.glmm = new Glmm.Data("OR", "UM.FS", 1, d.get("event.e"), d.get("n.e"), d.get("event.c"), d.get("n.c"));
         }
     }
+
+    /**
+     * Weights of the GENQ / GENQM estimators for the Weights option (1/vi, equal, total sample size ni, custom). They are only attached to the specification; an error is raised
+     * only when GENQ / GENQM is the estimator of the main analysis (the sensitivity table shows "NA" for the two estimators otherwise).
+     */
+    static void setupGenq(MetaSpec s, MetaData d) {
+        s.genqW = null; s.genqError = null; int n = d.n;
+        try {
+            String mode = s.genqWeights == null ? MetaSpec.GENQ_WEIGHTS[0] : s.genqWeights;
+            double[] w = new double[n];
+            if (mode.equals(MetaSpec.GENQ_WEIGHTS[1])) Arrays.fill(w, 1);
+            else if (mode.equals(MetaSpec.GENQ_WEIGHTS[2])) {
+                double[] ne = d.get("n.e"), nc = d.get("n.c"), nn = d.get("n");
+                if (ne != null && nc != null) for (int i = 0; i < n; i++) w[i] = ne[i] + nc[i];
+                else if (nn != null && !s.type.equals("rate")) w = nn.clone();
+                else throw new IllegalArgumentException("Weights = total sample size requires sample sizes in the data (not available for this type of data).");
+                for (int i = 0; i < n; i++) if (Double.isNaN(w[i])) throw new IllegalArgumentException("Weights = total sample size: the sample size of study " + (i + 1) + " is missing.");
+            } else if (mode.equals(MetaSpec.GENQ_WEIGHTS[3])) {
+                String txt = s.genqCustom == null ? "" : s.genqCustom.trim();
+                if (txt.isEmpty()) throw new IllegalArgumentException("Weights = Custom: enter one weight per study (for instance 1, 2, 0.5, 3).");
+                String[] parts = txt.replace(',', ' ').replace(';', ' ').trim().split("\\s+"); double[] cw = new double[parts.length];
+                for (int i = 0; i < parts.length; i++) {
+                    try { cw[i] = Double.parseDouble(parts[i].replace(',', '.')); } catch (NumberFormatException e) { throw new IllegalArgumentException("Weights = Custom: '" + parts[i] + "' is not a number."); }
+                    if (cw[i] < 0) throw new IllegalArgumentException("Negative weights not allowed."); if (Double.isInfinite(cw[i])) throw new IllegalArgumentException("Infinite weights not allowed.");
+                }
+                if (cw.length == 1) Arrays.fill(w, cw[0]);
+                else if (cw.length == n) w = cw;
+                else throw new IllegalArgumentException("Weights = Custom: " + cw.length + " weights entered but the data have " + n + " studies (enter one weight per study, in the order of the data).");
+            } else w = null;   // inverse sampling variances: formed from the variances of the studies actually pooled
+            s.genqW = w;
+            if (w == null) { s.genqW = null; s.genqInverse = true; } else s.genqInverse = false;
+        } catch (IllegalArgumentException e) { s.genqError = e.getMessage(); s.genqInverse = false; }
+        if (s.genqError != null && MetaSpec.isGenq(s.methodTau)) throw new IllegalArgumentException(s.genqError);
+    }
+
+    static int[] useIdx(List<Integer> l) { int[] a = new int[l.size()]; for (int i = 0; i < a.length; i++) a[i] = l.get(i); return a; }
 
     static String[] defaultLabels(int n) { String[] l = new String[n]; for (int i = 0; i < n; i++) l[i] = "Study " + (i + 1); return l; }
 
@@ -98,7 +135,7 @@ public final class Meta {
             double[] y = new double[kk], v = new double[kk]; double[][] X = new double[kk][G];
             for (int j = 0; j < kk; j++) { int i = use.get(j); y[j] = r.TE[i]; v[j] = r.seTE[i] * r.seTE[i]; X[j][r.sgLevels.indexOf(sg[i].trim())] = 1; }
             if (kk > G) {
-                Rma m = Rma.fit(y, v, X, s.methodTau);
+                Rma m = Rma.fit(y, v, X, s.methodTau, Pool.genqWeightsFor(s, useIdx(use)));
                 MetaSpec s2 = s.clone(); s2.tauPreset = m.tau2;
                 final Pool[] sp2 = new Pool[G];
                 Par.forRange(G, g -> sp2[g] = Pool.compute(s2, r.TE, r.seTE, r.sgIdx.get(g), r.commonFn));

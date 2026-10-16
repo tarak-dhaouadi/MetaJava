@@ -35,6 +35,14 @@ public class Pool {
 
     public interface CommonFn { double[] apply(int[] subset); } // returns {TE, se} for MH/Peto/etc.
 
+    /** Weights for GENQ / GENQM (null for every other estimator, and for the inverse sampling variance option, which Rma forms from the variances). */
+    public static double[] genqWeightsFor(MetaSpec s, int[] sel) {
+        if (!MetaSpec.isGenq(s.methodTau) || s.genqInverse) return null;
+        double[] w = s.genqFor(sel);
+        if (w == null) throw new IllegalArgumentException(s.genqError != null ? s.genqError : "The weights of the GENQ / GENQM estimators are not available.");
+        return w;
+    }
+
     /** subset = indices into te/se arrays of studies to include; NaN studies are dropped. */
     public static Pool compute(MetaSpec s, double[] te, double[] se, int[] subset, CommonFn commonFn) {
         int cnt = 0;
@@ -71,7 +79,7 @@ public class Pool {
         Rma m = null;
         if (cnt >= 2) {
             if (!Double.isNaN(s.tauPreset)) { p.tau2 = s.tauPreset * s.tauPreset * 0 + s.tauPreset; }
-            else { m = Rma.fit(y, v, null, s.methodTau); p.tau2 = m.tau2; p.altTau2 = m.higherMode(); p.altGain = m.higherModeGain; }
+            else { m = Rma.fit(y, v, null, s.methodTau, genqWeightsFor(s, sel)); p.tau2 = m.tau2; p.altTau2 = m.higherMode(); p.altGain = m.higherModeGain; }
         } else p.tau2 = Double.NaN;
         p.tau = Math.sqrt(p.tau2);
         double t2 = Double.isNaN(p.tau2) ? 0 : p.tau2;
@@ -112,6 +120,17 @@ public class Pool {
         if (cnt > 1) { double w1 = 0, w2 = 0, w3 = 0; for (double x : p.wRandom) { w1 += x; w2 += x * x; w3 += x * x * x; }
             double IE = w2 * 0.5 - w3 / w1 + 0.5 * Math.pow(w2 / w1, 2); double var = (1 + 2 * (w3 / w1 - Math.pow(w2 / w1, 2)) / IE) / w1;
             p.dfKR = 2 * IE / Math.pow(var * w2, 2); p.seKR = var >= 0 ? Math.sqrt(var) : Double.NaN; }
+        // GENQ / GENQM: as metafor (rma.uni with weights = A), the pooled estimate is the A-weighted mean and its variance the sandwich (X'AX)^-1 X'A M A X (X'AX)^-1, M = diag(vi + tau2);
+        // the Knapp-Hartung scale factor stays based on the weights 1/(vi + tau2) (computed above), the prediction interval uses the sandwich variance plus tau2
+        boolean genqFit = MetaSpec.isGenq(s.methodTau) && ssw == null && cnt >= 2 && !Double.isNaN(p.tau2);
+        if (genqFit) {
+            if (s.methodRandomCi.equals("KR")) throw new IllegalArgumentException("The Kenward-Roger method is not available with the weights of the GENQ / GENQM estimators; use \"classic\" or \"HK\".");
+            String mpp = s.methodPredict == null ? "" : s.methodPredict;
+            if (s.prediction && (mpp.equals("KR") || mpp.equals("KR-PR"))) throw new IllegalArgumentException("Prediction interval method \"" + mpp + "\" is not available with the weights of the GENQ / GENQM estimators.");
+            Rma mg = m != null ? m : Rma.withTau2(y, v, null, s.methodTau, genqWeightsFor(s, sel), t2);
+            double vg = mg.vb[0][0]; p.teRandom = mg.beta[0]; seClassic = Math.sqrt(vg); p.seClassicRandom = seClassic; p.seRandom = seClassic; seHK = Math.sqrt(hkQ * vg);
+            p.wRandom = mg.aw.clone(); p.dfKR = Double.NaN; p.seKR = Double.NaN;
+        }
         if (ssw != null && cnt > 0) {   // random effects sample size method: tau^2 enters the variance only
             double a = 0, b = 0, c2 = 0; for (int i = 0; i < cnt; i++) { a += ssw[i]; b += ssw[i] * y[i]; c2 += ssw[i] * ssw[i] * (v[i] + t2); }
             p.teRandom = b / a; seClassic = Math.sqrt(c2) / a; p.seClassicRandom = seClassic; p.seRandom = seClassic; p.wRandom = ssw.clone();

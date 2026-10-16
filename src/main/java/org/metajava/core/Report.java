@@ -40,7 +40,7 @@ public final class Report {
 
     static final Map<String, String> TAU_NAME = new LinkedHashMap<>();
     static { TAU_NAME.put("DL", "DerSimonian-Laird"); TAU_NAME.put("PM", "Paule-Mandel"); TAU_NAME.put("REML", "Restricted maximum-likelihood");
-        TAU_NAME.put("ML", "Maximum-likelihood"); TAU_NAME.put("HS", "Hunter-Schmidt"); TAU_NAME.put("SJ", "Sidik-Jonkman"); TAU_NAME.put("HE", "Hedges"); TAU_NAME.put("EB", "Empirical Bayes"); }
+        TAU_NAME.put("ML", "Maximum-likelihood"); TAU_NAME.put("HS", "Hunter-Schmidt"); TAU_NAME.put("HSk", "Hunter-Schmidt with small-sample correction"); TAU_NAME.put("GENQ", "Generalised Q-statistic"); TAU_NAME.put("GENQM", "Median-unbiased generalised Q-statistic"); TAU_NAME.put("SJ", "Sidik-Jonkman"); TAU_NAME.put("HE", "Hedges"); TAU_NAME.put("EB", "Empirical Bayes"); }
 
     public static String smLabel(MetaSpec s) {
         switch (s.sm) {
@@ -117,7 +117,7 @@ public final class Report {
     }
 
     /** Estimators of tau^2 compared in {@link #tauSensitivity}. */
-    static final String[] TAU_SENS = {"DL", "REML", "PM", "ML", "HS", "SJ", "HE", "EB"};
+    static final String[] TAU_SENS = {"DL", "REML", "PM", "ML", "HS", "HSk", "SJ", "HE", "EB", "GENQ", "GENQM"};
 
     /**
      * Sensitivity table by tau^2 estimator (random-effects model): the pooled effect, its confidence interval and p-value, I^2, the p-value of the test of heterogeneity,
@@ -130,11 +130,11 @@ public final class Report {
         int d = 4; boolean test = s.hasNull(); int[] all = new int[r.TE.length]; for (int i = 0; i < all.length; i++) all[i] = i;
         List<String> head = new ArrayList<>(List.of("Tau^2 estimator", smLabel(s), pct(s.levelMa) + "% CI")); if (test) head.add("p-value");
         head.add("I^2"); head.add("Het. p-value"); head.add("tau^2"); head.add(pct(s.levelPredict) + "% PI");
-        List<String[]> rows = new ArrayList<>(); boolean any = false;
+        List<String[]> rows = new ArrayList<>(); boolean any = false; Map<String, String> notes = new LinkedHashMap<>();
         for (String m : TAU_SENS) {
             List<String> row = new ArrayList<>(); row.add(m + (m.equals(s.methodTau) ? " *" : ""));
             Pool p = null;
-            try { MetaSpec c = s.clone(); c.methodTau = m; c.methodTauCi = ""; c.prediction = true; p = Pool.compute(c, r.TE, r.seTE, all, r.commonFn); } catch (RuntimeException e) { p = null; }
+            try { MetaSpec c = s.clone(); c.methodTau = m; c.methodTauCi = ""; c.prediction = true; p = Pool.compute(c, r.TE, r.seTE, all, r.commonFn); } catch (RuntimeException e) { p = null; if (MetaSpec.isGenq(m)) notes.put(m, e.getMessage()); }
             if (p == null || Double.isNaN(p.teRandom)) { for (int j = 1; j < head.size(); j++) row.add("NA"); rows.add(row.toArray(new String[0])); continue; }
             any = true; boolean se0 = p.randomSe0();
             row.add(Fmt.num(bt(s, p.teRandom, p), d)); row.add(se0 ? "NA" : Fmt.ci(bt(s, p.loRandom, p), bt(s, p.upRandom, p), d));
@@ -145,7 +145,15 @@ public final class Report {
         }
         if (!any) return "";
         boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false;
-        return NL + "Sensitivity analysis by tau^2 estimator (random effects model):" + NL + NL + table(head, rows, right) + NL + "* estimator used in the main analysis. Other settings (pooling method, CI method, levels) are those of the main analysis; PI: prediction interval." + NL;
+        return NL + "Sensitivity analysis by tau^2 estimator (random effects model):" + NL + NL + table(head, rows, right) + NL + "* estimator used in the main analysis. Other settings (pooling method, CI method, levels) are those of the main analysis; PI: prediction interval." + NL
+            + genqNote(s, notes) + NL;
+    }
+
+    /** Footnote on the weights of GENQ / GENQM (the Weights option applies to these two estimators only) and on why either of them could not be computed. */
+    static String genqNote(MetaSpec s, Map<String, String> failed) {
+        StringBuilder b = new StringBuilder("GENQ / GENQM weights: " + s.genqWeights + (s.genqWeights != null && s.genqWeights.equals("Custom") ? " (" + (s.genqCustom == null ? "" : s.genqCustom.trim()) + ")" : "") + "; they are used by these two estimators only.");
+        for (Map.Entry<String, String> e : failed.entrySet()) b.append(NL).append(e.getKey()).append(": NA (").append(e.getValue()).append(")");
+        return b.toString();
     }
 
     static String pooledTable(MetaResult r, Pool p, String suffix, boolean pi) {
@@ -259,7 +267,7 @@ public final class Report {
             if (s.random) b.append(s.modelGlmm.equals("UM.RS") && s.type.equals("bin") || s.modelGlmm.equals("UM.RS") && s.type.equals("inc") ? "- Maximum-likelihood estimator for tau^2 (Laplace approximation)" : "- Maximum-likelihood estimator for tau^2 (adaptive Gauss-Hermite quadrature, nAGQ = " + s.nAGQ + ")").append(NL);
             if (s.methodRandomCi.equals("HK")) b.append("- Wald-type t-test (df = ").append(p.k - 1).append(") for random effects model").append(NL);
         } else if (s.random) {
-            b.append("- ").append(tauLabel(s.methodTau)).append(" estimator for tau^2").append(NL);
+            b.append("- ").append(tauLabel(s.methodTau)).append(" estimator for tau^2").append(MetaSpec.isGenq(s.methodTau) ? " (weights: " + s.genqWeights + ")" : "").append(NL);
             if (!p.tauCiMethod.isEmpty()) b.append("- ").append(p.tauCiMethod.equals("QP") ? "Q-profile" : p.tauCiMethod.equals("BJ") ? "Biggerstaff-Jackson" : "Jackson").append(" method for confidence interval of tau^2 and tau").append(NL);
             if (s.methodRandomCi.equals("KR")) b.append("- Kenward-Roger adjustment for random effects model (df = ").append(Fmt.num(p.dfKR, 2)).append(")").append(NL);
             if (s.methodRandomCi.equals("HK")) b.append("- Hartung-Knapp adjustment for random effects model (df = ").append(p.k - 1).append(")").append(NL);

@@ -32,7 +32,7 @@ public final class ModelCompare {
             out.note = "More than " + MAX_TERMS_ALL_SUBSETS + " terms: only the null model, each term alone, the full model and the full model without one term are compared (not all subsets)."; }
         final Row[] res = new Row[masks.size()]; final boolean[] skip = new boolean[masks.size()];
         final double[] null0 = new double[1];   // tau^2 of the intercept-only model (selected estimator)
-        if (intercept) { double[][] X0 = new double[k][1]; for (double[] q : X0) q[0] = 1; double[] y = new double[k], v = new double[k]; for (int j = 0; j < k; j++) { y[j] = r.TE[rowsUsed[j]]; v[j] = r.seTE[rowsUsed[j]] * r.seTE[rowsUsed[j]]; } null0[0] = Rma.fit(y, v, X0, s.methodTau).tau2; }
+        if (intercept) { double[][] X0 = new double[k][1]; for (double[] q : X0) q[0] = 1; double[] y = new double[k], v = new double[k]; for (int j = 0; j < k; j++) { y[j] = r.TE[rowsUsed[j]]; v[j] = r.seTE[rowsUsed[j]] * r.seTE[rowsUsed[j]]; } null0[0] = Rma.fit(y, v, X0, s.methodTau, Pool.genqWeightsFor(s, rowsUsed)).tau2; }
         final List<Integer> mk = masks;
         Par.forRange(masks.size(), q -> {
             int m = mk.get(q); List<String> nn = new ArrayList<>(), ff = new ArrayList<>(), lab = new ArrayList<>();
@@ -43,7 +43,7 @@ public final class ModelCompare {
             w.label = (lab.isEmpty() ? (intercept ? "(intercept only)" : "") : (intercept ? "~ " : "~ 0 + ") + String.join(" + ", lab));
             Rma ml = Rma.fit(D.y, D.v, D.X, "ML"); Reg.FitStats fs = Reg.fitStats(ml, false);
             w.ll = fs.ll; w.aic = fs.aic; w.aicc = fs.aicc; w.bic = fs.bic; w.tau2ML = ml.tau2;
-            Rma fit = s.methodTau.equals("ML") ? ml : Rma.fit(D.y, D.v, D.X, s.methodTau);
+            Rma fit = s.methodTau.equals("ML") ? ml : Rma.fit(D.y, D.v, D.X, s.methodTau, Pool.genqWeightsFor(s, D.rows));
             w.tau2 = fit.tau2; w.I2 = 100 * fit.tau2 / (fit.tau2 + Rma.typicalV(k, D.p, D.v, D.X));
             w.R2 = Double.NaN; if (intercept && D.p > 1) w.R2 = null0[0] > 0 ? Math.max(0, 100 * (null0[0] - fit.tau2) / null0[0]) : 0;
             res[q] = w;

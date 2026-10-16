@@ -1,5 +1,17 @@
 # Changelog
 
+### Changed - GENQ / GENQM are fitted exactly as metafor does (rma.uni with weights)
+- The pooled estimate (and the coefficients of a meta-regression) is the weighted estimate with the selected weights A: (X'AX)^-1 X'A y, with the sandwich variance (X'AX)^-1 X'A diag(vi + tau^2) A X (X'AX)^-1. Prediction intervals use this variance plus tau^2. With Hartung-Knapp, the scale factor is still computed from the weights 1/(vi + tau^2), as in metafor. Forest-plot random-effects weights are the selected weights. Kenward-Roger is not available with these weights (clear error; NA in the sensitivity table).
+- Influence diagnostics (hat values, DFFITS, DFBETAS, Cook's distance, covariance ratio, studentised residuals) refit the model after each deletion with the weights of the remaining studies, as influence.rma.uni.
+- GOSH (ordinary and meta-regression), permutation test, trim-and-fill, small-study tests and model comparison receive the selected weights; there is no fallback to 1/vi. In trim-and-fill the filled studies carry the weight of the study they mirror.
+- Self-tests compare estimate, SE, Knapp-Hartung SE and influence diagnostics with an independent implementation of the metafor formulas.
+
+### Added - tau² estimators HSk, GENQ and GENQM (as in metafor 4.6-0)
+- New estimators in the "Heterogeneity estimator (tau²)" list: HSk (Hunter-Schmidt with the k/(k-p) small-sample correction, right after HS), GENQ (generalised Q-statistic) and GENQM (median-unbiased generalised Q-statistic, root of P(Q' <= Q) = 0.5 searched in [0, max(100, 10 mad(yi)^2)] with the uniroot defaults of metafor).
+- New "Weights (GENQ, GENQM only)" list (1/vi, equal weights, total sample size ni, custom) and a "Custom weights" field (one number per study, e.g. 1, 2, 0.5, 3; a single number is used for all studies). The option is ignored by every other estimator.
+- The three estimators are rows of "Sensitivity analysis by tau^2 estimator (random effects model)"; a footnote gives the GENQ / GENQM weights, and the rows show NA, with the reason, if the weights cannot be formed (wrong number of weights, no sample sizes in the data).
+- Self-tests compare the tau² values with an independent implementation (Imhof integral and a port of R's zeroin).
+
 ### Fixed - Forest plots: target effect-size of single-group measures (PRAW, PLN, PLOGIT, PAS, PFT, IR, IRLN, IRS, IRFT, MRAW, MLN)
 - The target is only a reference line: the axis is never centred on it and it never hides the studies (centring stays for ratios, differences and ZCOR). The target is drawn at the value entered (e.g. 0.9, or 60 for a rate with irscale = 1000) for every measure, including the Freeman-Tukey ones (PFT, IRFT), whose forest plot was empty with a target because the back-transformation needs n.
 - The axis uses the scale shown in the table (pscale / irscale included): minimum, maximum, tick interval, target, estimates and intervals use the same convention. Statistical results are unchanged.

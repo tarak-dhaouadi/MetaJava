@@ -34,6 +34,7 @@ public class SelfTest {
     }
 
     static MetaSpec genSpec(String sm) { MetaSpec s = new MetaSpec(); s.type = "gen"; s.sm = sm; s.prediction = true; return s; }
+    static MetaSpec withTau(String tau, String weights, String custom) { MetaSpec g = genSpec("MD"); g.prediction = false; g.methodTau = tau; g.genqWeights = weights; g.genqCustom = custom; return g; }
     static MetaSpec refSpec(String sm) { MetaSpec s = genSpec(sm); s.methodTau = "DL"; s.methodPredict = "S"; return s; }
 
 
@@ -1055,6 +1056,61 @@ public class SelfTest {
             check(Report.degenerateNote(co, kr.looLabels, kr.loo, kr.overall).isEmpty() && !Report.looText(kr).contains("degenerate") && !Report.cumText(kr).contains("degenerate"), "common-effect model only: the random-effects SE plays no part, nothing is flagged");
             Pool tiny = Pool.compute(hkSpec("classic", ""), new double[]{0.5, 0.52, 0.48, 0.51}, new double[]{0.05, 0.05, 0.05, 0.05}, allIdx(4), null);
             check(Report.pooledP(tiny, true, true).equals("< 0.0001") && Report.pooledP(tiny, true, false).equals("< 0.0001"), "ordinary very small p-value keeps the \"< 0.0001\" format in the table and in the plot");
+        }
+
+        // ---- tau^2 estimators HSk, GENQ and GENQM (metafor 4.6-0: rma.uni); reference values from an independent implementation (Imhof integral + a port of R's zeroin/uniroot)
+        {
+            double[] gy = {-0.8893, -1.5854, -1.3481, -1.4416, -0.2175, -0.7861, -1.6209, 0.0120, -0.4694, -1.3713, -0.3394, 0.4459, -0.0173};
+            double[] gv = {0.3256, 0.1946, 0.4154, 0.0200, 0.0512, 0.0069, 0.2230, 0.0040, 0.0564, 0.0730, 0.0124, 0.5325, 0.0714}; double[] gse = new double[gv.length]; for (int i = 0; i < gv.length; i++) gse[i] = Math.sqrt(gv[i]);
+            near(Rma.fit(gy, gv, null, "HS").tau2, 0.2284950664, 1e-9, "HS tau^2 (metafor)"); near(Rma.fit(gy, gv, null, "HSk").tau2, 0.2493195331, 1e-9, "HSk tau^2: (k/(k-p) * Q - k) / sum(1/vi)");
+            double[][] gX = new double[gv.length][2]; double[] gab = {44, 55, 42, 52, 13, 44, 19, 13, 27, 42, 18, 33, 33}; for (int i = 0; i < gv.length; i++) { gX[i][0] = 1; gX[i][1] = gab[i]; }
+            near(Rma.fit(gy, gv, gX, "HSk").tau2, 0.0384000631, 1e-9, "HSk tau^2 with a moderator (k/(k-p))");
+            String inv = MetaSpec.GENQ_WEIGHTS[0], eq = MetaSpec.GENQ_WEIGHTS[1], cu = MetaSpec.GENQ_WEIGHTS[3];
+            double[][] cases = {{0, 0.3083955709, 0.3821236048}, {1, 0.3285777644, 0.3613020640}, {3, 0.4105288500, 0.4605288695}}; String[] wn = {inv, eq, null, cu};
+            for (double[] c : cases) {
+                MetaSpec gs = genSpec("MD"); gs.prediction = false; gs.genqWeights = wn[(int) c[0]]; gs.genqCustom = "1, 2, 0.5, 3, 1, 1, 2, 0.5, 3, 1, 1, 2, 4";
+                gs.methodTau = "GENQ"; near(Meta.run(gs, gen(gy, gse, false)).overall.tau2, c[1], 1e-9, "GENQ tau^2, weights = " + wn[(int) c[0]]);
+                gs.methodTau = "GENQM"; near(Meta.run(gs, gen(gy, gse, false)).overall.tau2, c[2], 1e-7, "GENQM tau^2 (median-unbiased, uniroot path of metafor), weights = " + wn[(int) c[0]]);
+            }
+            near(Meta.run(withTau("DL", eq, ""), gen(gy, gse, false)).overall.tau2, 0.3083955709, 1e-9, "Weights option does not change DL");
+            check(Meta.run(withTau("REML", cu, "5, 4, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1"), gen(gy, gse, false)).overall.tau2 == Meta.run(withTau("REML", inv, ""), gen(gy, gse, false)).overall.tau2, "Weights option does not change REML");
+            double[] ni = new double[gv.length]; for (int i = 0; i < ni.length; i++) ni[i] = 100 + 37 * i;
+            near(Rma.fit(gy, gv, null, "GENQ", ni).tau2, 0.3673885215, 1e-9, "GENQ tau^2, weights = ni"); near(Rma.fit(gy, gv, null, "GENQM", ni).tau2, 0.4118623330, 1e-6, "GENQM tau^2, weights = ni");
+            String sum = Report.summary(Meta.run(withTau("REML", inv, ""), gen(gy, gse, false)));
+            int iHS = sum.indexOf("\nHS "), iHSk = sum.indexOf("\nHSk"), iSJ = sum.indexOf("\nSJ"), iGQ = sum.indexOf("\nGENQ "), iGM = sum.indexOf("\nGENQM");
+            check(iHS > 0 && iHSk > iHS && iSJ > iHSk && iGQ > iSJ && iGM > iGQ, "Sensitivity table by tau^2 estimator lists HSk right after HS and GENQ / GENQM");
+            check(sum.contains("GENQ / GENQM weights: " + inv), "Sensitivity table footnote states the GENQ / GENQM weights");
+            String bad = Report.summary(Meta.run(withTau("REML", cu, "1, 2, 3"), gen(gy, gse, false)));
+            check(bad.contains("GENQ: NA (Weights = Custom: 3 weights entered but the data have 13 studies") && bad.contains("\nHSk"), "Custom weights of the wrong length: GENQ / GENQM show NA in the table, the other estimators are unaffected");
+            boolean thrown = false; try { MetaSpec g2 = withTau("GENQ", cu, "1, 2, 3"); Meta.run(g2, gen(gy, gse, false)); } catch (IllegalArgumentException e) { thrown = e.getMessage().contains("3 weights entered"); }
+            check(thrown, "GENQ as main estimator with custom weights of the wrong length is an error");
+        }
+
+        // ---- GENQ / GENQM fitted as metafor does (rma.uni with weights): weighted estimate, sandwich variance, Knapp-Hartung from 1/(vi + tau2), influence diagnostics and GOSH with the user's weights
+        {
+            double[] gy = {-0.8893, -1.5854, -1.3481, -1.4416, -0.2175, -0.7861, -1.6209, 0.0120, -0.4694, -1.3713, -0.3394, 0.4459, -0.0173};
+            double[] gv = {0.3256, 0.1946, 0.4154, 0.0200, 0.0512, 0.0069, 0.2230, 0.0040, 0.0564, 0.0730, 0.0124, 0.5325, 0.0714}; double[] gse = new double[gv.length]; for (int i = 0; i < gv.length; i++) gse[i] = Math.sqrt(gv[i]);
+            double[] cw = {1, 2, 0.5, 3, 1, 1, 2, 0.5, 3, 1, 1, 2, 4};
+            MetaSpec gs = withTau("GENQ", MetaSpec.GENQ_WEIGHTS[3], "1, 2, 0.5, 3, 1, 1, 2, 0.5, 3, 1, 1, 2, 4"); Pool gp = Meta.run(gs, gen(gy, gse, false)).overall;
+            near(gp.teRandom, -0.70884773, 1e-7, "GENQ pooled estimate = A-weighted mean (metafor, weights = A)"); near(gp.seRandom, 0.23769983, 1e-7, "GENQ standard error: sandwich variance as in metafor");
+            gs.methodRandomCi = "HK"; gp = Meta.run(gs, gen(gy, gse, false)).overall; near(gp.seRandom, 0.21606511, 1e-7, "GENQ with Knapp-Hartung: sandwich variance times the scale factor from 1/(vi + tau^2)");
+            Pool gm = Meta.run(withTau("GENQM", MetaSpec.GENQ_WEIGHTS[1], ""), gen(gy, gse, false)).overall; double[] ones = new double[13]; java.util.Arrays.fill(ones, 1);
+            near(gm.teRandom, Rma.fit(gy, gv, null, "GENQM", ones).beta[0], 1e-12, "GENQM with equal weights: pooled estimate is the unweighted mean"); double mu = 0; for (double x : gy) mu += x / 13; near(gm.teRandom, mu, 1e-12, "GENQM equal weights = arithmetic mean");
+            for (boolean kn : new boolean[]{false, true}) {
+                Influence inf = Influence.run(gy, gv, null, "GENQ", null, null, kn, false, cw); int[] rows = {0, 3, 12};
+                double[][] want = kn ? new double[][]{{-0.22542238, -0.03813061, 0.00158167, 1.16239721, 0.44957934, 0.04545455, -0.03813061}, {-1.37680725, -0.55216124, 0.28673476, 1.08516961, 0.37585807, 0.13636364, -0.55216124}, {1.28809776, 0.72351065, 0.50588288, 1.03951682, 0.37543407, 0.18181818, 0.72351065}}
+                    : new double[][]{{-0.20626621, -0.03489031, 0.00130686, 1.14710712, 0.44957934, 0.04545455, -0.03489031}, {-1.25535186, -0.5034522, 0.23691464, 1.07851085, 0.37585807, 0.13636364, -0.5034522}, {1.19105698, 0.66900389, 0.41798581, 1.00455946, 0.37543407, 0.18181818, 0.66900389}};
+                for (int q = 0; q < 3; q++) { int i = rows[q]; double[] got = {inf.rstudent[i], inf.dffits[i], inf.cookD[i], inf.covR[i], inf.tau2Del[i], inf.hat[i], inf.dfbs[i][0]};
+                    boolean okRow = true; for (int c = 0; c < 7; c++) okRow &= Math.abs(got[c] - want[q][c]) < 1e-6; check(okRow, "Influence diagnostics of GENQ with custom weights" + (kn ? " (Knapp-Hartung)" : "") + ", study " + (i + 1) + " (metafor influence.rma.uni)"); }
+            }
+            double[] inv13 = new double[13]; for (int i = 0; i < 13; i++) inv13[i] = 1 / gv[i];
+            check(Math.abs(Influence.run(gy, gv, null, "GENQ", null, null, false, false, cw).dffits[3] - Influence.run(gy, gv, null, "GENQ", null, null, false, false, inv13).dffits[3]) > 1e-4, "Influence diagnostics depend on the selected weights (no fallback to 1/vi)");
+            double[] gy8 = java.util.Arrays.copyOf(gy, 8), gse8 = java.util.Arrays.copyOf(gse, 8); MetaSpec gg = withTau("GENQ", MetaSpec.GENQ_WEIGHTS[3], "1, 2, 0.5, 3, 1, 1, 2, 0.5"); MetaResult gr = Meta.run(gg, gen(gy8, gse8, false)); Gosh go = Gosh.run(gr, 1000, 1L);
+            near(go.fullEst, gr.overall.teRandom, 1e-12, "GOSH: the full-data reference estimate uses the selected GENQ weights"); near(go.fullTau2, gr.overall.tau2, 1e-12, "GOSH: full-data tau^2");
+            { int[] sub = {0, 3, 5, 7}; double[] ys = new double[4], vs = new double[4], ws = new double[4]; for (int i = 0; i < 4; i++) { ys[i] = gy[sub[i]]; vs[i] = gv[sub[i]]; ws[i] = cw[sub[i]]; }
+              Rma rs = Rma.fit(ys, vs, null, "GENQ", ws); boolean found = false; long m = 0; for (int i : sub) m |= 1L << i;
+              for (int b = 0; b < go.nSub; b++) if (go.mask[b][0] == m) { found = true; near(go.est[b], rs.beta[0], 1e-12, "GOSH: estimate of a subset fitted with the weights of its studies"); near(go.tau2[b], rs.tau2, 1e-12, "GOSH: tau^2 of that subset"); }
+              check(found && go.exhaustive, "GOSH: all subsets fitted (subset found)"); }
         }
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);

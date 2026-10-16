@@ -24,7 +24,8 @@ public final class Gosh {
         for (int i = 0; i < r.TE.length; i++) if (!Double.isNaN(r.TE[i]) && !Double.isInfinite(r.TE[i]) && !Double.isNaN(r.seTE[i]) && r.seTE[i] > 0) use.add(i);
         final int k = use.size(); if (k < 3) throw new IllegalArgumentException("The GOSH plot needs at least 3 studies.");
         if (k > 400) throw new IllegalArgumentException("The GOSH plot is limited to 400 studies.");
-        final double[] y = new double[k], v = new double[k]; final double[] nn = s.nPft != null && s.nPft.length == r.TE.length ? s.nPft : null; final double[] nStudy = nn == null ? null : new double[k];
+        final double[] y = new double[k], v = new double[k]; final double[] gwAll; { int[] ui = new int[k]; for (int j = 0; j < k; j++) ui[j] = use.get(j); gwAll = Pool.genqWeightsFor(s, ui); }   // GENQ / GENQM weights chosen by the user (null: inverse variances / other estimators)
+        final double[] nn = s.nPft != null && s.nPft.length == r.TE.length ? s.nPft : null; final double[] nStudy = nn == null ? null : new double[k];
         Gosh g = new Gosh(); g.k = k; g.seed = seed; g.method = s.methodTau; g.i2Def = s.methodI2; g.labels = new String[k];
         for (int j = 0; j < k; j++) { int i = use.get(j); y[j] = r.TE[i]; v[j] = r.seTE[i] * r.seTE[i]; g.labels[j] = r.studlab[i]; if (nn != null) nStudy[j] = nn[i]; }
         final int W = (k + 63) / 64;
@@ -47,17 +48,17 @@ public final class Gosh {
         final boolean qDef = !"tau2".equals(s.methodI2); final String method = s.methodTau; final long[][] M = g.mask;
         Par.forRange(n, b -> {
             long[] m = M[b]; int c = 0; for (long x : m) c += Long.bitCount(x);
-            double[] yy = new double[c], vv = new double[c]; int t = 0; double hs = 0; int hc = 0;
-            for (int j = 0; j < k; j++) if ((m[j >> 6] >>> (j & 63) & 1L) != 0) { yy[t] = y[j]; vv[t] = v[j]; t++; if (nStudy != null && nStudy[j] > 0) { hs += 1 / nStudy[j]; hc++; } }
+            double[] yy = new double[c], vv = new double[c], ww = gwAll == null ? null : new double[c]; int t = 0; double hs = 0; int hc = 0;
+            for (int j = 0; j < k; j++) if ((m[j >> 6] >>> (j & 63) & 1L) != 0) { yy[t] = y[j]; vv[t] = v[j]; if (ww != null) ww[t] = gwAll[j]; t++; if (nStudy != null && nStudy[j] > 0) { hs += 1 / nStudy[j]; hc++; } }
             try {
-                Rma f = Rma.fit(yy, vv, null, method);
+                Rma f = Rma.fit(yy, vv, null, method, ww);
                 double ii = qDef ? (f.QE > 0 ? Math.max(0, (f.QE - (c - 1)) / f.QE) : 0) : f.tau2 / (f.tau2 + Rma.typicalV(c, 1, vv, f.X));
                 g.est[b] = f.beta[0]; g.i2[b] = 100 * ii; g.tau2[b] = f.tau2; g.q[b] = f.QE; g.size[b] = c; if (g.nHarm != null) g.nHarm[b] = hc == 0 ? Double.NaN : hc / hs;
             } catch (RuntimeException e) { g.est[b] = Double.NaN; g.i2[b] = Double.NaN; g.tau2[b] = Double.NaN; g.q[b] = Double.NaN; g.size[b] = c; if (g.nHarm != null) g.nHarm[b] = Double.NaN; }
         });
         for (int b = 0; b < n; b++) if (Double.isNaN(g.est[b]) || Double.isNaN(g.i2[b])) g.failed++;
         // reference values: all studies
-        Rma f = Rma.fit(y, v, null, method); g.fullEst = f.beta[0]; g.fullTau2 = f.tau2;
+        Rma f = Rma.fit(y, v, null, method, gwAll); g.fullEst = f.beta[0]; g.fullTau2 = f.tau2;
         g.fullI2 = 100 * (qDef ? (f.QE > 0 ? Math.max(0, (f.QE - (k - 1)) / f.QE) : 0) : f.tau2 / (f.tau2 + Rma.typicalV(k, 1, v, f.X)));
         // in / out means
         g.estIn = new double[k]; g.estOut = new double[k]; g.i2In = new double[k]; g.i2Out = new double[k]; g.nIn = new int[k];

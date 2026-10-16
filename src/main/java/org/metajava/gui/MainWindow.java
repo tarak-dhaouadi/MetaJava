@@ -39,7 +39,7 @@ public class MainWindow extends JFrame {
         PARAMS.put("prop", new String[][]{{"event", "Events"}, {"n", "Total"}});
         PARAMS.put("rate", new String[][]{{"event", "Events"}, {"time", "Person-time"}});
     }
-    static final String[] TAU = {"REML", "DL", "PM", "ML", "HS", "SJ", "HE", "EB"};
+    static final String[] TAU = {"REML", "DL", "PM", "ML", "HS", "HSk", "SJ", "HE", "EB", "GENQ", "GENQM"};
 
     DataTable table; File file; List<String> sheets = new ArrayList<>();
     final JComboBox<String> typeBox = Ui.combo(Arrays.stream(TYPES).map(t -> t[1]).toArray(String[]::new));
@@ -51,13 +51,13 @@ public class MainWindow extends JFrame {
     final JLabel fileLabel = Ui.muted("No file loaded");
     final JTable preview = new JTable(); final JPanel results = new JPanel(); final JScrollPane resScroll;
     // settings
-    JComboBox<String> modelBox = Ui.combo("Random effects", "Common effect", "Both"), smBox = Ui.combo(), methodBox = Ui.combo("Inverse"), tauBox = Ui.combo(TAU),
+    JComboBox<String> modelBox = Ui.combo("Random effects", "Common effect", "Both"), smBox = Ui.combo(), methodBox = Ui.combo("Inverse"), tauBox = Ui.combo(TAU), genqWBox = Ui.combo(MetaSpec.GENQ_WEIGHTS),
         tauCiBox = Ui.combo("Default", "QP", "BJ", "J", "None"), randCiBox = Ui.combo("classic", "HK", "KR"), adhocBox = Ui.combo("none", "se", "ci", "IQWiG6"),
         predBox = Ui.combo("V", "HTS", "HK", "HK-PR", "KR", "KR-PR", "NNF", "S"), adhocPiBox = Ui.combo("none", "se"), i2Box = Ui.combo("Q", "tau2"), commonCiBox = Ui.combo("classic", "IVhet"), incrBox = Ui.combo("only 0", "if 0 all", "all"),
         smdBox = Ui.combo("Hedges", "Cohen", "Glass"), glmmModelBox = Ui.combo("UM.FS", "UM.RS", "CM.EL", "CM.AL"), nagqBox = Ui.combo("7", "1", "2", "3", "5", "9", "11", "15", "21"), ciBox = Ui.combo("Default", "z", "t", "CP", "WS", "WSCC", "AC", "SA", "SM", "exact"), genMode = Ui.combo("Effect size & SE", "Estimate & CI (natural scale)");
     JCheckBox predChk = Ui.check("Prediction interval", true), backChk = Ui.check("Back-transform results", true), mhExact = Ui.check("MH.exact (no continuity correction in MH)", false),
         pooledvar = Ui.check("Pooled variance (MD)", false), allStudies = Ui.check("Include studies with zero events in both arms", false), tauCommon = Ui.check("Assume common tau\u00B2 across subgroups", false);
-    JTextField predLevelF = new JTextField("95", 5), levelF = new JTextField("0.95", 6), incrF = new JTextField("0.5", 6), nullF = new JTextField("", 6), targetF = new JTextField("", 6), pscaleF = new JTextField("1", 6), titleF = new JTextField(14);
+    JTextField genqCustomF = new JTextField("", 14), predLevelF = new JTextField("95", 5), levelF = new JTextField("0.95", 6), incrF = new JTextField("0.5", 6), nullF = new JTextField("", 6), targetF = new JTextField("", 6), pscaleF = new JTextField("1", 6), titleF = new JTextField(14);
     // forest options
     JCheckBox forestChk = Ui.check("Forest plot", true), fDetails = Ui.check("Analysis details", false), fOverallTest = Ui.check("Overall effect test", true), fHet = Ui.check("Heterogeneity statistics", true), fCiI2 = Ui.check("I\u00B2 confidence interval", false), fCiTau = Ui.check("Tau\u00B2 confidence interval", false);
     JComboBox<String> sortBox = Ui.combo("Original order", "Effect size", "Standard error", "Weight", "Study label"), sortDir = Ui.combo("Ascending", "Descending");
@@ -171,7 +171,7 @@ public class MainWindow extends JFrame {
         p.add(v); p.add(Box.createVerticalStrut(8));
         // meta-analysis
         Ui.Section m = new Ui.Section("3. Meta-analysis settings", false);
-        m.row("Model", modelBox); m.row("Effect measure (sm)", smBox); m.row("Pooling method", methodBox); m.row("GLMM model (model.glmm)", glmmModelBox); m.row("GLMM quadrature points (nAGQ)", nagqBox); m.row("Heterogeneity estimator (tau\u00B2)", tauBox); m.row("CI method for tau\u00B2", tauCiBox);
+        m.row("Model", modelBox); m.row("Effect measure (sm)", smBox); m.row("Pooling method", methodBox); m.row("GLMM model (model.glmm)", glmmModelBox); m.row("GLMM quadrature points (nAGQ)", nagqBox); m.row("Heterogeneity estimator (tau\u00B2)", tauBox); genqWBox.setToolTipText("Weights of the generalised Q-statistic estimators GENQ and GENQM (also used by their rows of the sensitivity table). All other tau\u00B2 estimators ignore this option."); m.row("Weights (GENQ, GENQM only)", genqWBox); genqCustomF.setToolTipText("One weight per study, in the order of the data, separated by commas or spaces (for instance 1, 2, 0.5, 3). Used when Weights = Custom."); m.row("Custom weights", genqCustomF); genqWBox.addActionListener(e -> genqCustomF.setEnabled("Custom".equals(genqWBox.getSelectedItem()))); genqCustomF.setEnabled(false); m.row("CI method for tau\u00B2", tauCiBox);
         m.row("Random effects CI method", randCiBox); m.row("Ad hoc HK variance correction", adhocBox); m.row("Common effect CI method", commonCiBox); m.row("Prediction interval method", predBox); m.row("Ad hoc HK correction (PI)", adhocPiBox); m.row(null, predChk); { JPanel pp = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0)); pp.setOpaque(false); pp.add(predLevelF); pp.add(Ui.label("%")); m.row("PI confidence level", pp); }
         m.row("I\u00B2 calculation", i2Box); m.row("Confidence level", levelF); m.row("Null effect (natural scale)", nullF); m.row(null, backChk); m.row("Individual study CI method", ciBox);
         m.row("Continuity correction (incr)", incrF); m.row("Apply correction", incrBox); m.row(null, mhExact); m.row(null, allStudies); m.row("SMD method", smdBox); m.row(null, pooledvar); m.row("Scale factor (proportions/rates)", pscaleF); m.row("Title", titleF);
@@ -464,7 +464,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
 
     MetaSpec buildSpec() {
         MetaSpec s = new MetaSpec(); s.type = TYPES[typeBox.getSelectedIndex()][0]; String sm = (String) smBox.getSelectedItem(); s.sm = "(none)".equals(sm) ? "" : sm;
-        s.method = (String) methodBox.getSelectedItem(); if (glmmModelBox.getSelectedItem() != null) s.modelGlmm = (String) glmmModelBox.getSelectedItem(); s.nAGQ = Integer.parseInt((String) nagqBox.getSelectedItem()); int mi = modelBox.getSelectedIndex(); s.random = mi != 1; s.common = mi != 0; s.methodTau = (String) tauBox.getSelectedItem();
+        s.method = (String) methodBox.getSelectedItem(); if (glmmModelBox.getSelectedItem() != null) s.modelGlmm = (String) glmmModelBox.getSelectedItem(); s.nAGQ = Integer.parseInt((String) nagqBox.getSelectedItem()); int mi = modelBox.getSelectedIndex(); s.random = mi != 1; s.common = mi != 0; s.methodTau = (String) tauBox.getSelectedItem(); s.genqWeights = (String) genqWBox.getSelectedItem(); s.genqCustom = genqCustomF.getText();
         String tc = (String) tauCiBox.getSelectedItem(); s.methodTauCi = tc.equals("Default") ? null : tc.equals("None") ? "" : tc; s.methodRandomCi = (String) randCiBox.getSelectedItem(); s.adhocHakn = noneToEmpty((String) adhocBox.getSelectedItem());
         s.methodPredict = (String) predBox.getSelectedItem(); s.adhocHaknPi = noneToEmpty((String) adhocPiBox.getSelectedItem()); s.prediction = predChk.isSelected(); s.methodI2 = (String) i2Box.getSelectedItem(); s.methodCommonCi = (String) commonCiBox.getSelectedItem();
         double lv = dbl(levelF, 0.95); s.level = s.levelMa = s.levelHetstat = lv; double pl = dbl(predLevelF, 95) / 100; s.levelPredict = pl > 0.5 && pl < 1 ? pl : 0.95; s.backtransf = backChk.isSelected(); s.incr = dbl(incrF, 0.5); s.methodIncr = ((String) incrBox.getSelectedItem()).replace(" ", "");
@@ -705,7 +705,8 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
         if (n.reg && !(nums.isEmpty() && facs.isEmpty())) { Map<String, double[]> nd = new HashMap<>(); for (String c : nums) nd.put(c, n.tbl.num(c)); Map<String, String[]> fd = new HashMap<>(); for (String f : facs) fd.put(f, n.tbl.strings(f));
             Reg g = Reg.run(r, nums, nd, facs, fd, n.regIntercept, n.refs); if (g.k == k) { X = g.fit.X; names = g.coefNames; } }
         boolean hk = X != null && s.methodRandomCi.equals("HK");   // regression model with test="knha" (adhoc when the se-floor is on)
-        Influence in = Influence.run(y, v, X, s.methodTau, lab, names == null ? new String[]{"intrcpt"} : names, hk, hk && s.adhocHakn.equals("se"));
+        int[] okIdx = new int[k]; for (int j = 0; j < k; j++) okIdx[j] = ok.get(j);
+        Influence in = Influence.run(y, v, X, s.methodTau, lab, names == null ? new String[]{"intrcpt"} : names, hk, hk && s.adhocHakn.equals("se"), org.metajava.core.Pool.genqWeightsFor(s, okIdx));
         addText("Outlier and Influence Diagnostics", Report.influenceText(in));
         addPlot("Influence Diagnostics Plots", sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return Plots.influence(in, q); });
     }

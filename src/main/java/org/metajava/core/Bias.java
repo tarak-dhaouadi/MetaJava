@@ -110,7 +110,8 @@ public final class Bias {
             b0 = beta[0]; b1 = beta[1]; seb0 = Math.sqrt(s2 * inv[0][0]); seb1 = Math.sqrt(s2 * inv[1][1]);
             res.varModel = "multiplicative";
         } else {
-            Rma m = Rma.fit(y, v, X, s.methodTau.equals("PM") ? "PM" : s.methodTau);
+            int[] okIdx = new int[k]; for (int i = 0; i < k; i++) okIdx[i] = ok.get(i);
+            Rma m = Rma.fit(y, v, X, s.methodTau.equals("PM") ? "PM" : s.methodTau, Pool.genqWeightsFor(s, okIdx));
             sigma = Math.sqrt(m.tau2); b0 = m.beta[0]; b1 = m.beta[1]; seb0 = m.se[0]; seb1 = m.se[1]; res.varModel = "additive"; res.methodTau = s.methodTau;
         }
         res.statName = "t"; res.statistic = b1 / seb1; res.df = (double) dfr; res.pval = Dist.ptTwoSided(res.statistic, dfr);

@@ -64,8 +64,8 @@ public final class Reg {
     public static final class Wald { public double s2 = 1, QM = Double.NaN; public int dfQM; public double[] se, z; }
 
     public static Wald wald(Rma fit, boolean knha, boolean adhocSe, boolean intercept) {
-        int k = fit.k, p = fit.p; double[] w = fit.wTilde; double[] y = fit.yi; double[][] X = fit.X; Wald o = new Wald();
-        if (knha) { double rssw = 0; for (int j = 0; j < k; j++) { double f = 0; for (int a = 0; a < p; a++) f += X[j][a] * fit.beta[a]; rssw += w[j] * (y[j] - f) * (y[j] - f); } o.s2 = rssw / (k - p); if (adhocSe) o.s2 = Math.max(1, o.s2); }
+        int k = fit.k, p = fit.p; double[] w = fit.wTilde; double[] y = fit.yi; double[][] X = fit.X; Wald o = new Wald(); double[] bw = fit.betaW();   // metafor: RSS.knha always uses the weights 1/(vi + tau2)
+        if (knha) { double rssw = 0; for (int j = 0; j < k; j++) { double f = 0; for (int a = 0; a < p; a++) f += X[j][a] * bw[a]; rssw += w[j] * (y[j] - f) * (y[j] - f); } o.s2 = rssw / (k - p); if (adhocSe) o.s2 = Math.max(1, o.s2); }
         o.se = new double[p]; o.z = new double[p];
         for (int a = 0; a < p; a++) { o.se[a] = Math.sqrt(fit.vb[a][a] * o.s2); o.z[a] = fit.beta[a] / o.se[a]; }
         int m0 = intercept ? 1 : 0, dm = p - m0; o.dfQM = dm;
@@ -111,11 +111,11 @@ public final class Reg {
         int k = D.k, p = D.p; double[][] X = D.X; double[] y = D.y, v = D.v;
         Reg g = new Reg(); g.k = k; g.p = p; g.intercept = intercept; g.method = s.methodTau; g.X = X; g.yv = y; g.vv = v;
         if (k <= p) throw new IllegalArgumentException("Number of studies (" + k + ") must exceed number of coefficients (" + p + ").");
-        g.fit = Rma.fit(y, v, X, s.methodTau); g.coefNames = D.names; g.refPos = D.refPos; g.refLabel = D.refLabel;
+        double[] gqw = Pool.genqWeightsFor(s, D.rows); g.fit = Rma.fit(y, v, X, s.methodTau, gqw); g.coefNames = D.names; g.refPos = D.refPos; g.refLabel = D.refLabel;
         g.tau2 = g.fit.tau2; g.tau = Math.sqrt(g.tau2); g.altTau2 = g.fit.higherMode(); g.altGain = g.fit.higherModeGain;
         // intercept-only model for R2
         double[][] X0 = new double[k][1]; for (double[] q : X0) q[0] = 1;
-        g.tau2RE = Rma.fit(y, v, X0, s.methodTau).tau2;
+        g.tau2RE = Rma.fit(y, v, X0, s.methodTau, gqw).tau2;
         if (intercept && p > 1 && g.tau2RE > 0) g.R2 = Math.max(0, 100 * (g.tau2RE - g.tau2) / g.tau2RE);
         else if (intercept && p > 1) g.R2 = 0;
         double[] w = g.fit.wTilde;
