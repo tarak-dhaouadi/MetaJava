@@ -17,7 +17,7 @@ public class MetaSpec implements Cloneable {
     /** Custom GENQ / GENQM weights (genqWeights = "Custom"): one number per study, in the order of the data, separated by commas, semicolons or white space; a single number is used for every study. */
     public String genqCustom = "";
     public static final String[] GENQ_WEIGHTS = {"Inverse sampling variance: wi = 1/vi", "Equal weights: wi = 1", "Total sample size: wi = ni", "Custom"};
-    public String methodTauCi = null;         // null => default (J for DL, QP otherwise); "" = none
+    public String methodTauCi = null;         // null => default (J for DL, GENQ for GENQ / GENQM, QP otherwise); "" = none
     public String methodI2 = "Q";
     public String methodCommonCi = "classic"; // classic, IVhet
     public String methodRandomCi = "classic"; // classic, HK, KR
@@ -56,7 +56,7 @@ public class MetaSpec implements Cloneable {
 
     public String effectiveTauCi() {
         if (methodTauCi != null) return methodTauCi;
-        return methodTau.equals("DL") ? "J" : "QP";
+        return isGenq(methodTau) ? "GENQ" : methodTau.equals("DL") ? "J" : "QP";   // GENQ / GENQM: as metafor, the generalised Q-statistic interval with the weights of the fit
     }
 
     public boolean isGlmm() { return "GLMM".equals(method); }

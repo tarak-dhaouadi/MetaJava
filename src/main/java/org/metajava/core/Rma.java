@@ -264,9 +264,10 @@ public final class Rma {
         TauCI copy() { TauCI c = new TauCI(); c.lbTau2 = lbTau2; c.ubTau2 = ubTau2; c.lbTau = lbTau; c.ubTau = ubTau; c.lbSign = lbSign; c.ubSign = ubSign; c.method = method; c.lbH2 = lbH2; c.ubH2 = ubH2; c.lbI2 = lbI2; c.ubI2 = ubI2; return c; }
     }
 
-    /** CI for tau2: "QP" (Q-profile), "BJ" (GENQ w=1/v), "J" (GENQ w=1/sqrt(v)). Results are memoised (see {@link CiKey}). */
+    /** CI for tau2: "QP" (Q-profile), "BJ" (GENQ w=1/v), "J" (GENQ w=1/sqrt(v)), "GENQ" (generalised Q-statistic interval with the weights of this fit, GENQ / GENQM models only: the default of metafor's confint() for them). Results are memoised (see {@link CiKey}). */
     public TauCI confint(String ciMethod, double level) {
-        CiKey key = new CiKey(ciMethod, level, yi, vi, X);
+        if (ciMethod.equals("GENQ") && aw == null) throw new IllegalArgumentException("The generalised Q-statistic interval with the weights of the model needs tau^2 to be estimated by GENQ or GENQM (metafor: model must be fitted with method = \"GENQ\" or \"GENQM\"); use QP, BJ or J instead.");
+        CiKey key = new CiKey(ciMethod, level, yi, vi, X, ciMethod.equals("GENQ") ? aw : null);
         synchronized (CI_CACHE) { TauCI c = CI_CACHE.get(key); if (c != null) return c.copy(); }
         TauCI r = computeConfint(ciMethod, level);
         synchronized (CI_CACHE) { CI_CACHE.put(key, r.copy()); }
@@ -284,12 +285,12 @@ public final class Rma {
             r.lbTau2 = qf.applyAsDouble(0) < cl ? 0 : solve(t -> qf.applyAsDouble(t) - cl);
             r.ubTau2 = qf.applyAsDouble(0) < cu ? 0 : solve(t -> qf.applyAsDouble(t) - cu);
         } else {
-            double[] aw = new double[k];
-            for (int i = 0; i < k; i++) aw[i] = ciMethod.equals("J") ? 1 / Math.sqrt(vi[i]) : 1 / vi[i];
-            final double qObs = rss(yi, X, aw);
+            double[] cw = new double[k];   // weights of the generalised Q statistic: BJ 1/v, J 1/sqrt(v), GENQ the weights of the fit
+            for (int i = 0; i < k; i++) cw[i] = ciMethod.equals("GENQ") ? aw[i] : ciMethod.equals("J") ? 1 / Math.sqrt(vi[i]) : 1 / vi[i];
+            final double qObs = rss(yi, X, cw);
             // The eigenvalues of S^(1/2) P_a S^(1/2) (S = diag(v + tau2)) are, apart from p zeros, those of the (k-p)x(k-p) matrix
             // B0 + tau2*B1 that is set up once here; the Imhof integrand is evaluated with a complex running product.
-            final GenqCtx ctx = new GenqCtx(aw, vi, X);
+            final GenqCtx ctx = new GenqCtx(cw, vi, X);
             java.util.function.DoubleUnaryOperator cdf = t -> quadCdf(qObs, ctx.lambdas(t));
             double pl = 1 - alpha / 2, pu = alpha / 2;
             final double c0 = cdf.applyAsDouble(0);   // shared by both bounds
@@ -325,16 +326,16 @@ public final class Rma {
     };
 
     private static final class CiKey {
-        final String method; final double level; final double[] y, v; final double[][] x; final int hash;
-        CiKey(String method, double level, double[] y, double[] v, double[][] x) {
-            this.method = method; this.level = level; this.y = y.clone(); this.v = v.clone();
+        final String method; final double level; final double[] y, v, a; final double[][] x; final int hash;
+        CiKey(String method, double level, double[] y, double[] v, double[][] x, double[] a) {
+            this.method = method; this.level = level; this.y = y.clone(); this.v = v.clone(); this.a = a == null ? new double[0] : a.clone();
             this.x = new double[x.length][]; for (int i = 0; i < x.length; i++) this.x[i] = x[i].clone();
-            hash = 31 * (31 * (31 * (31 * method.hashCode() + Double.hashCode(level)) + Arrays.hashCode(this.y)) + Arrays.hashCode(this.v)) + Arrays.deepHashCode(this.x);
+            hash = 31 * (31 * (31 * (31 * (31 * method.hashCode() + Double.hashCode(level)) + Arrays.hashCode(this.y)) + Arrays.hashCode(this.v)) + Arrays.deepHashCode(this.x)) + Arrays.hashCode(this.a);
         }
         @Override public int hashCode() { return hash; }
         @Override public boolean equals(Object o) {
             if (!(o instanceof CiKey)) return false; CiKey c = (CiKey) o;
-            return hash == c.hash && method.equals(c.method) && Double.compare(level, c.level) == 0 && Arrays.equals(y, c.y) && Arrays.equals(v, c.v) && Arrays.deepEquals(x, c.x);
+            return hash == c.hash && method.equals(c.method) && Double.compare(level, c.level) == 0 && Arrays.equals(y, c.y) && Arrays.equals(v, c.v) && Arrays.equals(a, c.a) && Arrays.deepEquals(x, c.x);
         }
     }
 

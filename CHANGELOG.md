@@ -1,5 +1,15 @@
 # Changelog
 
+### Fixed - GENQ / GENQM: conformity with metafor 4.6-0
+- Standardised residuals (`rstandard`) of a model fitted with GENQ / GENQM weights use metafor's standard error sqrt(diag((I - H) M (I - H)')), H = X (X'AX)^-1 X'A, M = diag(vi + tau^2); (1 - h_i)(v_i + tau^2) is only correct for the weights 1/(vi + tau^2) and is still used for them.
+- tau^2 confidence interval: GENQ / GENQM now default to the generalised Q-statistic interval **with the weights of the fit** (metafor: `confint()` type "GENQ"); new option "GENQ" in the tau^2 interval list (an error for the other estimators, as in metafor). QP, BJ and J are unchanged; weights 1/vi give the BJ interval. tau^2, H and I^2 limits follow.
+
+### Changed - GOSH (ordinary and meta-regression): as metafor::gosh
+- Subsets of one study are included (2^k - 1 subsets; tau^2 = 0, Q = 0, I^2 = 0 as metafor does for k = 1).
+- Random subsets: size drawn from Binomial(k, 1/2) restricted to 1..k, then a uniform random subset of that size (the meta-regression GOSH already did this).
+- I^2 is tau^2 / (tau^2 + typical sampling variance), as the I^2 of metafor's rma.uni for random-effects fits, whatever the I^2 setting of the main analysis.
+- Self-tests: 759 checks (reference values from an independent numpy implementation).
+
 ### Changed - GENQ / GENQM are fitted exactly as metafor does (rma.uni with weights)
 - The pooled estimate (and the coefficients of a meta-regression) is the weighted estimate with the selected weights A: (X'AX)^-1 X'A y, with the sandwich variance (X'AX)^-1 X'A diag(vi + tau^2) A X (X'AX)^-1. Prediction intervals use this variance plus tau^2. With Hartung-Knapp, the scale factor is still computed from the weights 1/(vi + tau^2), as in metafor. Forest-plot random-effects weights are the selected weights. Kenward-Roger is not available with these weights (clear error; NA in the sensitivity table).
 - Influence diagnostics (hat values, DFFITS, DFBETAS, Cook's distance, covariance ratio, studentised residuals) refit the model after each deletion with the weights of the remaining studies, as influence.rma.uni.

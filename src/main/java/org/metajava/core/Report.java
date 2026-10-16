@@ -268,7 +268,7 @@ public final class Report {
             if (s.methodRandomCi.equals("HK")) b.append("- Wald-type t-test (df = ").append(p.k - 1).append(") for random effects model").append(NL);
         } else if (s.random) {
             b.append("- ").append(tauLabel(s.methodTau)).append(" estimator for tau^2").append(MetaSpec.isGenq(s.methodTau) ? " (weights: " + s.genqWeights + ")" : "").append(NL);
-            if (!p.tauCiMethod.isEmpty()) b.append("- ").append(p.tauCiMethod.equals("QP") ? "Q-profile" : p.tauCiMethod.equals("BJ") ? "Biggerstaff-Jackson" : "Jackson").append(" method for confidence interval of tau^2 and tau").append(NL);
+            if (!p.tauCiMethod.isEmpty()) b.append("- ").append(p.tauCiMethod.equals("QP") ? "Q-profile" : p.tauCiMethod.equals("BJ") ? "Biggerstaff-Jackson" : p.tauCiMethod.equals("GENQ") ? "Generalised Q-statistic (weights of the " + s.methodTau + " estimator)" : "Jackson").append(" method for confidence interval of tau^2 and tau").append(NL);
             if (s.methodRandomCi.equals("KR")) b.append("- Kenward-Roger adjustment for random effects model (df = ").append(Fmt.num(p.dfKR, 2)).append(")").append(NL);
             if (s.methodRandomCi.equals("HK")) b.append("- Hartung-Knapp adjustment for random effects model (df = ").append(p.k - 1).append(")").append(NL);
         }

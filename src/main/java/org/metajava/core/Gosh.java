@@ -4,9 +4,11 @@ import java.util.*;
 
 /**
  * Graphical display of study heterogeneity (GOSH; Olkin, Dahabreh and Trikalinos, 2012; metafor::gosh).
- * The random-effects model (inverse variance, selected tau^2 estimator) is fitted to subsets of the studies (at least two):
- * all of them when there are few enough, otherwise random subsets (each study included with probability 1/2). For every subset
- * the pooled estimate and the heterogeneity (I^2 as selected, tau^2, Q) are kept. Subsets are generated sequentially from one
+ * The random-effects model (inverse variance, selected tau^2 estimator, with the weights of GENQ / GENQM) is fitted to subsets of the studies,
+ * as metafor::gosh: every non-empty subset (size >= p = 1, single studies included) when there are few enough, otherwise random subsets whose
+ * size is drawn from Binomial(k, 1/2) restricted to 1..k and whose members are a uniform random sample of that size. For every subset
+ * the pooled estimate and the heterogeneity (I^2 = tau^2 / (tau^2 + typical sampling variance) as metafor's rma.uni, tau^2, Q) are kept;
+ * a subset of one study has tau^2 = 0, Q = 0 and I^2 = 0 (metafor: k = 1). Subsets are generated sequentially from one
  * seeded generator and fitted in parallel, so the result does not depend on the number of threads.
  */
 public final class Gosh {
@@ -26,31 +28,36 @@ public final class Gosh {
         if (k > 400) throw new IllegalArgumentException("The GOSH plot is limited to 400 studies.");
         final double[] y = new double[k], v = new double[k]; final double[] gwAll; { int[] ui = new int[k]; for (int j = 0; j < k; j++) ui[j] = use.get(j); gwAll = Pool.genqWeightsFor(s, ui); }   // GENQ / GENQM weights chosen by the user (null: inverse variances / other estimators)
         final double[] nn = s.nPft != null && s.nPft.length == r.TE.length ? s.nPft : null; final double[] nStudy = nn == null ? null : new double[k];
-        Gosh g = new Gosh(); g.k = k; g.seed = seed; g.method = s.methodTau; g.i2Def = s.methodI2; g.labels = new String[k];
+        Gosh g = new Gosh(); g.k = k; g.seed = seed; g.method = s.methodTau; g.i2Def = "tau2"; g.labels = new String[k];
         for (int j = 0; j < k; j++) { int i = use.get(j); y[j] = r.TE[i]; v[j] = r.seTE[i] * r.seTE[i]; g.labels[j] = r.studlab[i]; if (nn != null) nStudy[j] = nn[i]; }
         final int W = (k + 63) / 64;
-        // number of subsets of size >= 2: 2^k - 1 - k
-        double total = Math.pow(2, k) - 1 - k; int want = Math.max(MIN_SUBSETS, Math.min(MAX_SUBSETS, maxSubsets));
+        // number of non-empty subsets: 2^k - 1 (metafor: sizes p..k with p = 1)
+        double total = Math.pow(2, k) - 1; int want = Math.max(MIN_SUBSETS, Math.min(MAX_SUBSETS, maxSubsets));
         List<long[]> masks = new ArrayList<>();
         if (total <= want) {
             g.exhaustive = true; // k <= 18 or so
-            for (long m = 1; m < (1L << k); m++) if (Long.bitCount(m) >= 2) masks.add(new long[]{m});
+            for (long m = 1; m < (1L << k); m++) masks.add(new long[]{m});
         } else {
-            SplittableRandom rng = new SplittableRandom(seed);
+            // as metafor::gosh: size m ~ prob dbinom(m, k, 1/2) for m = 1..k, then a uniform random subset of that size (partial Fisher-Yates)
+            SplittableRandom rng = new SplittableRandom(seed); double[] lf = GoshReg.logFact(k); double[] cum = new double[k]; double tot = 0;
+            for (int m = 1; m <= k; m++) { tot += Math.exp(lf[k] - lf[m] - lf[k - m]); cum[m - 1] = tot; }
+            int[] perm = new int[k]; for (int i = 0; i < k; i++) perm[i] = i;
             while (masks.size() < want) {
-                long[] m = new long[W]; int c = 0;
-                for (int w = 0; w < W; w++) { int bits = Math.min(64, k - 64 * w); long x = rng.nextLong(); if (bits < 64) x &= (1L << bits) - 1; m[w] = x; c += Long.bitCount(x); }
-                if (c >= 2) masks.add(m);
+                double u = rng.nextDouble() * tot; int m = 1; while (m < k && cum[m - 1] < u) m++;
+                for (int i = 0; i < m; i++) { int j = i + rng.nextInt(k - i); int t = perm[i]; perm[i] = perm[j]; perm[j] = t; }
+                long[] mk = new long[W]; for (int i = 0; i < m; i++) mk[perm[i] >> 6] |= 1L << (perm[i] & 63); masks.add(mk);
             }
         }
         final int n = masks.size(); g.nSub = n; g.mask = masks.toArray(new long[0][]);
         g.est = new double[n]; g.i2 = new double[n]; g.tau2 = new double[n]; g.q = new double[n]; g.size = new int[n]; if (nStudy != null) g.nHarm = new double[n];
-        final boolean qDef = !"tau2".equals(s.methodI2); final String method = s.methodTau; final long[][] M = g.mask;
+        final boolean qDef = false;   // metafor: I^2 of a random-effects fit is tau^2 / (tau^2 + vt), whatever the estimator (the Q-based I^2 is the fixed-effect definition)
+        final String method = s.methodTau; final long[][] M = g.mask;
         Par.forRange(n, b -> {
             long[] m = M[b]; int c = 0; for (long x : m) c += Long.bitCount(x);
             double[] yy = new double[c], vv = new double[c], ww = gwAll == null ? null : new double[c]; int t = 0; double hs = 0; int hc = 0;
             for (int j = 0; j < k; j++) if ((m[j >> 6] >>> (j & 63) & 1L) != 0) { yy[t] = y[j]; vv[t] = v[j]; if (ww != null) ww[t] = gwAll[j]; t++; if (nStudy != null && nStudy[j] > 0) { hs += 1 / nStudy[j]; hc++; } }
             try {
+                if (c == 1) { g.est[b] = yy[0]; g.i2[b] = 0; g.tau2[b] = 0; g.q[b] = 0; g.size[b] = 1; if (g.nHarm != null) g.nHarm[b] = hc == 0 ? Double.NaN : hc / hs; return; }   // metafor, k = 1: tau^2 = 0, Q = 0, I^2 = 0
                 Rma f = Rma.fit(yy, vv, null, method, ww);
                 double ii = qDef ? (f.QE > 0 ? Math.max(0, (f.QE - (c - 1)) / f.QE) : 0) : f.tau2 / (f.tau2 + Rma.typicalV(c, 1, vv, f.X));
                 g.est[b] = f.beta[0]; g.i2[b] = 100 * ii; g.tau2[b] = f.tau2; g.q[b] = f.QE; g.size[b] = c; if (g.nHarm != null) g.nHarm[b] = hc == 0 ? Double.NaN : hc / hs;

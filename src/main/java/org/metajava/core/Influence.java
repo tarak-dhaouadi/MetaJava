@@ -50,7 +50,12 @@ public final class Influence {
         Par.forRange(k, i -> {
             o.hat[i] = hdiag[i]; o.weight[i] = 100 * w[i] / swf;
             double yhat = 0; for (int a = 0; a < p; a++) yhat += X[i][a] * full.beta[a];
-            double var = (1 - o.hat[i]) * (v[i] + full.tau2);
+            double var;
+            if (full.aw != null) {   // metafor rstandard.rma.uni: SE = sqrt(diag((I - H) M (I - H)')), H = X (X'AX)^-1 X'A, M = diag(vi + tau2); (1 - h_i)(v_i + tau2) only holds for the weights 1/(vi + tau2)
+                double[][] brs = full.bread; double[] as = full.aw; var = 0;
+                for (int j = 0; j < k; j++) { double hij = 0; for (int s1 = 0; s1 < p; s1++) for (int s2 = 0; s2 < p; s2++) hij += X[i][s1] * brs[s1][s2] * X[j][s2]; hij *= as[j];
+                    double q = (i == j ? 1 : 0) - hij; var += q * q * (v[j] + full.tau2); }
+            } else var = (1 - o.hat[i]) * (v[i] + full.tau2);
             o.rstandard[i] = (y[i] - yhat) / Math.sqrt(var);
             int m = k - 1; double[] y2 = new double[m], v2 = new double[m], g2 = wtd ? new double[m] : null; double[][] X2 = new double[m][];
             int c = 0; for (int j = 0; j < k; j++) if (j != i) { y2[c] = y[j]; v2[c] = v[j]; X2[c] = X[j]; if (wtd) g2[c] = gw[j]; c++; }

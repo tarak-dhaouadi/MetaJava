@@ -5,7 +5,7 @@ import java.util.*;
 /**
  * GOSH analysis for a meta-regression model (Olkin, Dahabreh and Trikalinos, 2012; metafor::gosh.rma for models with moderators).
  * The mixed-effects model with the moderators chosen for the meta-regression is fitted to subsets of the studies and, for every
- * subset, all regression coefficients and the residual heterogeneity (I^2 as selected, tau^2, Q_E) are kept.
+ * subset, all regression coefficients and the residual heterogeneity (I^2 = tau^2 / (tau^2 + typical sampling variance), tau^2, Q_E) are kept.
  * <p>Subsets follow metafor: a subset needs at least p studies (p = number of coefficients, intercept included). When the number of
  * possible subsets, sum over m = p..k of choose(k, m), does not exceed the number requested, all of them are fitted; otherwise
  * random subsets are drawn: the size m is drawn with probability proportional to the Binomial(k, 1/2) mass on p..k and the studies are
@@ -64,7 +64,7 @@ public final class GoshReg {
         if (k < p + 2) throw new IllegalArgumentException("GOSH for the meta-regression needs at least " + (p + 2) + " studies (the model has " + p + " coefficients; " + k + " studies with complete data).");
         if (k > 400) throw new IllegalArgumentException("The GOSH analysis is limited to 400 studies.");
         if (rank(D.X) < p) throw new IllegalArgumentException("The meta-regression model cannot be estimated with all studies (the moderators are collinear or a factor level is empty).");
-        GoshReg g = new GoshReg(); g.k = k; g.p = p; g.seed = seed; g.method = s.methodTau; g.i2Def = s.methodI2; g.coefNames = D.names; g.intercept = intercept;
+        GoshReg g = new GoshReg(); g.k = k; g.p = p; g.seed = seed; g.method = s.methodTau; g.i2Def = "tau2"; g.coefNames = D.names; g.intercept = intercept;
         final double[][] X = D.X; final double[] y = D.y, v = D.v; final double[] gwAll = Pool.genqWeightsFor(s, D.rows);   // GENQ / GENQM weights chosen by the user
          g.labels = new String[k]; for (int j = 0; j < k; j++) g.labels[j] = r.studlab[D.rows[j]];
         final int W = (k + 63) / 64; g.nTotal = totalSubsets(k, p); int want = Math.max(Gosh.MIN_SUBSETS, Math.min(Gosh.MAX_SUBSETS, maxSubsets));
@@ -86,7 +86,8 @@ public final class GoshReg {
         }
         final int n = masks.size(); g.nSub = n; g.mask = masks.toArray(new long[0][]);
         g.status = new byte[n]; g.size = new int[n]; g.coef = new double[p][n]; g.i2 = new double[n]; g.tau2 = new double[n]; g.qe = new double[n];
-        final boolean qDef = !"tau2".equals(s.methodI2); final String method = s.methodTau; final long[][] M = g.mask; final GoshReg G = g;
+        final boolean qDef = false;   // metafor: I^2 = tau^2 / (tau^2 + vt) for every random-effects estimator
+        final String method = s.methodTau; final long[][] M = g.mask; final GoshReg G = g;
         Par.forRange(n, b -> {
             long[] m = M[b]; int c = 0; for (long x : m) c += Long.bitCount(x); G.size[b] = c;
             for (int a = 0; a < p; a++) G.coef[a][b] = Double.NaN; G.i2[b] = G.tau2[b] = G.qe[b] = Double.NaN;

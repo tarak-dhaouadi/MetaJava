@@ -52,7 +52,7 @@ public class MainWindow extends JFrame {
     final JTable preview = new JTable(); final JPanel results = new JPanel(); final JScrollPane resScroll;
     // settings
     JComboBox<String> modelBox = Ui.combo("Random effects", "Common effect", "Both"), smBox = Ui.combo(), methodBox = Ui.combo("Inverse"), tauBox = Ui.combo(TAU), genqWBox = Ui.combo(MetaSpec.GENQ_WEIGHTS),
-        tauCiBox = Ui.combo("Default", "QP", "BJ", "J", "None"), randCiBox = Ui.combo("classic", "HK", "KR"), adhocBox = Ui.combo("none", "se", "ci", "IQWiG6"),
+        tauCiBox = Ui.combo("Default", "QP", "BJ", "J", "GENQ", "None"), randCiBox = Ui.combo("classic", "HK", "KR"), adhocBox = Ui.combo("none", "se", "ci", "IQWiG6"),
         predBox = Ui.combo("V", "HTS", "HK", "HK-PR", "KR", "KR-PR", "NNF", "S"), adhocPiBox = Ui.combo("none", "se"), i2Box = Ui.combo("Q", "tau2"), commonCiBox = Ui.combo("classic", "IVhet"), incrBox = Ui.combo("only 0", "if 0 all", "all"),
         smdBox = Ui.combo("Hedges", "Cohen", "Glass"), glmmModelBox = Ui.combo("UM.FS", "UM.RS", "CM.EL", "CM.AL"), nagqBox = Ui.combo("7", "1", "2", "3", "5", "9", "11", "15", "21"), ciBox = Ui.combo("Default", "z", "t", "CP", "WS", "WSCC", "AC", "SA", "SM", "exact"), genMode = Ui.combo("Effect size & SE", "Estimate & CI (natural scale)");
     JCheckBox predChk = Ui.check("Prediction interval", true), backChk = Ui.check("Back-transform results", true), mhExact = Ui.check("MH.exact (no continuity correction in MH)", false),

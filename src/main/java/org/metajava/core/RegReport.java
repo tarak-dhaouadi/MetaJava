@@ -66,8 +66,8 @@ public final class RegReport {
     public static String goshText(Gosh g, MetaResult r) {
         MetaSpec s = r.spec; StringBuilder b = new StringBuilder(); double nh = r.overall.nHarm;
         b.append("GOSH Analysis (Graphical Display of Study Heterogeneity; Olkin et al., 2012; as metafor::gosh)").append(NL).append(NL);
-        b.append("Random-effects model (inverse variance, tau^2 estimator ").append(g.method).append(") fitted to ").append(g.nSub).append(g.exhaustive ? " subsets (all subsets of at least 2 of the " : " random subsets (seed = " + g.seed + ") of the ").append(g.exhaustive ? g.k + " studies)." : g.k + " studies.").append(NL);
-        b.append("Heterogeneity: I^2 ").append("tau2".equals(g.i2Def) ? "= tau^2 / (tau^2 + typical sampling variance)" : "= (Q - df) / Q").append(" (the setting of the main analysis).").append(NL);
+        b.append("Random-effects model (inverse variance, tau^2 estimator ").append(g.method).append(") fitted to ").append(g.nSub).append(g.exhaustive ? " subsets (all non-empty subsets of the " : " random subsets (seed = " + g.seed + ") of the ").append(g.exhaustive ? g.k + " studies)." : g.k + " studies.").append(NL);
+        b.append("Heterogeneity: I^2 ").append("tau2".equals(g.i2Def) ? "= tau^2 / (tau^2 + typical sampling variance)" : "= (Q - df) / Q").append(" (as metafor::gosh, whatever the I^2 setting of the main analysis).").append(NL);
         if (!"Inverse".equals(s.method)) b.append("Note: the study estimates and standard errors are pooled by inverse variance, whatever the pooling method of the main analysis (").append(s.method).append(").").append(NL);
         if (g.failed > 0) b.append("Note: ").append(g.failed).append(" subsets could not be fitted and were left out.").append(NL);
         b.append(NL).append("All ").append(g.k).append(" studies: estimate = ").append(Fmt.num(bt(s, g.fullEst, nh), 4)).append(", I^2 = ").append(Fmt.num(g.fullI2, 1)).append("%, tau^2 = ").append(Fmt.num(g.fullTau2, 4)).append(NL).append(NL);
