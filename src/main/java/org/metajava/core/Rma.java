@@ -352,7 +352,7 @@ public final class Rma {
     /** CI for tau2: "QP" (Q-profile), "BJ" (GENQ w=1/v), "J" (GENQ w=1/sqrt(v)), "GENQ" (generalised Q-statistic interval with the weights of this fit, GENQ / GENQM models only: the default of metafor's confint() for them). Results are memoised (see {@link CiKey}). */
     public TauCI confint(String ciMethod, double level) {
         if (ciMethod.equals("GENQ") && aw == null) throw new IllegalArgumentException("The generalised Q-statistic interval with the weights of the model needs tau^2 to be estimated by GENQ or GENQM (metafor: model must be fitted with method = \"GENQ\" or \"GENQM\"); use QP, BJ or J instead.");
-        CiKey key = new CiKey(ciMethod, level, yi, vi, X, ciMethod.equals("GENQ") ? aw : null);
+        CiKey key = new CiKey(ciMethod + (isFitBased(ciMethod) ? "|" + method + "|" + Double.doubleToLongBits(tau2) : ""), level, yi, vi, X, ciMethod.equals("GENQ") ? aw : null);
         synchronized (CI_CACHE) { TauCI c = CI_CACHE.get(key); if (c != null) return c.copy(); }
         TauCI r = computeConfint(ciMethod, level);
         synchronized (CI_CACHE) { CI_CACHE.put(key, r.copy()); }
@@ -364,7 +364,9 @@ public final class Rma {
         double alpha = 1 - level;
         int df = k - p;
         final boolean qp = ciMethod.equals("QP");
-        if (qp) {
+        if (isFitBased(ciMethod)) {
+            metaforTypeCi(r, ciMethod, alpha);
+        } else if (qp) {
             double cl = Dist.qchisq(1 - alpha / 2, df), cu = Dist.qchisq(alpha / 2, df);
             java.util.function.DoubleUnaryOperator qf = t -> { double[] wt = new double[k]; for (int i = 0; i < k; i++) wt[i] = 1 / (vi[i] + t); return rss(yi, X, wt); };
             r.lbTau2 = qf.applyAsDouble(0) < cl ? 0 : solve(t -> qf.applyAsDouble(t) - cl);
@@ -394,6 +396,53 @@ public final class Rma {
         r.lbH2 = (r.lbTau2 + sv) / sv; r.ubH2 = (r.ubTau2 + sv) / sv;
         r.lbI2 = r.lbTau2 / (r.lbTau2 + sv); r.ubI2 = r.ubTau2 / (r.ubTau2 + sv);
         return r;
+    }
+
+    /** Interval types of metafor's confint.rma.uni that depend on the fitted estimator (its tau^2, its likelihood, its se.tau2), not only on the data. */
+    public static boolean isFitBased(String ciMethod) { return ciMethod.equals("PL") || ciMethod.equals("HT") || ciMethod.equals("Wald") || ciMethod.equals("Wald.log") || ciMethod.equals("Wald.sqrt"); }
+
+    /**
+     * confint.rma.uni(type = "pl" / "ht" / "wald" / "wald.log" / "wald.sqrt") exactly as in metafor 4.6-0, for the model fitted with <i>this</i> estimator:
+     * PL profiles the (REML for method REML, otherwise ML) log-likelihood with tau^2 fixed, objective qchisq(1 - alpha, 1), uniroot (tol = eps^0.25, maxiter = 1000) on
+     * [tau2.min, tau2] and [tau2, tau2.max], tau2.min = min(0, tau2), tau2.max = max(100, 10 tau2, 10 tau2.min); a limit that is not crossed is set to tau2.min / tau2.max (sign "<" / ">").
+     * The Wald types use se.tau2 of the estimator ({@link #seTau2()}); HT is the Higgins-Thompson interval for H^2 transformed to tau^2 (intercept-only models, k > 2).
+     */
+    private void metaforTypeCi(TauCI r, String type, double alpha) {
+        final double crit = Dist.qnorm(1 - alpha / 2), t = tau2; double lb = Double.NaN, ub = Double.NaN;
+        switch (type) {
+            case "PL": {
+                final boolean reml = method.equals("REML"); final double objective = Dist.qchisq(1 - alpha, 1), ll0 = logLik(this, t, reml), tol = Math.pow(2.220446049250313e-16, 0.25);
+                java.util.function.DoubleUnaryOperator f = x -> -2 * (logLik(this, x, reml) - ll0) - objective;   // metafor .profile.rma.uni(confint = TRUE)
+                final double tmin = Math.min(0, t), tmax = Math.max(100, Math.max(t * 10, tmin * 10));
+                double f0 = f.applyAsDouble(tmin);
+                if (!Double.isNaN(f0)) { if (f0 < 0) { lb = tmin; if (tmin > 0) r.lbSign = "<"; } else lb = Dist.brent(f, tmin, f0, t, f.applyAsDouble(t), tol, 1000); }
+                double f1 = f.applyAsDouble(tmax);
+                if (!Double.isNaN(f1)) { if (f1 < 0) { ub = tmax; r.ubSign = ">"; } else ub = Dist.brent(f, t, f.applyAsDouble(t), tmax, f1, tol, 1000); }
+                break;
+            }
+            case "HT": {
+                boolean intOnly = p == 1; for (int i = 0; i < k && intOnly; i++) intOnly = X[i][0] == 1;
+                if (!intOnly) throw new IllegalArgumentException("The Higgins-Thompson interval (HT) is only applicable to models without moderators.");
+                if (k <= 2) throw new IllegalArgumentException("The Higgins-Thompson interval (HT) is only applicable when k > 2.");
+                double vt = typicalV(k, p, vi, X), H2 = t / vt + 1;
+                double seLnH = QE > k ? 0.5 * (Math.log(QE) - Math.log(k - 1)) / (Math.sqrt(2 * QE) - Math.sqrt(2.0 * k - 3)) : Math.sqrt(1.0 / (2.0 * (k - 2)) * (1 - 1 / (3.0 * (k - 2) * (k - 2))));
+                double h2lb = Math.exp(Math.log(H2) - crit * 2 * seLnH), h2ub = Math.exp(Math.log(H2) + crit * 2 * seLnH);   // SE[log(H^2)] = 2 SE[log(H)]
+                double i2lb = (h2lb - 1) / h2lb, i2ub = (h2ub - 1) / h2ub;
+                lb = Math.max(0, i2lb * vt / (1 - i2lb)); ub = i2ub * vt / (1 - i2ub);
+                break;
+            }
+            case "Wald": { double se = seTau2(); lb = Math.max(0, t - crit * se); ub = t + crit * se; break; }
+            case "Wald.log": {
+                if (t >= 0) { double se = seTau2(); lb = Math.exp(Math.log(t) - crit * se / t); ub = Math.exp(Math.log(t) + crit * se / t); ub = Math.max(t, ub); }   // as R: NaN for tau^2 = 0 (-Inf + Inf)
+                break;
+            }
+            case "Wald.sqrt": {
+                if (t >= 0) { double se = seTau2(), st = Math.sqrt(t); lb = Math.pow(Math.max(0, st - crit * se / (2 * st)), 2); ub = Math.pow(st + crit * se / (2 * st), 2); }
+                break;
+            }
+            default: throw new IllegalArgumentException("Unknown tau^2 interval type: " + type);
+        }
+        r.lbTau2 = lb; r.ubTau2 = ub;
     }
 
     /** Root of cdf(t) = pr for a cdf that decreases in t, given cdf(0) = c0 > pr; the bracket [0, hi0*4^j] reuses every evaluation. */

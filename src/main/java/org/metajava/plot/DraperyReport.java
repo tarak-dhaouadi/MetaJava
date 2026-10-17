@@ -467,7 +467,7 @@ public final class DraperyReport {
     }
 
     private static String tauCiName(String m) {
-        switch (m) { case "J": return "Jackson (2013) method"; case "QP": return "Q-profile method (Viechtbauer 2007)"; case "BJ": return "Biggerstaff-Jackson method"; case "GENQ": return "generalised Q-statistic method with the weights of the tau^2 estimator"; case "PL": return "profile likelihood"; default: return m; }
+        switch (m) { case "J": return "Jackson (2013) method"; case "QP": return "Q-profile method (Viechtbauer 2007)"; case "BJ": return "Biggerstaff-Jackson method"; case "GENQ": return "generalised Q-statistic method with the weights of the tau^2 estimator"; case "PL": return "profile likelihood method (metafor confint, type PL)"; case "HT": return "Higgins-Thompson method (H^2 transformed to tau^2)"; case "Wald": return "Wald-type interval from the standard error of tau^2"; case "Wald.log": return "Wald-type interval on the log scale (standard error of tau^2)"; case "Wald.sqrt": return "Wald-type interval on the square-root scale (standard error of tau^2)"; default: return m; }
     }
 
     /** 5.3 Between-study variance and heterogeneity statistics, with the method of the I^2 confidence interval. */

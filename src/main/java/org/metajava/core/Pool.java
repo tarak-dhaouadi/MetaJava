@@ -87,7 +87,7 @@ public class Pool {
         hi(p, s);
         String tc = s.effectiveTauCi();
         p.tauCiMethod = "";
-        if (cnt >= 3 && m != null && !tc.isEmpty() && !tc.equals("PL") && (!s.skipTauCi || s.methodI2.equals("tau2"))) {
+        if (cnt >= 3 && m != null && !tc.isEmpty() && (!s.skipTauCi || s.methodI2.equals("tau2"))) {
             Rma.TauCI ci = m.confint(tc, s.levelHetstat);
             p.loTau2 = ci.lbTau2; p.upTau2 = ci.ubTau2; p.loTau = ci.lbTau; p.upTau = ci.ubTau; p.tauCiMethod = tc;
             if (s.methodI2.equals("tau2")) {

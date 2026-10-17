@@ -1,5 +1,10 @@
 # Changelog
 
+### Added - metafor's other tau² interval types: PL, HT, Wald, Wald.log, Wald.sqrt
+- The "CI of tau²" list now has the remaining `confint.rma.uni(type = ...)` types of metafor 4.6-0, computed for the model fitted with the selected estimator, so they differ between estimators (the Q-profile interval is a property of the data and is the same for REML, ML, EB, PM, PMM, HE, HS, SJ, ...; DL keeps the Jackson default of meta; GENQ / GENQM keep the generalised Q-statistic interval).
+- PL: profile likelihood (REML likelihood for REML, ML likelihood for every other estimator), tau² fixed on [tau2.min, tau2] and [tau2, tau2.max], objective qchisq(1 - alpha, 1), uniroot tolerance eps^0.25. Wald: tau² +- z se.tau2 (lower bound at 0); Wald.log and Wald.sqrt: the log and square-root versions (tau² = 0 gives NA for the upper bound of Wald.log, as in R). HT: Higgins-Thompson interval for H² transformed to tau² (no moderators, k > 2). All use the se.tau2 of the estimator.
+- The defaults are unchanged (metafor: QP, GENQ for GENQ / GENQM).
+
 ### Fixed - Default forest plot style: heterogeneity line with confidence intervals of I² / tau²
 - With "CI of I²" / "CI of tau²" selected, the heterogeneity line of the Default (meta) style dropped below the axis and the figure grew taller. It now stays on the row of the x-axis and the plot is moved to the right (the figure gets wider), as in the RevMan 5, BMJ and STATA styles. Same for every effect type.
 
