@@ -59,16 +59,19 @@ final class Metafor {
             res.varModel = "multiplicative"; res.testKind = "t";
         } else {
             int[] okIdx = new int[k]; for (int i = 0; i < k; i++) okIdx[i] = ok.get(i);
-            Rma m = Rma.fit(te, v, X, s.methodTau, Pool.genqWeightsFor(s, okIdx));
+            // metafor: the model of regtest() is fitted with the method of the analysed model: a common-effect analysis (method = "FE") gives a fixed-effects meta-regression, tau^2 = 0, Wald z-test
+            final boolean fe = !s.random; final String meth = fe ? "FE" : s.methodTau;
+            Rma m = Rma.fit(te, v, X, meth, fe ? null : Pool.genqWeightsFor(s, okIdx));
             sigma = Math.sqrt(m.tau2); b0 = m.beta[0]; b1 = m.beta[1]; se0 = m.se[0]; se1 = m.se[1];
-            res.varModel = "additive"; res.methodTau = s.methodTau;
-            if (s.methodRandomCi.equals("HK")) {   // metafor: test = "knha" (or "adhoc": scale factor at least 1)
-                double[] bw = m.betaW(); double rss = 0;
-                for (int i = 0; i < k; i++) { double f = bw[0] + bw[1] * x[i]; rss += m.wTilde[i] * (te[i] - f) * (te[i] - f); }
-                double s2 = rss / dfr; if (!s.adhocHakn.isEmpty()) s2 = Math.max(1, s2);
-                se0 = Math.sqrt(s2 * m.vb[0][0]); se1 = Math.sqrt(s2 * m.vb[1][1]);
-                stat = "t"; df = (double) dfr; zt = b1 / se1; pval = Dist.ptTwoSided(zt, dfr); crit = Dist.qt(1 - (1 - lvl) / 2, dfr);
-                res.testKind = s.adhocHakn.isEmpty() ? "knha" : "adhoc";
+            res.varModel = fe ? "fixed" : "additive"; res.methodTau = meth;
+            if (!fe && s.methodRandomCi.equals("HK")) {   // metafor: test = "knha", or "adhoc" (scale factor at least 1) for the ad hoc option "se"; the ad hoc options "ci" / "IQWiG6" of meta are applied per coefficient as in Reg.wald
+                final String ah = Reg.adhocOf(s); Reg.Wald W = Reg.wald(m, true, ah, true, lvl);
+                se0 = W.se[0]; se1 = W.se[1]; zt = W.z[1];
+                final boolean z1 = W.zDist[1], z0 = W.zDist[0];
+                if (z1) { stat = "z"; pval = Dist.pnormTwoSided(zt); } else { stat = "t"; df = (double) dfr; pval = Dist.ptTwoSided(zt, dfr); }
+                crit = z0 ? Dist.qnorm(1 - (1 - lvl) / 2) : Dist.qt(1 - (1 - lvl) / 2, dfr);
+                res.testKind = ah.equals("se") ? "adhoc" : ah.isEmpty() ? "knha" : W.adj[1] ? "adhoc-" + ah : "knha";
+                res.adhocApplied = W.adj[1] || W.adj[0] || ah.equals("se"); res.adhocKind = ah;
             } else { stat = "z"; zt = b1 / se1; pval = Dist.pnormTwoSided(zt); crit = Dist.qnorm(1 - (1 - lvl) / 2); res.testKind = "z"; }
         }
         res.statName = stat; res.statistic = zt; res.df = df; res.pval = pval;

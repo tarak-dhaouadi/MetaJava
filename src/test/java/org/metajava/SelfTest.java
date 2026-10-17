@@ -40,6 +40,7 @@ public class SelfTest {
 
     // ------------------------------------------------------------------ Hartung-Knapp ad hoc corrections: helpers
     static MetaSpec hkSpec(String methodRandomCi, String adhoc) { MetaSpec s = new MetaSpec(); s.type = "gen"; s.sm = "MD"; s.methodTau = "REML"; s.prediction = false; s.common = false; s.random = true; s.methodRandomCi = methodRandomCi; s.adhocHakn = adhoc; return s; }
+    static MetaSpec spOf(String adhoc) { MetaSpec sp = new MetaSpec(); sp.type = "gen"; sp.sm = "MD"; sp.methodTau = "REML"; sp.prediction = false; sp.methodRandomCi = "HK"; sp.adhocHakn = adhoc; return sp; }
     static int[] allIdx(int n) { int[] a = new int[n]; for (int i = 0; i < n; i++) a[i] = i; return a; }
     static Pool hkPool(String adhoc, double[] y, double[] se, int[] sel) { return Pool.compute(hkSpec("HK", adhoc), y, se, sel, null); }
     /** True when the line of the table that starts with the label contains all the given cells in order. */
@@ -1303,6 +1304,43 @@ public class SelfTest {
             Rma wi = Rma.fit(ny, nv, iX, "DL"); double[] ww = new double[10]; for (int i = 0; i < 10; i++) ww[i] = 1 / nv[i]; double sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0; for (int i = 0; i < 10; i++) { sw += ww[i]; sx += ww[i] * iX[i][1]; sy += ww[i] * ny[i]; sxx += ww[i] * iX[i][1] * iX[i][1]; sxy += ww[i] * iX[i][1] * ny[i]; }
             double sl = (sw * sxy - sx * sy) / (sw * sxx - sx * sx), ic = (sy - sl * sx) / sw, q0 = 0; for (int i = 0; i < 10; i++) { double e0 = ny[i] - ic - sl * iX[i][1]; q0 += ww[i] * e0 * e0; }
             near(wi.QE, q0, 1e-9, "Q_E with an intercept is unchanged: the residual sum of squares");
+        }
+        // ---- metafor conformity (follow-up): PL interval with GENQ weights, regtest of a common-effect analysis, ad hoc Knapp-Hartung in regtest; reference values from an independent numpy implementation
+        {
+            double[] py = {0.35, -0.12, 0.80, 0.15, 0.55, -0.30, 0.95, 0.20, 0.62, 0.05}, pse = {0.20, 0.15, 0.30, 0.25, 0.18, 0.22, 0.35, 0.12, 0.28, 0.16}, pw = {1, 2, 0.5, 3, 1, 1, 2, 0.5, 3, 1.5}; double[] pv = new double[10]; double[][] pX = new double[10][1];
+            for (int i = 0; i < 10; i++) { pv[i] = pse[i] * pse[i]; pX[i][0] = 1; }
+            Rma.TauCI plc = Rma.fit(py, pv, pX, "GENQ", pw).confint("PL", 0.95);
+            near(plc.lbTau2, 0.013197084, 1e-4, "PL interval of a GENQ fit with weights: the profile uses the weighted coefficient (metafor logLik), lower limit"); near(plc.ubTau2, 0.324940001, 1e-4, "PL interval of a GENQ fit with weights, upper limit");
+            Rma.TauCI plr = Rma.fit(py, pv, pX, "REML").confint("PL", 0.95); check(plr.lbTau2 > 0.008 && plr.lbTau2 < 0.0092 && plr.ubTau2 > 0.369 && plr.ubTau2 < 0.371, "PL interval of REML unchanged (0.0088, 0.3702)");
+            double[] by = {0.92, 0.01, 1.25, -0.18, 0.78, 1.40, 0.05, 0.95, 0.30, 0.20, 0.85, 0.35, -0.05, 1.10}, bse = {0.30, 0.12, 0.35, 0.10, 0.22, 0.40, 0.15, 0.28, 0.09, 0.25, 0.18, 0.33, 0.11, 0.27};
+            MetaData bd = new MetaData(); bd.put("TE", by.clone()); bd.put("seTE", bse.clone()); bd.n = 14; String[] bl = new String[14]; for (int i = 0; i < 14; i++) bl[i] = "S" + i; bd.studlab = bl;
+            MetaSpec bs = new MetaSpec(); bs.type = "gen"; bs.sm = "MD"; bs.methodTau = "REML"; bs.common = true; bs.random = true; bs.prediction = false;
+            Bias.Result th = Bias.run(Meta.run(bs, bd), "Thompson (metafor)", false); near(th.statistic, 4.500617511, 1e-8, "Thompson (metafor), random-effects analysis: Wald z");
+            MetaSpec fs2 = new MetaSpec(); fs2.type = "gen"; fs2.sm = "MD"; fs2.methodTau = "REML"; fs2.common = true; fs2.random = false; fs2.prediction = false;
+            Bias.Result thf = Bias.run(Meta.run(fs2, bd), "Thompson (metafor)", false);
+            near(thf.statistic, 6.947733759, 1e-8, "Thompson (metafor), common-effect analysis: fixed-effects meta-regression (tau^2 = 0), as metafor method = FE"); near(thf.tau, 0, 1e-12, "Thompson (metafor), common-effect analysis: tau^2 = 0"); near(thf.bias, 4.132391928, 1e-8, "Thompson (metafor), common-effect analysis: slope equals the weighted-regression slope");
+            check(Report.biasText(thf, Meta.run(fs2, bd)).contains("fixed-effects meta-regression"), "report names the fixed-effects model of a common-effect analysis");
+            MetaSpec hk = new MetaSpec(); hk.type = "gen"; hk.sm = "MD"; hk.methodTau = "REML"; hk.common = true; hk.random = true; hk.prediction = false; hk.methodRandomCi = "HK";
+            near(Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false).statistic, 4.542625895, 1e-8, "Thompson (metafor) with Hartung-Knapp: t of test = \"knha\"");
+            hk.adhocHakn = "se"; Bias.Result ah = Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false); near(ah.statistic, 4.500617511, 1e-8, "Thompson (metafor) with the ad hoc option \"se\": scale factor at least 1 (test = \"adhoc\")"); check("adhoc".equals(ah.testKind), "ad hoc test kind");
+            hk.adhocHakn = "ci"; near(Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false).statistic, 4.542625895, 1e-8, "Thompson (metafor) with the ad hoc option \"ci\": rule not triggered for these data, so identical to plain Knapp-Hartung");
+            hk.adhocHakn = "IQWiG6"; near(Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false).statistic, 4.542625895, 1e-8, "Thompson (metafor) with the ad hoc option \"IQWiG6\": rule not triggered for these data, so identical to plain Knapp-Hartung");
+            // meta-regression: the ad hoc options "se", "ci" and "IQWiG6" are all carried over to the coefficients (homogeneous data: Hartung-Knapp interval narrower than the classic one)
+            {
+                int kk = 12; double[] yy = new double[kk], ss = new double[kk], xx = new double[kk]; java.util.Random rr = new java.util.Random(5);
+                for (int i = 0; i < kk; i++) { xx[i] = rr.nextGaussian(); ss[i] = 0.2 + 0.2 * rr.nextDouble(); yy[i] = 0.3 + 0.2 * xx[i] + 0.1 * ss[i] * rr.nextGaussian(); }
+                MetaData rd = new MetaData(); rd.put("TE", yy); rd.put("seTE", ss); rd.n = kk; rd.studlab = new String[kk]; for (int i = 0; i < kk; i++) rd.studlab[i] = "S" + i;
+                java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", xx); Reg[] rg = new Reg[4]; String[] ahs = {"", "se", "ci", "IQWiG6"};
+                for (int j = 0; j < 4; j++) { MetaSpec sp = new MetaSpec(); sp.type = "gen"; sp.sm = "MD"; sp.methodTau = "REML"; sp.prediction = false; sp.methodRandomCi = "HK"; sp.adhocHakn = ahs[j]; rg[j] = Reg.run(Meta.run(sp, rd), java.util.List.of("x"), nd, java.util.List.<String>of(), new java.util.HashMap<String, String[]>(), true); }
+                check(rg[1].s2 >= 1 && rg[1].se[1] > rg[0].se[1], "meta-regression, ad hoc \"se\": scale factor floored at 1 widens the Hartung-Knapp SE");
+                for (int j = 2; j <= 3; j++) {
+                    check(rg[j].adjCoef[1] && rg[j].se[1] > rg[0].se[1], "meta-regression, ad hoc \"" + ahs[j] + "\": rule triggered, SE differs from the conventional Hartung-Knapp one (no fall-back)");
+                    near(rg[j].se[1], Math.sqrt(rg[j].fit.vb[1][1]), 1e-12, "meta-regression, ad hoc \"" + ahs[j] + "\": classic SE replaces the Hartung-Knapp SE");
+                    check(Report.regText(rg[j], Meta.run(spOf(ahs[j]), rd), 1, "x").contains("Ad hoc correction \"" + ahs[j] + "\""), "meta-regression report states the \"" + ahs[j] + "\" correction");
+                }
+                check(rg[2].zCoef[1] && Math.abs(rg[2].pval[1] - Dist.pnormTwoSided(rg[2].zval[1])) < 1e-12, "meta-regression, ad hoc \"ci\": z distribution for the corrected coefficient");
+                check(!rg[3].zCoef[1] && Math.abs(rg[3].pval[1] - Dist.ptTwoSided(rg[3].zval[1], kk - 2)) < 1e-12, "meta-regression, ad hoc \"IQWiG6\": t distribution kept");
+            }
         }
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);

@@ -1,5 +1,16 @@
 # Changelog
 
+### Fixed - meta-regression no longer falls back to conventional Knapp-Hartung for the ad hoc options "ci" and "IQWiG6"
+- Only "se" (scale factor floored at 1) was carried over to meta-regression; "ci" and "IQWiG6" were silently ignored. Both are now applied to every coefficient exactly as `Pool` / meta::metagen apply them to the pooled estimate: **"ci"** - where the Hartung-Knapp interval is narrower than the classic z interval, the classic SE and the z distribution are used; **"IQWiG6"** - where it is narrower than the DerSimonian-Laird-based interval, the classic SE of the fitted model replaces the Hartung-Knapp SE (t distribution kept).
+- Also applied to: the test of moderators (classic covariance matrix when the rule fired for every tested moderator: chi-square for "ci", F for "IQWiG6"), the confidence and prediction bands of the regression plots, the permutation test statistics, and the regression behind Thompson (metafor). The report states the correction and the coefficients it was triggered for.
+- Meta-analysis (`Pool`) was checked against meta's metagen source and an independent re-computation: unchanged. The influence diagnostics keep the "se" scale factor only (the other rules change an interval, not the covariance scale).
+- Self-test: new meta-regression checks for the three options.
+
+### Fixed - three deviations from metafor (found when checking the metafor tests and the PL interval)
+- **PL interval of a GENQ / GENQM fit with weights:** metafor refits the model with the same weights, so its log-likelihood uses the weighted coefficient (not the ML one) at every tau². `Rma.logLik(..., weighted)` now does the same for the profile-likelihood interval (e.g. 0.0132 to 0.3249 instead of 0.0029 to 0.3147 on the test data); the second-maximum diagnostic `higherMode()` keeps the true likelihood, and fits without weights are unchanged.
+- **Thompson (metafor) after a common-effect-only analysis:** metafor fits the regtest model with the method of the analysed model, so a common-effect analysis gives a fixed-effects meta-regression (tau² = 0, Wald z-test, no Knapp-Hartung). MetaJava used the selected tau² estimator; the report now names the fixed-effects model.
+- **Ad hoc Knapp-Hartung in Thompson (metafor):** only the option "se" (metafor test = "adhoc") sets the scale factor to at least 1, as in the meta-regression; meta's "ci" has no metafor counterpart and gives the plain Knapp-Hartung test.
+
 ### Changed - safer parallel analysis (no change in any result)
 - **Memory-hungry sections no longer all start together.** GOSH, leave-one-out, influence and the other heavy sections of a run are started in the same order as before, but at most `Par.heavyLimit()` at a time (one per 400 MB of maximum heap, between 1 and the number of threads; override with `-Dmetajava.heavy=N`). The next one is submitted when a running one finishes, so no pool thread waits for a permit; the small sections are not limited. (A 500 000-subset GOSH with 40 studies needed less than 256 MB; the limit is a safety margin for larger data sets and small heaps.)
 - **Baujat points:** the lock is now per analysis (it was one lock for the whole program, held during a parallel loop), so Baujat plots of other analyses (subgroups) are no longer held up; the points and labels are volatile fields, labels stored first.

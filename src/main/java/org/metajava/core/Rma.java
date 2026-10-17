@@ -269,11 +269,17 @@ public final class Rma {
     }
 
     /** (Restricted) log-likelihood of the random-effects model at tau2 = t, up to a constant. */
-    public static double logLik(Rma m, double t, boolean reml) {
+    public static double logLik(Rma m, double t, boolean reml) { return logLik(m, t, reml, false); }
+
+    /**
+     * As {@link #logLik(Rma, double, boolean)}; with {@code weighted} and a model fitted with weights (GENQ / GENQM with user weights) the coefficients are those of the fit,
+     * i.e. the weighted ones, whatever tau^2, as metafor's logLik() of an rma.uni fit with weights (used by the profile-likelihood interval, which refits the model with the same weights).
+     */
+    public static double logLik(Rma m, double t, boolean reml, boolean weighted) {
         int k = m.k, p = m.p; double[] w = new double[k]; double sl = 0; for (int i = 0; i < k; i++) { w[i] = 1 / (m.vi[i] + t); sl += Math.log(m.vi[i] + t); }
         double[][] A = new double[p][p]; double[] b = new double[p];
         for (int i = 0; i < k; i++) for (int a = 0; a < p; a++) { b[a] += m.X[i][a] * w[i] * m.yi[i]; for (int c = 0; c < p; c++) A[a][c] += m.X[i][a] * w[i] * m.X[i][c]; }
-        double[][] inv = Lin.inv(A); if (inv == null) return Double.NaN; double[] be = Lin.mulv(inv, b); double rss = 0;
+        double[][] inv = Lin.inv(A); if (inv == null) return Double.NaN; double[] be = weighted && m.aw != null ? m.beta : Lin.mulv(inv, b); double rss = 0;
         for (int i = 0; i < k; i++) { double f = 0; for (int a = 0; a < p; a++) f += m.X[i][a] * be[a]; rss += w[i] * (m.yi[i] - f) * (m.yi[i] - f); }
         double ld = 0;
         if (reml) { double[][] M = new double[p][]; for (int a = 0; a < p; a++) M[a] = A[a].clone(); for (int a = 0; a < p; a++) { int pv = a; for (int r = a + 1; r < p; r++) if (Math.abs(M[r][a]) > Math.abs(M[pv][a])) pv = r; double[] tmp = M[a]; M[a] = M[pv]; M[pv] = tmp;
@@ -411,8 +417,8 @@ public final class Rma {
         final double crit = Dist.qnorm(1 - alpha / 2), t = tau2; double lb = Double.NaN, ub = Double.NaN;
         switch (type) {
             case "PL": {
-                final boolean reml = method.equals("REML"); final double objective = Dist.qchisq(1 - alpha, 1), ll0 = logLik(this, t, reml), tol = Math.pow(2.220446049250313e-16, 0.25);
-                java.util.function.DoubleUnaryOperator f = x -> -2 * (logLik(this, x, reml) - ll0) - objective;   // metafor .profile.rma.uni(confint = TRUE)
+                final boolean reml = method.equals("REML"); final double objective = Dist.qchisq(1 - alpha, 1), ll0 = logLik(this, t, reml, true), tol = Math.pow(2.220446049250313e-16, 0.25);
+                java.util.function.DoubleUnaryOperator f = x -> -2 * (logLik(this, x, reml, true) - ll0) - objective;   // metafor .profile.rma.uni(confint = TRUE)
                 final double tmin = Math.min(0, t), tmax = Math.max(100, Math.max(t * 10, tmin * 10));
                 double f0 = f.applyAsDouble(tmin);
                 if (!Double.isNaN(f0)) { if (f0 < 0) { lb = tmin; if (tmin > 0) r.lbSign = "<"; } else lb = Dist.brent(f, tmin, f0, t, f.applyAsDouble(t), tol, 1000); }

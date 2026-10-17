@@ -337,8 +337,9 @@ public final class Report {
         sb.append(NL).append("Details:").append(NL);
         if (b.model.equals("lm")) sb.append("- model:       weighted regression with multiplicative dispersion term (model = \"lm\"), residual SD = ").append(Fmt.num(b.tau, 4)).append(NL);
         else {
-            sb.append("- model:       mixed-effects meta-regression (model = \"rma\"), ").append(tauLabel(b.methodTau)).append(" estimator, tau^2 = ").append(Fmt.num(b.tau * b.tau, 4)).append(NL);
-            sb.append("- test:        ").append(b.testKind.equals("z") ? "Wald-type z-test" : b.testKind.equals("knha") ? "Knapp-Hartung t-test (test = \"knha\")" : "Knapp-Hartung t-test with the scale factor set to at least 1 (test = \"adhoc\")").append(NL);
+            if (b.methodTau.equals("FE")) sb.append("- model:       fixed-effects meta-regression (model = \"rma\", method = \"FE\": common-effect analysis)").append(NL);
+            else sb.append("- model:       mixed-effects meta-regression (model = \"rma\"), ").append(tauLabel(b.methodTau)).append(" estimator, tau^2 = ").append(Fmt.num(b.tau * b.tau, 4)).append(NL);
+            sb.append("- test:        ").append(b.testKind.equals("z") ? "Wald-type z-test" : b.testKind.equals("knha") ? "Knapp-Hartung t-test (test = \"knha\")" : b.testKind.equals("adhoc") ? "Knapp-Hartung t-test with the scale factor set to at least 1 (test = \"adhoc\")" : b.testKind.equals("adhoc-ci") ? "Knapp-Hartung t-test with ad hoc correction \"ci\" (classic SE and z-test for the coefficient where the Hartung-Knapp interval is narrower than the classic interval)" : "Knapp-Hartung t-test with ad hoc correction \"IQWiG6\" (classic SE for the coefficient where the Hartung-Knapp interval is narrower than the DerSimonian-Laird-based interval)").append(NL);
         }
         String resp = r.spec.sm.isEmpty() ? "effect" : (ratio ? "log " + longSm(r.spec.sm) : longSm(r.spec.sm));
         sb.append("- response:    ").append(resp).append(NL);
@@ -387,7 +388,7 @@ public final class Report {
         if (!Double.isNaN(g.R2)) b.append("R^2 (amount of heterogeneity accounted for):            ").append(Fmt.num(g.R2, 2)).append("%").append(NL);
         b.append(NL).append("Test for Residual Heterogeneity:").append(NL).append("QE(df = ").append(g.dfQE).append(") = ").append(Fmt.num(g.QE, 4)).append(", p-val ").append(Fmt.pvalEq(g.pQE, 4).replace("= ", "= ").replace("< 0.0001", "< .0001")).append(NL).append(NL);
         if (g.dfQM > 0) { b.append("Test of Moderators (coefficient").append(g.dfQM > 1 || !g.intercept ? "s" : "").append(" ").append(coefIdx(g)).append("):").append(NL);
-            if (g.knha) b.append("F(df1 = ").append(g.dfQM).append(", df2 = ").append((int) g.dfT).append(") = ").append(Fmt.num(g.QM, 4)).append(", p-val ").append(Fmt.pval(g.pQM, 4)).append(NL);
+            if (!g.qmChi) b.append("F(df1 = ").append(g.dfQM).append(", df2 = ").append((int) g.dfT).append(") = ").append(Fmt.num(g.QM, 4)).append(", p-val ").append(Fmt.pval(g.pQM, 4)).append(NL);
             else b.append("QM(df = ").append(g.dfQM).append(") = ").append(Fmt.num(g.QM, 4)).append(", p-val = ").append(Fmt.num(g.pQM, 4)).append(NL); b.append(NL); }
         b.append("Model Results:").append(NL).append(NL);
         List<String> head = new ArrayList<>(List.of("", "estimate", "se", g.knha ? "tval" : "zval", "pval", "ci.lb", "ci.ub", ""));
@@ -395,8 +396,23 @@ public final class Report {
         for (int a = 0; a < g.p; a++) rows.add(new String[]{g.coefNames[a], Fmt.num(g.est[a], 4), Fmt.num(g.se[a], 4), Fmt.num(g.zval[a], 4), Fmt.num(g.pval[a], 4), Fmt.num(g.lb[a], 4), Fmt.num(g.ub[a], 4), stars(g.pval[a])});
         b.append(table(head, g.withReferenceRows(head, rows), new boolean[]{false, true, true, true, true, true, true, false})).append(NL);
         b.append("---").append(NL).append("Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1").append(NL).append(NL);
+        b.append(adhocNote(g));
         b.append("Note: Estimates and confidence intervals are on the ").append(r.spec.isRatioSm() ? "Log " + capital(longSm(r.spec.sm)) : r.spec.sm).append(" scale.").append(NL);
         return b.toString();
+    }
+
+    /** Note on the ad hoc correction of the Hartung-Knapp adjustment in a meta-regression (empty without Hartung-Knapp or without correction). */
+    public static String adhocNote(Reg g) {
+        if (!g.knha || g.adhoc == null || g.adhoc.isEmpty()) return "";
+        StringBuilder b = new StringBuilder();
+        if (g.adhoc.equals("se")) return b.append("Ad hoc correction \"se\": Knapp-Hartung scale factor floored at 1 (s^2 = ").append(Fmt.num(g.s2, 4)).append(").").append(NL).toString();
+        boolean ci = g.adhoc.equals("ci"); List<String> hit = new ArrayList<>();
+        for (int a = 0; a < g.p; a++) if (g.adjCoef != null && g.adjCoef[a]) hit.add(g.coefNames[a]);
+        b.append("Ad hoc correction \"").append(g.adhoc).append("\": ").append(ci ? "where the Hartung-Knapp interval is narrower than the classic (z) interval, the classic SE and the z distribution are used"
+            : "where the Hartung-Knapp interval is narrower than the DerSimonian-Laird-based classic interval, the classic SE (t distribution) replaces the Hartung-Knapp SE").append(". ");
+        b.append(hit.isEmpty() ? "Rule not triggered for any coefficient: results identical to the conventional Hartung-Knapp adjustment." : "Triggered for: " + String.join(", ", hit) + ".");
+        if (g.dfQM > 0 && g.qmClassic) b.append(" Test of moderators: classic covariance matrix (").append(g.qmChi ? "chi-square" : "F").append(").");
+        return b.append(NL).toString();
     }
 
     static String capital(String s) { StringBuilder b = new StringBuilder(); for (String w : s.split(" ")) b.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1)).append(" "); return b.toString().trim(); }

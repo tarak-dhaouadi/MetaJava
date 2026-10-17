@@ -20,7 +20,7 @@ public final class RegReport {
         if (t.failed > 0) b.append("Note: ").append(t.failed).append(" permutations could not be fitted and were left out.").append(NL);
         if (!t.note.isEmpty()) b.append("Note: ").append(t.note).append(NL);
         b.append(NL).append("Test of Moderators (coefficient").append(t.dfQM > 1 || !g.intercept ? "s" : "").append(" ").append(g.intercept ? (t.dfQM == 1 ? "2" : "2:" + t.p) : (t.dfQM == 1 ? "1" : "1:" + t.p)).append("):").append(NL);
-        if (t.knha) b.append("F(df1 = ").append(t.dfQM).append(", df2 = ").append(t.k - t.p).append(") = ").append(Fmt.num(t.QM, 4)).append(", p-val* = ").append(pv(t.pQM)).append("  (asymptotic p-val = ").append(pv(g.pQM)).append(")").append(NL);
+        if (!t.qmChi) b.append("F(df1 = ").append(t.dfQM).append(", df2 = ").append(t.k - t.p).append(") = ").append(Fmt.num(t.QM, 4)).append(", p-val* = ").append(pv(t.pQM)).append("  (asymptotic p-val = ").append(pv(g.pQM)).append(")").append(NL);
         else b.append("QM(df = ").append(t.dfQM).append(") = ").append(Fmt.num(t.QM, 4)).append(", p-val* = ").append(pv(t.pQM)).append("  (asymptotic p-val = ").append(pv(g.pQM)).append(")").append(NL);
         b.append(NL).append("Model Results:").append(NL).append(NL);
         List<String> head = List.of("", "estimate", "se", t.knha ? "tval" : "zval", "pval*", "ci.lb", "ci.ub", "", "pval (asympt.)");
@@ -28,6 +28,7 @@ public final class RegReport {
         for (int a = 0; a < t.p; a++) rows.add(new String[]{t.coefNames[a], Fmt.num(g.est[a], 4), Fmt.num(g.se[a], 4), Fmt.num(g.zval[a], 4), pv(t.pval[a]), Fmt.num(g.lb[a], 4), Fmt.num(g.ub[a], 4), stars(t.pval[a]), pv(g.pval[a])});
         b.append(Report.table(head, g.withReferenceRows(head, rows), new boolean[]{false, true, true, true, true, true, true, false, true})).append(NL);
         b.append("---").append(NL).append("Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1").append(NL).append(NL);
+        b.append(Report.adhocNote(g));
         b.append("* p-values based on permutation; standard errors and confidence limits are the ordinary (model-based) ones.").append(NL);
         b.append("Note: Estimates and confidence intervals are on the ").append(r.spec.isRatioSm() ? "log " + r.spec.sm : r.spec.sm).append(" scale.").append(NL);
         return b.toString();

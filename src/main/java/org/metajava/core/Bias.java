@@ -12,7 +12,7 @@ public final class Bias {
         public double[] plotX, plotY;          // regression plot data (radial form)
         public String plotXlab = "", plotYlab = "";
         public double kendallKs, kendallSe; public String methodTau = "DL";
-        public boolean correct;
+        public boolean correct; public boolean adhocApplied; public String adhocKind = "";
         public String error;
         public String methodBias;
         public String note = "";
