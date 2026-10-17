@@ -15,25 +15,50 @@ public final class Bias {
         public boolean correct;
         public String error;
         public String methodBias;
+        /** "meta" (meta::metabias) or "metafor" (metafor::regtest / metafor::ranktest). */
+        public String pkg = "meta";
+        // metafor only
+        public String model = "", predictor = "", testKind = "";
+        public double limitEst = Double.NaN, limitLo = Double.NaN, limitHi = Double.NaN;
+        public boolean exactP;   // ranktest: exact Kendall p-value (no ties) instead of the normal approximation
+        public boolean ties;
+        public double kendallS = Double.NaN;
     }
+
+    /** Entries of the "Test method" list: every test of the suite as implemented by meta and, where metafor has an equivalent, by metafor. */
+    public static final String[] LIST = {
+        "Egger (meta)", "Egger (metafor)", "Begg (meta)", "Begg (metafor)", "Thompson (meta)", "Thompson (metafor)",
+        "Harbord (meta)", "Peters (meta)", "Peters (metafor)", "Macaskill (meta)", "Macaskill (metafor)",
+        "Deeks (meta)", "Deeks (metafor)", "Pustejovsky (meta)", "Pustejovsky (metafor)", "Schwarzer (meta)"};
+
+    /** "Egger (metafor)" -> "Egger"; a bare name (old projects) -> itself. */
+    public static String baseName(String m) { if (m == null) return null; int i = m.indexOf(" ("); return i < 0 ? m : m.substring(0, i); }
+    public static boolean isMetafor(String m) { return m != null && m.endsWith("(metafor)"); }
+    /** Old project files stored the bare name (meta only). */
+    public static String withPkg(String m) { return m == null || m.contains("(") || m.equals("Default") ? m : m + " (meta)"; }
 
     public static List<String> methodsFor(String type, String sm) {
         List<String> m = new ArrayList<>(List.of("Egger", "Begg", "Thompson", "Macaskill", "Pustejovsky"));
         if (type.equals("bin")) { m.addAll(List.of("Harbord", "Peters", "Schwarzer")); if (sm.equals("DOR")) m.add("Deeks"); }
         if (type.equals("prop")) m.add("Peters");
-        return m;
+        List<String> out = new ArrayList<>();
+        for (String e : LIST) if (m.contains(baseName(e))) out.add(e);
+        return out;
     }
 
     public static Result run(MetaResult r, String method, boolean correct) {
         MetaSpec s = r.spec; MetaData d = r.data; Result res = new Result(); res.methodBias = method; res.correct = correct;
+        boolean mf = isMetafor(method); method = baseName(method);
         if (method == null) method = s.type.equals("bin") ? (s.sm.equals("OR") ? "Harbord" : s.sm.equals("DOR") ? "Deeks" : "Egger") : "Egger";
-        res.methodBias = method;
+        if (mf && (method.equals("Harbord") || method.equals("Schwarzer"))) { res.methodBias = method; res.pkg = "metafor"; res.error = method + " test is not available in metafor (use \"" + method + " (meta)\")."; return res; }
+        res.methodBias = method; res.pkg = mf ? "metafor" : "meta";
         List<Integer> ok = new ArrayList<>();
         for (int i = 0; i < r.TE.length; i++) if (!Double.isNaN(r.TE[i]) && !Double.isNaN(r.seTE[i]) && r.seTE[i] > 0) ok.add(i);
         int k = ok.size();
         double[] te = new double[k], se = new double[k];
         for (int j = 0; j < k; j++) { te[j] = r.TE[ok.get(j)]; se[j] = r.seTE[ok.get(j)]; }
         if (k < 3) { res.error = "Number of studies (k=" + k + ") too small to test for small study effects (k >= 3 required)."; return res; }
+        if (mf) return Metafor.run(r, method, correct, res, ok, te, se);
         boolean same = true; for (double x : se) if (Math.abs(x - se[0]) > 1e-12) same = false;
         if (same && !method.equals("Harbord") && !method.equals("Peters") && !method.equals("Schwarzer") && !method.equals("Deeks")) { res.error = "Test for small-study effects not feasible as all studies have the same precision."; return res; }
         res.label = method.equals("Begg") || method.equals("Schwarzer") ? "Rank correlation test of funnel plot asymmetry" + (method.equals("Schwarzer") ? " of counts" : "")
@@ -123,6 +148,9 @@ public final class Bias {
         }
         return res;
     }
+
+    /** For the self-test. */
+    public static double[] kendallDistForTest(int n) { return Metafor.kendallDist(n); }
 
     static double[] pick(double[] a, List<Integer> ok) { if (a == null) return null; double[] r = new double[ok.size()]; for (int i = 0; i < r.length; i++) r[i] = a[ok.get(i)]; return r; }
 

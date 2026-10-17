@@ -14,6 +14,15 @@ public final class Rma {
     /** (X'AX)^-1 of the weighted fit (aw != null); for the usual fit it is vb itself, (X'WX)^-1 with W = 1/(vi + tau2). */
     public double[][] bread;
 
+    /**
+     * y centred at its mean (metafor: Ymc = scale(yi, center = TRUE, scale = FALSE)). metafor's tau^2 estimators and the Q_E statistic use the quadratic form
+     * Ymc' P Ymc, also for a model without an intercept, where it is not the residual sum of squares of y (P Ymc differs from P y when 1 is not in the column space of X).
+     * The likelihood, the coefficients, the Knapp-Hartung scale factor and the tau^2 intervals (confint) use y itself, as in metafor.
+     */
+    private double[] ymc;
+
+    private static double[] centred(double[] y) { double m = 0; for (double d : y) m += d; m /= y.length; double[] c = new double[y.length]; for (int i = 0; i < y.length; i++) c[i] = y[i] - m; return c; }
+
     private Rma() {}
 
     public static Rma fit(double[] y, double[] v, double[][] X, String method) { return fit(y, v, X, method, null); }
@@ -24,7 +33,7 @@ public final class Rma {
         if (X == null) { X = new double[m.k][1]; for (double[] r : X) r[0] = 1; }
         m.X = X; m.p = X[0].length;
         double[] w0 = new double[m.k]; for (int i = 0; i < m.k; i++) w0[i] = 1 / v[i];
-        m.QE = rss(y, X, w0); m.dfQ = m.k - m.p;
+        m.ymc = centred(y); m.QE = m.k > m.p ? Math.max(0, rss(m.ymc, X, w0)) : 0; m.dfQ = m.k - m.p;   // metafor: QE <- max(0, Ymc' P Ymc)
         if (MetaSpec.isGenq(method)) m.aw = genqW(genqWeights, w0).clone();
         m.tau2 = estimateTau2(m, m.aw);
         m.refit(m.tau2);
@@ -38,7 +47,7 @@ public final class Rma {
         if (X == null) { X = new double[m.k][1]; for (double[] r : X) r[0] = 1; }
         m.X = X; m.p = X[0].length;
         double[] w0 = new double[m.k]; for (int i = 0; i < m.k; i++) w0[i] = 1 / v[i];
-        m.QE = rss(y, X, w0); m.dfQ = m.k - m.p;
+        m.ymc = centred(y); m.QE = m.k > m.p ? Math.max(0, rss(m.ymc, X, w0)) : 0; m.dfQ = m.k - m.p;   // metafor: QE <- max(0, Ymc' P Ymc)
         if (MetaSpec.isGenq(method)) m.aw = genqW(genqWeights, w0).clone();
         m.tau2 = t2; m.refit(t2);
         return m;
@@ -102,7 +111,7 @@ public final class Rma {
     }
 
     private static double estimateTau2(Rma m, double[] gw) {
-        int k = m.k, p = m.p; double[] y = m.yi, v = m.vi; double[][] X = m.X;
+        int k = m.k, p = m.p; double[] y = m.ymc, v = m.vi; double[][] X = m.X;   // y = Ymc, the centred y (see ymc)
         double[] w = new double[k]; double sw = 0; for (int i = 0; i < k; i++) { w[i] = 1 / v[i]; sw += w[i]; }
         switch (m.method) {
             case "FE": return 0;
@@ -120,12 +129,37 @@ public final class Rma {
                 return Math.max(0, (rssu - tr) / (k - p));
             }
             case "SJ": {
-                double mean = 0; for (double d : y) mean += d; mean /= k; double ss = 0; for (double d : y) ss += (d - mean) * (d - mean);
-                double t0 = ss / (k - 1) * (k - 1) / k;
+                double t0 = sjStart(y);
                 double[] wt = new double[k]; for (int i = 0; i < k; i++) wt[i] = 1 / (v[i] + t0);
                 return Math.max(0, t0 * rss(y, X, wt) / (k - p));
             }
-            case "PM": case "EB": {
+            case "DLIT": {   // metafor: DL estimate iterated from tau^2 = 0 (weights 1/(vi + tau^2)) until |change| <= 1e-5 (control: threshold, maxiter = 100); tau^2 >= tau2.min = 0 in every step
+                double t = 0, change = THRESHOLD + 1; int iter = 0;
+                while (change > THRESHOLD) {
+                    iter++; double old = t; double[] wt = new double[k]; for (int i = 0; i < k; i++) wt[i] = 1 / (v[i] + t);
+                    t = Math.max(0, genqTau2(y, v, X, wt)); change = Math.abs(old - t);
+                    if (iter > MAXITER) throw new IllegalArgumentException("Iterative DL estimator did not converge.");
+                }
+                return t;
+            }
+            case "SJIT": {   // metafor: SJ iterated from the SJ starting value var(y) (k-1)/k: tau^2 <- tau^2 * RSS / (k - p) with weights 1/(vi + tau^2)
+                double t = sjStart(y), change = THRESHOLD + 1; int iter = 0;
+                while (change > THRESHOLD) {
+                    iter++; double old = t; double[] wt = new double[k]; for (int i = 0; i < k; i++) wt[i] = 1 / (v[i] + t);
+                    t = t * rss(y, X, wt) / (k - p); change = Math.abs(old - t);
+                    if (iter > MAXITER) throw new IllegalArgumentException("Iterative SJ estimator did not converge.");
+                }
+                return Math.max(0, t);
+            }
+            case "PMM": {    // metafor: median-unbiased Paule-Mandel, Q(tau^2) = qchisq(0.5, k - p) (uniroot, tol = eps^0.25)
+                final double target = Dist.qchisq(0.5, k - p);
+                java.util.function.DoubleUnaryOperator f = t -> { double[] wt = new double[k]; for (int i = 0; i < k; i++) wt[i] = 1 / (v[i] + t); return rss(y, X, wt) - target; };
+                double flo = f.applyAsDouble(0); if (flo < 0) return 0;
+                double hi = tau2MaxMetafor(y), fhi = f.applyAsDouble(hi);
+                if (fhi > 0) throw new IllegalArgumentException("Value of 'tau2.max' too low (PMM): the median-unbiased Paule-Mandel estimate exceeds " + hi + ". Switch to another tau\u00B2 estimator.");
+                return Dist.brent(f, 0, flo, hi, fhi, Math.pow(2.220446049250313e-16, 0.25), 100);
+            }
+            case "PM": case "MP": case "EB": {   // MP (Mandel-Paule) is the same estimator as PM
                 java.util.function.DoubleUnaryOperator f = t -> { double[] wt = new double[k]; for (int i = 0; i < k; i++) wt[i] = 1 / (v[i] + t); return rss(y, X, wt) - (k - p); };
                 if (f.applyAsDouble(0) <= 0) return 0;
                 double hi = 1; while (f.applyAsDouble(hi) > 0 && hi < 1e12) hi *= 2;
@@ -133,7 +167,7 @@ public final class Rma {
             }
             case "ML": case "REML": {
                 boolean reml = m.method.equals("REML");
-                java.util.function.DoubleUnaryOperator sc = t -> score(m, t, reml);
+                java.util.function.DoubleUnaryOperator sc = t -> score(m, m.ymc, t, reml);   // metafor: Fisher scoring with Ymc
                 if (sc.applyAsDouble(0) <= 0) return 0;
                 double hi = 1; while (sc.applyAsDouble(hi) > 0 && hi < 1e12) hi *= 2;
                 return Dist.brent(sc, 0, hi, 1e-12, 500);
@@ -142,6 +176,57 @@ public final class Rma {
             case "GENQM": return genqmTau2(y, v, X, genqW(gw, w));
             default: throw new IllegalArgumentException("Unknown tau2 estimator: " + m.method);
         }
+    }
+
+    /** Convergence threshold and maximum number of iterations of the iterative estimators (metafor control defaults: threshold = 1e-5, maxiter = 100). */
+    static final double THRESHOLD = 1e-5; static final int MAXITER = 100;
+
+    /** metafor: var(y) (k-1)/k, the starting value of SJ / SJIT. */
+    static double sjStart(double[] y) { int k = y.length; double mean = 0; for (double d : y) mean += d; mean /= k; double ss = 0; for (double d : y) ss += (d - mean) * (d - mean); return ss / (k - 1) * (k - 1) / k; }
+
+    /**
+     * Standard error of the tau^2 estimate, as the se.tau2 of metafor's rma.uni (notes.pdf): the large-sample variance of the estimator,
+     * evaluated at max(tau^2, 0). NaN for the common-effect model and when k = p.
+     */
+    public double seTau2() {
+        final int df = k - p; if (df <= 0 || Double.isNaN(tau2)) return Double.NaN;
+        final double t = Math.max(tau2, 0); double[] w = new double[k]; double[][] P;
+        switch (method) {
+            case "HS": case "HSk": {   // P and the weights are those of 1/vi
+                double sw = 0; for (int i = 0; i < k; i++) { w[i] = 1 / vi[i]; sw += w[i]; }
+                P = Reg.pmat(X, w); double r = Math.sqrt(1 / (sw * sw) * (2 * df + 4 * t * trace(P) + 2 * t * t * sumSq(P, null, null)));
+                return method.equals("HSk") ? (double) k / df * r : r;
+            }
+            case "DL": {
+                for (int i = 0; i < k; i++) w[i] = 1 / vi[i];
+                P = Reg.pmat(X, w); double trP = trace(P); return Math.sqrt(1 / (trP * trP) * (2 * df + 4 * t * trP + 2 * t * t * sumSq(P, null, null)));
+            }
+            case "HE": {   // P = I - X (X'X)^-1 X'; PV = P V
+                Arrays.fill(w, 1); P = Reg.pmat(X, w); double trPV = 0; for (int i = 0; i < k; i++) trPV += P[i][i] * vi[i];
+                return Math.sqrt(1.0 / ((double) df * df) * (2 * sumSq(P, vi, vi) + 4 * t * trPV + 2 * t * t * df));
+            }
+            case "GENQ": case "GENQM": {   // P with the weights A of the fit: sum(PV * t(PV)) = sum_ij P_ij^2 v_i v_j, sum(PV * P) = sum_ij P_ij^2 v_j
+                P = Reg.pmat(X, aw); double trP = trace(P);
+                return Math.sqrt(1 / (trP * trP) * (2 * sumSq(P, vi, vi) + 4 * t * sumSq(P, null, vi) + 2 * t * t * sumSq(P, null, null)));
+            }
+            case "SJ": {   // P with the weights 1/(vi + tau2.0), tau2.0 = var(y) (k-1)/k
+                double t0 = sjStart(yi); for (int i = 0; i < k; i++) w[i] = 1 / (vi[i] + t0);
+                P = Reg.pmat(X, w); return Math.sqrt(t0 * t0 / ((double) df * df) * (2 * sumSq(P, vi, vi) + 4 * t * sumSq(P, null, vi) + 2 * t * t * sumSq(P, null, null)));
+            }
+            case "ML": { double s = 0; for (int i = 0; i < k; i++) { double wi = 1 / (vi[i] + t); s += wi * wi; } return Math.sqrt(2 / s); }
+            case "REML": { for (int i = 0; i < k; i++) w[i] = 1 / (vi[i] + t); P = Reg.pmat(X, w); return Math.sqrt(2 / sumSq(P, null, null)); }
+            case "EB": case "PM": case "MP": case "PMM": case "DLIT": case "SJIT": {
+                double sw = 0; for (int i = 0; i < k; i++) sw += 1 / (vi[i] + t);
+                return Math.sqrt(2.0 * k * k / df / (sw * sw));
+            }
+            default: return Double.NaN;
+        }
+    }
+
+    private static double trace(double[][] P) { double s = 0; for (int i = 0; i < P.length; i++) s += P[i][i]; return s; }
+    /** sum_ij P_ij^2 a_i b_j (a, b = null: 1). */
+    private static double sumSq(double[][] P, double[] a, double[] b) {
+        double s = 0; for (int i = 0; i < P.length; i++) for (int j = 0; j < P.length; j++) s += P[i][j] * P[i][j] * (a == null ? 1 : a[i]) * (b == null ? 1 : b[j]); return s;
     }
 
     /** Set by {@link #higherMode()}: log-likelihood of the higher mode minus that of the reported estimate (NaN when there is no higher mode). */
@@ -163,7 +248,7 @@ public final class Rma {
     public double higherMode() {
         higherModeGain = Double.NaN;
         if (!method.equals("ML") && !method.equals("REML")) return Double.NaN;
-        final boolean reml = method.equals("REML"); final Rma m = this; java.util.function.DoubleUnaryOperator sc = t -> score(m, t, reml);
+        final boolean reml = method.equals("REML"); final Rma m = this; java.util.function.DoubleUnaryOperator sc = t -> score(m, m.yi, t, reml);   // the likelihood itself: y, not Ymc
         final double t0 = tau2, l0 = logLik(m, t0, reml); if (Double.isNaN(l0) || Double.isNaN(t0)) return Double.NaN;
         double vs = 0; for (double x : vi) vs += x; vs /= k; double ym = 0; for (double x : yi) ym += x; ym /= k; double yv = 0; for (double x : yi) yv += (x - ym) * (x - ym); yv /= Math.max(1, k - 1);
         final double sc0 = Math.max(Math.max(vs, yv), Math.max(t0, 1e-300)); final int G = 240; final double lo = 1e-9 * sc0, hi = 1e9 * sc0, step = Math.pow(hi / lo, 1.0 / (G - 1));
@@ -241,14 +326,14 @@ public final class Rma {
         return (q - trPV) / tr;
     }
 
-    private static double score(Rma m, double t, boolean reml) {
+    private static double score(Rma m, double[] y, double t, boolean reml) {
         int k = m.k, p = m.p; double[] w = new double[k];
         for (int i = 0; i < k; i++) w[i] = 1 / (m.vi[i] + t);
         double[][] xtwx = new double[p][p]; double[] xtwy = new double[p];
-        for (int i = 0; i < k; i++) for (int a = 0; a < p; a++) { xtwy[a] += m.X[i][a] * w[i] * m.yi[i]; for (int b = 0; b < p; b++) xtwx[a][b] += m.X[i][a] * w[i] * m.X[i][b]; }
+        for (int i = 0; i < k; i++) for (int a = 0; a < p; a++) { xtwy[a] += m.X[i][a] * w[i] * y[i]; for (int b = 0; b < p; b++) xtwx[a][b] += m.X[i][a] * w[i] * m.X[i][b]; }
         double[][] inv = Lin.inv(xtwx); double[] b = Lin.mulv(inv, xtwy);
         double s = 0;
-        for (int i = 0; i < k; i++) { double f = 0; for (int a = 0; a < p; a++) f += m.X[i][a] * b[a]; double r = m.yi[i] - f; s += w[i] * w[i] * r * r; }
+        for (int i = 0; i < k; i++) { double f = 0; for (int a = 0; a < p; a++) f += m.X[i][a] * b[a]; double r = y[i] - f; s += w[i] * w[i] * r * r; }
         double sw = 0; for (double x : w) sw += x;
         double tr = sw;
         if (reml) { double t2 = 0; for (int i = 0; i < k; i++) for (int a = 0; a < p; a++) for (int c = 0; c < p; c++) t2 += w[i] * w[i] * m.X[i][a] * inv[a][c] * m.X[i][c]; tr = sw - t2; }

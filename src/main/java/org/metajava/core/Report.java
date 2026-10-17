@@ -40,7 +40,8 @@ public final class Report {
 
     static final Map<String, String> TAU_NAME = new LinkedHashMap<>();
     static { TAU_NAME.put("DL", "DerSimonian-Laird"); TAU_NAME.put("PM", "Paule-Mandel"); TAU_NAME.put("REML", "Restricted maximum-likelihood");
-        TAU_NAME.put("ML", "Maximum-likelihood"); TAU_NAME.put("HS", "Hunter-Schmidt"); TAU_NAME.put("HSk", "Hunter-Schmidt with small-sample correction"); TAU_NAME.put("GENQ", "Generalised Q-statistic"); TAU_NAME.put("GENQM", "Median-unbiased generalised Q-statistic"); TAU_NAME.put("SJ", "Sidik-Jonkman"); TAU_NAME.put("HE", "Hedges"); TAU_NAME.put("EB", "Empirical Bayes"); }
+        TAU_NAME.put("ML", "Maximum-likelihood"); TAU_NAME.put("HS", "Hunter-Schmidt"); TAU_NAME.put("HSk", "Hunter-Schmidt with small-sample correction"); TAU_NAME.put("GENQ", "Generalised Q-statistic"); TAU_NAME.put("GENQM", "Median-unbiased generalised Q-statistic"); TAU_NAME.put("SJ", "Sidik-Jonkman"); TAU_NAME.put("HE", "Hedges"); TAU_NAME.put("EB", "Empirical Bayes");
+        TAU_NAME.put("PMM", "Median-unbiased Paule-Mandel"); TAU_NAME.put("MP", "Mandel-Paule"); TAU_NAME.put("DLIT", "DerSimonian-Laird (iterated)"); TAU_NAME.put("SJIT", "Sidik-Jonkman (iterated)"); }
 
     public static String smLabel(MetaSpec s) {
         switch (s.sm) {
@@ -117,7 +118,7 @@ public final class Report {
     }
 
     /** Estimators of tau^2 compared in {@link #tauSensitivity}. */
-    static final String[] TAU_SENS = {"DL", "REML", "PM", "ML", "HS", "HSk", "SJ", "HE", "EB", "GENQ", "GENQM"};
+    static final String[] TAU_SENS = {"DL", "DLIT", "REML", "PM", "PMM", "ML", "HS", "HSk", "SJ", "SJIT", "HE", "EB", "GENQ", "GENQM"};   // MP is PM under another name and is not repeated
 
     /**
      * Sensitivity table by tau^2 estimator (random-effects model): the pooled effect, its confidence interval and p-value, I^2, the p-value of the test of heterogeneity,
@@ -205,7 +206,7 @@ public final class Report {
         if (p.k < 2) return b.toString();
         if (s.random && !p.lrp) {
             b.append("Quantifying heterogeneity (with ").append(lv).append("% CIs):").append(NL);
-            b.append(" tau^2 = ").append(Fmt.num(p.tau2, 4)); if (!Double.isNaN(p.loTau2)) b.append(" ").append(Fmt.ci(p.loTau2, p.upTau2, 4));
+            b.append(" tau^2 = ").append(Fmt.num(p.tau2, 4)); if (!s.isGlmm() && !Double.isNaN(p.seTau2)) b.append(" (SE = ").append(Fmt.num(p.seTau2, 4)).append(")"); if (!Double.isNaN(p.loTau2)) b.append(" ").append(Fmt.ci(p.loTau2, p.upTau2, 4));
             b.append("; tau = ").append(Fmt.num(p.tau, 4)); if (!Double.isNaN(p.loTau)) b.append(" ").append(Fmt.ci(p.loTau, p.upTau, 4)); b.append(NL);
         } else b.append("Quantifying heterogeneity (with ").append(lv).append("% CIs):").append(NL);
         b.append(" I^2 = ").append(Fmt.num(100 * p.I2, 1)).append("% [").append(Fmt.num(100 * p.loI2, 1)).append("%; ").append(Fmt.num(100 * p.upI2, 1)).append("%]; H = ")
@@ -284,6 +285,7 @@ public final class Report {
     public static String biasText(Bias.Result b, MetaResult r) {
         StringBuilder sb = new StringBuilder();
         if (b.error != null) return b.error + NL;
+        if ("metafor".equals(b.pkg)) return biasTextMetafor(b, r);
         sb.append(b.label).append(NL).append(NL);
         sb.append("Test result: ").append(b.statName).append(" = ").append(Fmt.num(b.statistic, 2)).append(", ");
         if (b.df != null) sb.append("df = ").append(b.df.intValue()).append(", ");
@@ -299,6 +301,44 @@ public final class Report {
             sb.append("- predictor:   ").append(pred).append(NL).append("- weight:      inverse variance").append(NL);
             sb.append("- reference:   ").append(b.methodBias.equals("Egger") ? "Egger et al. (1997), BMJ" : b.methodBias.equals("Thompson") ? "Thompson and Sharp (1999), Stat Med" : b.methodBias.equals("Harbord") ? "Harbord et al. (2006), Stat Med" : b.methodBias.equals("Peters") ? "Peters et al. (2006), JAMA" : b.methodBias.equals("Macaskill") ? "Macaskill et al. (2001), Stat Med" : b.methodBias.equals("Deeks") ? "Deeks et al. (2005), J Clin Epidemiol" : "Pustejovsky and Rodgers (2019), Res Synth Methods").append(NL);
         }
+        return sb.toString();
+    }
+
+    /** Report of the metafor versions of the funnel plot asymmetry tests (regtest / ranktest). */
+    static String biasTextMetafor(Bias.Result b, MetaResult r) {
+        StringBuilder sb = new StringBuilder(); boolean ratio = r.spec.isRatioSm();
+        sb.append(b.label).append(NL).append(NL);
+        if (b.methodBias.equals("Begg")) {
+            sb.append("Kendall's tau = ").append(Fmt.num(b.statistic, 4)).append(", p-value ").append(Fmt.pvalEq(b.pval, 4)).append(NL);
+            sb.append("Kendall's S (concordant - discordant pairs) = ").append(Fmt.num(b.kendallS, 0)).append(NL);
+            sb.append(NL).append("Details:").append(NL);
+            sb.append("- p-value: ").append(b.exactP ? "exact (no ties among the standardised effects or the sampling variances)" : "normal approximation with tie correction (ties present, so the exact p-value cannot be computed)").append(NL);
+            sb.append("- rank correlation between the standardised effects (around the fixed-effect estimate) and the sampling variances").append(NL);
+            sb.append("- reference:   Begg and Mazumdar (1994), Biometrics").append(NL);
+            return sb.toString();
+        }
+        sb.append("Test result: ").append(b.statName).append(" = ").append(Fmt.num(b.statistic, 2)).append(", ");
+        if (b.df != null) sb.append("df = ").append(b.df.intValue()).append(", ");
+        sb.append("p-value ").append(Fmt.pvalEq(b.pval, 4)).append(NL);
+        String pn = b.predictor.equals("sei") ? "standard error" : b.predictor.equals("ni") ? "total sample size" : b.predictor.equals("ninv") ? "inverse of total sample size" : b.predictor.equals("sqrtninv") && b.methodBias.equals("Deeks") ? "inverse of square root of effective sample size" : "inverse of square root of sample size";
+        sb.append("Bias estimate (coefficient of the predictor): ").append(Fmt.num(b.bias, 4)).append(" (SE = ").append(Fmt.num(b.seBias, 4)).append(")").append(NL);
+        if (!Double.isNaN(b.limitEst)) {
+            sb.append("Limit estimate (intercept, effect at infinite precision): ").append(Fmt.num(b.limitEst, 4)).append(" [").append(Fmt.num(b.limitLo, 4)).append("; ").append(Fmt.num(b.limitHi, 4)).append("]");
+            if (ratio) sb.append(" (log scale; ").append(Fmt.num(Math.exp(b.limitEst), 4)).append(" [").append(Fmt.num(Math.exp(b.limitLo), 4)).append("; ").append(Fmt.num(Math.exp(b.limitHi), 4)).append("])");
+            sb.append(NL);
+        }
+        sb.append(NL).append("Details:").append(NL);
+        if (b.model.equals("lm")) sb.append("- model:       weighted regression with multiplicative dispersion term (model = \"lm\"), residual SD = ").append(Fmt.num(b.tau, 4)).append(NL);
+        else {
+            sb.append("- model:       mixed-effects meta-regression (model = \"rma\"), ").append(tauLabel(b.methodTau)).append(" estimator, tau^2 = ").append(Fmt.num(b.tau * b.tau, 4)).append(NL);
+            sb.append("- test:        ").append(b.testKind.equals("z") ? "Wald-type z-test" : b.testKind.equals("knha") ? "Knapp-Hartung t-test (test = \"knha\")" : "Knapp-Hartung t-test with the scale factor set to at least 1 (test = \"adhoc\")").append(NL);
+        }
+        String resp = r.spec.sm.isEmpty() ? "effect" : (ratio ? "log " + longSm(r.spec.sm) : longSm(r.spec.sm));
+        sb.append("- response:    ").append(resp).append(NL);
+        sb.append("- predictor:   ").append(pn).append(" (predictor = \"").append(b.predictor).append("\")").append(NL).append("- weight:      inverse variance").append(NL);
+        String ref = b.methodBias.equals("Egger") ? "Egger et al. (1997), BMJ" : b.methodBias.equals("Thompson") ? "Thompson and Sharp (1999), Stat Med; Sterne and Egger (2005)" : b.methodBias.equals("Macaskill") ? "Macaskill et al. (2001), Stat Med" : b.methodBias.equals("Peters") ? "Peters et al. (2006), JAMA" : b.methodBias.equals("Deeks") ? "Deeks et al. (2005), J Clin Epidemiol" : "Pustejovsky and Rodgers (2019), Res Synth Methods";
+        sb.append("- reference:   ").append(ref).append(NL);
+        if (b.methodBias.equals("Peters") || b.methodBias.equals("Deeks")) sb.append("- note:        metafor weights by the sampling variance of the chosen effect measure; the (meta) version uses the variance defined by the original authors.").append(NL);
         return sb.toString();
     }
 

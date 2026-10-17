@@ -682,6 +682,33 @@ public class SelfTest {
             BufferedImage pim = Plots.petPeese(pp, rb, new Plots.Opts()); check(pim.getWidth() > 100 && countColour(pim, 0x1F4E8C) > 50 && countColour(pim, 0xD9822B) > 50, "PET-PEESE plot draws the PET line and the PEESE curve");
         } catch (Exception e) { e.printStackTrace(); check(false, "publication-bias tests threw " + e); }
 
+        // ---- tests for funnel plot asymmetry: the (meta) and (metafor) versions; reference values from scipy / numpy (Kendall exact test, weighted least squares, REML meta-regression)
+        try {
+            double[] ee = {12, 8, 20, 5, 30, 9, 14}, ne = {100, 60, 150, 40, 220, 80, 95}, ec = {20, 15, 31, 9, 41, 14, 22}, nc = {100, 62, 148, 42, 215, 79, 99};
+            MetaData bd = new MetaData(); bd.put("event.e", ee).put("n.e", ne).put("event.c", ec).put("n.c", nc); bd.studlab = new String[]{"a", "b", "c", "d", "e", "f", "g"};
+            MetaSpec bs = new MetaSpec(); bs.type = "bin"; bs.sm = "OR"; bs.methodTau = "DL"; MetaResult br = Meta.run(bs, bd);
+            Bias.Result eg = Bias.run(br, "Egger (metafor)", false), egm = Bias.run(br, "Egger (meta)", false), egOld = Bias.run(br, "Egger", false);
+            near(eg.statistic, -2.958502, 1e-5, "Egger (metafor): t"); near(eg.pval, 0.0315735, 1e-6, "Egger (metafor): p-value"); near(eg.limitEst, -0.220522, 1e-5, "Egger (metafor): limit estimate");
+            check(Math.abs(eg.statistic - egm.statistic) < 1e-9 && Math.abs(egOld.pval - egm.pval) < 1e-12, "Egger (metafor) = Egger (meta) = bare name (old projects)");
+            Bias.Result th = Bias.run(br, "Thompson (metafor)", false); near(th.statistic, -0.561602, 1e-5, "Thompson (metafor): z"); near(th.pval, 0.574388, 1e-5, "Thompson (metafor): normal p-value"); check("z".equals(th.statName) && th.df == null, "Thompson (metafor) uses a z-test");
+            Bias.Result bg = Bias.run(br, "Begg (metafor)", false); near(bg.statistic, -0.523810, 1e-5, "Begg (metafor): Kendall tau"); near(bg.pval, 0.136111, 1e-5, "Begg (metafor): exact p-value"); check(bg.exactP, "Begg (metafor): exact test when there are no ties");
+            check(Math.abs(Bias.run(br, "Begg (meta)", false).pval - 0.0985210) < 1e-5, "Begg (meta) keeps its normal approximation");
+            near(Bias.run(br, "Peters (metafor)", false).statistic, -2.741763, 1e-5, "Peters (metafor): t"); near(Bias.run(br, "Peters (metafor)", false).pval, 0.0407066, 1e-6, "Peters (metafor): p-value");
+            near(Bias.run(br, "Deeks (metafor)", false).statistic, -3.160604, 1e-5, "Deeks (metafor): t"); near(Bias.run(br, "Deeks (metafor)", false).pval, 0.0250781, 1e-6, "Deeks (metafor): p-value");
+            near(Bias.run(br, "Pustejovsky (metafor)", false).pval, Bias.run(br, "Pustejovsky (meta)", false).pval, 1e-9, "Pustejovsky (metafor) = (meta)");
+            check(Bias.run(br, "Harbord (metafor)", false).error != null && Bias.run(br, "Schwarzer (metafor)", false).error != null, "Harbord / Schwarzer have no metafor version: explanatory message");
+            check(Bias.run(Meta.run(genSpec("MD"), gen(new double[]{0.1, 0.2, 0.3, 0.1}, new double[]{0.1, 0.2, 0.3, 0.4}, false)), "Macaskill (metafor)", false).error != null, "metafor sample-size predictor without sample sizes: explanatory message");
+            double[] pk = Bias.kendallDistForTest(10); double sum = 0; for (double q : pk) sum += q; near(sum, 1, 1e-12, "exact Kendall null distribution sums to 1"); near(pk[0], 1.0 / 3628800, 1e-15, "exact Kendall null distribution: P(Q = 0) = 1/10!");
+            final double[] BT = {0.15619, 0.29910, 0.01761, -0.20216, 0.05837, 0.35535, 0.67845, 0.26147, -0.12771, 0.50847, 0.07148, 0.30391, 0.34216, 0.20934, 0.17643, -0.25949, -0.10307, 0.37826, 0.04549, 0.31993, 0.71792, 0.21288, -0.02555, 0.18620, 0.32047, 0.29902, 0.34393, 0.87863, 0.08648, 0.24543, -0.05728, 0.19867, 0.11262, 0.21947, 0.28166, 0.37987, 0.75569, 0.39152, 0.08332, 0.20562};
+            final double[] BS = {0.26878, 0.32897, 0.12536, 0.27023, 0.05413, 0.17934, 0.34650, 0.10257, 0.28676, 0.19087, 0.36637, 0.24167, 0.23168, 0.09787, 0.05499, 0.22955, 0.35737, 0.20050, 0.39005, 0.06775, 0.34406, 0.21304, 0.35719, 0.06060, 0.13700, 0.05738, 0.11694, 0.33058, 0.06775, 0.08369, 0.35355, 0.08538, 0.07854, 0.07714, 0.09662, 0.18138, 0.36381, 0.06167, 0.34072, 0.09086};
+            MetaSpec hk = new MetaSpec(); hk.type = "gen"; hk.sm = "MD"; hk.methodTau = "REML"; hk.methodRandomCi = "HK"; Bias.Result tk = Bias.run(Meta.run(hk, gen(BT, BS, false)), "Thompson (metafor)", false);
+            near(tk.statistic, 0.484341, 1e-5, "Thompson (metafor), Knapp-Hartung: t"); near(tk.pval, 0.630924, 1e-5, "Thompson (metafor), Knapp-Hartung: p-value"); near(tk.tau * tk.tau, 0.00529977, 1e-7, "Thompson (metafor): REML tau^2");
+            Bias.Result bt = Bias.run(Meta.run(new MetaSpec() {{ type = "gen"; sm = "MD"; }}, gen(BT, BS, false)), "Begg (metafor)", false); check(!bt.exactP && Math.abs(bt.pval - Bias.run(Meta.run(new MetaSpec() {{ type = "gen"; sm = "MD"; }}, gen(BT, BS, false)), "Begg (meta)", false).pval) < 1e-9, "Begg (metafor) with ties: normal approximation (tie-corrected)");
+            check(Bias.LIST.length == 16 && Bias.methodsFor("bin", "OR").contains("Deeks (metafor)") == false && Bias.methodsFor("bin", "DOR").contains("Deeks (metafor)"), "list of test methods");
+            String rep = Report.biasText(eg, br) + Report.biasText(bg, br); check(rep.contains("metafor::regtest") && rep.contains("metafor::ranktest") && rep.contains("Limit estimate") && rep.contains("exact"), "metafor reports are produced");
+            check(Plots.biasPlot(eg, br, new Plots.Opts()) != null && Plots.biasPlot(bg, br, new Plots.Opts()) != null, "plots of the metafor tests");
+        } catch (Exception e) { e.printStackTrace(); check(false, "asymmetry-test (meta / metafor) tests threw " + e); }
+
         // ---- data validation
         try {
             DataTable tb = new DataTable(); tb.nrow = 6;
@@ -1140,6 +1167,83 @@ public class SelfTest {
             double[] ys = new double[16], ss = new double[16]; for (int i = 0; i < 16; i++) { ys[i] = Math.sin(i + 1); ss[i] = 0.1 + 0.02 * i; } MetaData gd16 = new MetaData(); gd16.put("TE", ys); gd16.put("seTE", ss); gd16.n = 16; String[] l16 = new String[16]; for (int i = 0; i < 16; i++) l16[i] = "S" + i; gd16.studlab = l16;
             Gosh g16 = Gosh.run(Meta.run(gsp, gd16), 4000, 11); double ms = 0; int ones = 0; for (int b = 0; b < g16.nSub; b++) { ms += g16.size[b]; if (g16.size[b] == 1) ones++; }
             check(!g16.exhaustive && g16.nSub == 4000 && Math.abs(ms / g16.nSub - 8.0) < 0.15 && g16.nSub > 0 && ones < 10, "GOSH: random subsets have Binomial(16, 1/2) sizes (mean " + ms / g16.nSub + ", " + ones + " single studies)");
+        }
+        // ---- tau^2 estimators PMM, DLIT, SJIT, MP and se(tau^2) of every estimator (metafor 4.6-0: rma.uni, se.tau2); reference values from an independent numpy port of the metafor code
+        {
+            double[] ty = {0.35, -0.12, 0.80, 0.15, 0.55, -0.30, 0.95, 0.20, 0.62, 0.05}, tse = {0.20, 0.15, 0.30, 0.25, 0.18, 0.22, 0.35, 0.12, 0.28, 0.16}, tw = {1, 2, 0.5, 3, 1, 1, 2, 0.5, 3, 1.5}; double[] tv = new double[10];
+            double[][] tX1 = new double[10][1], tX2 = new double[10][2]; for (int i = 0; i < 10; i++) { tv[i] = tse[i] * tse[i]; tX1[i][0] = 1; tX2[i][0] = 1; tX2[i][1] = (i + 1) / 10.0; }
+            Object[][] ref = {
+                {0, "HS", 0.056980864, 0.040754046},
+                {0, "HSk", 0.067315986, 0.050608124},
+                {0, "HE", 0.109113333, 0.078103801},
+                {0, "DL", 0.070612895, 0.054873026},
+                {0, "DLIT", 0.096906418, 0.067997018},
+                {0, "GENQ", 0.105100240, 0.091786386},
+                {0, "GENQM", 0.125933446, 0.102826128},
+                {0, "SJ", 0.111651180, 0.056796666},
+                {0, "SJIT", 0.096908954, 0.067998260},
+                {0, "PM", 0.096906534, 0.067997075},
+                {0, "MP", 0.096906534, 0.067997075},
+                {0, "PMM", 0.109356259, 0.074077214},
+                {0, "ML", 0.067215240, 0.049151347},
+                {0, "REML", 0.083296895, 0.060359543},
+                {0, "EB", 0.096906534, 0.067997075},
+                {1, "HS", 0.056890232, 0.036884630},
+                {1, "HSk", 0.080121597, 0.058021706},
+                {1, "HE", 0.127886061, 0.092555023},
+                {1, "DL", 0.089024518, 0.069564138},
+                {1, "DLIT", 0.116565622, 0.082290847},
+                {1, "GENQ", 0.109989294, 0.099245952},
+                {1, "GENQM", 0.133338590, 0.112246456},
+                {1, "SJ", 0.125506490, 0.065465829},
+                {1, "SJIT", 0.116571191, 0.082293717},
+                {1, "PM", 0.116566217, 0.082291153},
+                {1, "MP", 0.116566217, 0.082291153},
+                {1, "PMM", 0.132522804, 0.090494509},
+                {1, "ML", 0.067241444, 0.049163996},
+                {1, "REML", 0.104429742, 0.075999170},
+                {1, "EB", 0.116566217, 0.082291153}};
+            for (Object[] q : ref) {
+                int mode = (Integer) q[0]; String m = (String) q[1]; double t2 = (Double) q[2], se = (Double) q[3]; boolean root = m.equals("GENQM") || m.equals("PMM"); double tol = root ? 1e-5 : 1e-8;   // GENQM / PMM: uniroot with tol = eps^0.25
+                Rma f = Rma.fit(ty, tv, mode == 0 ? tX1 : tX2, m, tw);
+                near(f.tau2, t2, tol, m + " tau^2 " + (mode == 0 ? "(intercept only)" : "(meta-regression)") + " as metafor"); near(f.seTau2(), se, tol, m + " se(tau^2) " + (mode == 0 ? "(intercept only)" : "(meta-regression)") + " as metafor se.tau2");
+            }
+            near(Rma.fit(ty, tv, null, "MP").tau2, Rma.fit(ty, tv, null, "PM").tau2, 1e-12, "MP is the same estimator as PM");
+            check(Double.isNaN(Rma.fit(ty, tv, null, "FE").seTau2()), "no se(tau^2) for the common-effect model");
+            Rma pmm = Rma.fit(ty, tv, null, "PMM"); double[] wq = new double[10]; for (int i = 0; i < 10; i++) wq[i] = 1 / (tv[i] + pmm.tau2);
+            double swq = 0, swy = 0; for (int i = 0; i < 10; i++) { swq += wq[i]; swy += wq[i] * ty[i]; } double qq = 0; for (int i = 0; i < 10; i++) qq += wq[i] * (ty[i] - swy / swq) * (ty[i] - swy / swq);
+            near(qq, Dist.qchisq(0.5, 9), 1e-3, "PMM: Q(tau^2) equals the median of the chi-square distribution with k - p degrees of freedom");
+            MetaSpec ts = new MetaSpec(); ts.type = "gen"; ts.sm = "MD"; ts.methodTau = "PMM"; ts.prediction = false; MetaData td = new MetaData(); td.put("TE", ty.clone()); td.put("seTE", tse.clone()); td.n = 10; String[] tl = new String[10]; for (int i = 0; i < 10; i++) tl[i] = "S" + i; td.studlab = tl;
+            Pool tp = Meta.run(ts, td).overall; near(tp.tau2, 0.109356093, 1e-5, "Pool: PMM tau^2"); near(tp.seTau2, 0.074077134, 1e-5, "Pool: PMM se(tau^2) is reported for the pooled analysis");
+            String rep = Report.summary(Meta.run(ts, td)); check(rep.contains("Median-unbiased Paule-Mandel") && rep.contains("(SE = 0.0741)"), "report: PMM label and se(tau^2)");
+        }
+        // ---- model without an intercept: as metafor, the tau^2 estimators and Q_E use the centred y (Ymc' P Ymc); reference values from an independent numpy port of rma.uni
+        {
+            double[] ny = {0.35, -0.12, 0.80, 0.15, 0.55, -0.30, 0.95, 0.20, 0.62, 0.05}, nse = {0.20, 0.15, 0.30, 0.25, 0.18, 0.22, 0.35, 0.12, 0.28, 0.16}, nw = {1, 2, 0.5, 3, 1, 1, 2, 0.5, 3, 1.5}; double[] nv = new double[10];
+            double[][] nX = new double[10][1]; for (int i = 0; i < 10; i++) { nv[i] = nse[i] * nse[i]; nX[i][0] = (i + 1) / 10.0; }
+            Object[][] nref = {
+                {"HS", 0.060968670, 0.041789670},
+                {"HSk", 0.071746881, 0.051820234},
+                {"HE", 0.108939805, 0.078005896},
+                {"DL", 0.076985305, 0.058419654},
+                {"DLIT", 0.098008088, 0.068536385},
+                {"GENQ", 0.102950943, 0.089706632},
+                {"GENQM", 0.123254936, 0.100468453},
+                {"SJ", 0.112200463, 0.057006293},
+                {"SJIT", 0.098013798, 0.068539180},
+                {"PM", 0.098008679, 0.068536674},
+                {"MP", 0.098008679, 0.068536674},
+                {"PMM", 0.110435384, 0.074602787},
+                {"ML", 0.070264899, 0.050621058},
+                {"REML", 0.086559080, 0.062209112},
+                {"EB", 0.098008679, 0.068536674}};
+            for (Object[] q : nref) { String m = (String) q[0]; boolean root = m.equals("GENQM") || m.equals("PMM"); double tol = root ? 1e-5 : 1e-8; Rma f = Rma.fit(ny, nv, nX, m, nw);
+                near(f.tau2, (Double) q[1], tol, m + " tau^2 without an intercept (centred y, as metafor)"); near(f.seTau2(), (Double) q[2], tol, m + " se(tau^2) without an intercept"); }
+            near(Rma.fit(ny, nv, nX, "DL").QE, 26.919185257, 1e-8, "Q_E without an intercept is Ymc' P Ymc (metafor), not the residual sum of squares of y (27.8732)");
+            double[][] iX = new double[10][2]; for (int i = 0; i < 10; i++) { iX[i][0] = 1; iX[i][1] = (i + 1) / 10.0; }
+            Rma wi = Rma.fit(ny, nv, iX, "DL"); double[] ww = new double[10]; for (int i = 0; i < 10; i++) ww[i] = 1 / nv[i]; double sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0; for (int i = 0; i < 10; i++) { sw += ww[i]; sx += ww[i] * iX[i][1]; sy += ww[i] * ny[i]; sxx += ww[i] * iX[i][1] * iX[i][1]; sxy += ww[i] * iX[i][1] * ny[i]; }
+            double sl = (sw * sxy - sx * sy) / (sw * sxx - sx * sx), ic = (sy - sl * sx) / sw, q0 = 0; for (int i = 0; i < 10; i++) { double e0 = ny[i] - ic - sl * iX[i][1]; q0 += ww[i] * e0 * e0; }
+            near(wi.QE, q0, 1e-9, "Q_E with an intercept is unchanged: the residual sum of squares");
         }
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);

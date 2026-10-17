@@ -1,5 +1,24 @@
 # Changelog
 
+### Added - metafor versions of the tests for funnel plot asymmetry
+- The "Test method" list (9. Publication bias) now names the package behind every test: Egger (meta), Egger (metafor), Begg (meta), Begg (metafor), Thompson (meta), Thompson (metafor), Harbord (meta), Peters (meta), Peters (metafor), Macaskill (meta), Macaskill (metafor), Deeks (meta), Deeks (metafor), Pustejovsky (meta), Pustejovsky (metafor), Schwarzer (meta). "Default" is unchanged. Harbord and Schwarzer exist only in meta. Projects saved earlier (bare names) open as the (meta) entry.
+- metafor::regtest(): Egger = `model = "lm", predictor = "sei"`; Thompson = `model = "rma", predictor = "sei"` (mixed-effects meta-regression with the tau² estimator of the analysis; Wald z-test, or Knapp-Hartung t-test when the analysis uses Hartung-Knapp, scale factor >= 1 with an ad hoc correction); Macaskill = `"ni"`; Peters = `"ninv"`; Deeks = `"sqrtninv"` with the effective sample size; Pustejovsky = `"sqrtninv"` with n.e n.c / (n.e + n.c). Weights are 1/vi of the effect measure of the analysis. The report adds metafor's limit estimate (intercept) with CI.
+- metafor::ranktest() (Begg (metafor)): Kendall's tau with the exact p-value of cor.test(exact = TRUE) when there are no ties (normal approximation with tie correction otherwise); Begg (meta) is unchanged.
+- Where the two packages define the test identically (Egger, Macaskill, Pustejovsky) the numbers agree; they differ for Thompson (z instead of t), Begg (exact p), Peters and Deeks (weights).
+
+### Fixed - models without an intercept: exactly as metafor
+- metafor centres y (Ymc = scale(yi, center = TRUE, scale = FALSE)) in every tau² estimator (HS, HSk, HE, DL, DLIT, GENQ, GENQM, SJ, SJIT, PM, MP, PMM, ML, REML, EB) and in Q_E (max(0, Ymc' P Ymc)). The two forms are equal when the model has an intercept, but not otherwise, where Q_E is no longer the residual sum of squares of y. MetaJava now does the same, so tau², Q_E, p(Q_E), I²-type measures and everything that depends on them agree with metafor for meta-regressions without an intercept.
+- Unchanged, as in metafor: coefficients, standard errors, log-likelihood and information criteria, Knapp-Hartung scale factor (all use y itself) and the tau² intervals (confint uses y).
+
+### Added - tau² estimators PMM, DLIT, SJIT and MP (as in metafor 4.6-0)
+- New entries in the "Heterogeneity estimator (tau²)" list: DLIT (after DL), PMM (just below PM), MP (after PMM), SJIT (after SJ). PMM: median-unbiased Paule-Mandel, Q(tau²) = qchisq(0.5, k-p), root found as metafor's uniroot (tol = eps^0.25, error if tau2.max is too low). DLIT / SJIT: iterations from tau² = 0 and from var(y)(k-1)/k, threshold 1e-5, maxiter 100, error when not converged. MP is PM under its other name.
+- The sensitivity table by tau² estimator gains DLIT, PMM and SJIT rows (MP would repeat PM).
+
+### Added - standard error of tau² for every estimator (metafor se.tau2)
+- `Rma.seTau2()` follows the formulas of rma.uni for HS, HSk, HE, DL, GENQ, GENQM, SJ, ML, REML, EB, PM, MP, PMM, DLIT and SJIT (evaluated at max(tau², 0)); it was only available for DL, REML and ML in the meta-regression.
+- Shown as "(SE = ...)" next to tau² in the meta-analysis summary and in the meta-regression output; NaN for the common-effect model.
+- Self-tests: 825 checks, tau² and se(tau²) of all 15 estimators, with and without a moderator, against an independent numpy port of the metafor code.
+
 ### Fixed - GENQ / GENQM: conformity with metafor 4.6-0
 - Standardised residuals (`rstandard`) of a model fitted with GENQ / GENQM weights use metafor's standard error sqrt(diag((I - H) M (I - H)')), H = X (X'AX)^-1 X'A, M = diag(vi + tau^2); (1 - h_i)(v_i + tau^2) is only correct for the weights 1/(vi + tau^2) and is still used for them.
 - tau^2 confidence interval: GENQ / GENQM now default to the generalised Q-statistic interval **with the weights of the fit** (metafor: `confint()` type "GENQ"); new option "GENQ" in the tau^2 interval list (an error for the other estimators, as in metafor). QP, BJ and J are unchanged; weights 1/vi give the BJ interval. tau^2, H and I^2 limits follow.

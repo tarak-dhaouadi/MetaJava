@@ -176,22 +176,8 @@ public final class Reg {
         return out;
     }
 
-    static double seTau2(Rma m, String method, double[][] X, double[] v) {
-        int k = m.k, p = m.p; double t2 = m.tau2;
-        double[] w = new double[k];
-        switch (method) {
-            case "DL": {
-                for (int i = 0; i < k; i++) w[i] = 1 / v[i];
-                double[][] P = pmat(X, w); double trP = 0; for (int i = 0; i < k; i++) trP += P[i][i];
-                double[][] PS = new double[k][k]; for (int i = 0; i < k; i++) for (int j = 0; j < k; j++) PS[i][j] = P[i][j] * (v[j] + t2);
-                double tr = 0; for (int i = 0; i < k; i++) for (int j = 0; j < k; j++) tr += PS[i][j] * PS[j][i];
-                return Math.sqrt(2 * tr) / trP;
-            }
-            case "REML": { for (int i = 0; i < k; i++) w[i] = 1 / (v[i] + t2); double[][] P = pmat(X, w); double tr = 0; for (int i = 0; i < k; i++) for (int j = 0; j < k; j++) tr += P[i][j] * P[j][i]; return Math.sqrt(2 / tr); }
-            case "ML": { double s = 0; for (int i = 0; i < k; i++) { double wi = 1 / (v[i] + t2); s += wi * wi; } return Math.sqrt(2 / s); }
-            default: return Double.NaN;
-        }
-    }
+    /** Standard error of tau^2 (metafor se.tau2) for every supported estimator, see {@link Rma#seTau2()}. */
+    static double seTau2(Rma m, String method, double[][] X, double[] v) { return m.seTau2(); }
 
     static double[][] pmat(double[][] X, double[] w) {
         int k = X.length, p = X[0].length; double[][] xtwx = new double[p][p];

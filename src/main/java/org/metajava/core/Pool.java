@@ -79,7 +79,7 @@ public class Pool {
         Rma m = null;
         if (cnt >= 2) {
             if (!Double.isNaN(s.tauPreset)) { p.tau2 = s.tauPreset * s.tauPreset * 0 + s.tauPreset; }
-            else { m = Rma.fit(y, v, null, s.methodTau, genqWeightsFor(s, sel)); p.tau2 = m.tau2; p.altTau2 = m.higherMode(); p.altGain = m.higherModeGain; }
+            else { m = Rma.fit(y, v, null, s.methodTau, genqWeightsFor(s, sel)); p.tau2 = m.tau2; p.seTau2 = m.seTau2(); p.altTau2 = m.higherMode(); p.altGain = m.higherModeGain; }
         } else p.tau2 = Double.NaN;
         p.tau = Math.sqrt(p.tau2);
         double t2 = Double.isNaN(p.tau2) ? 0 : p.tau2;

@@ -39,7 +39,7 @@ public class MainWindow extends JFrame {
         PARAMS.put("prop", new String[][]{{"event", "Events"}, {"n", "Total"}});
         PARAMS.put("rate", new String[][]{{"event", "Events"}, {"time", "Person-time"}});
     }
-    static final String[] TAU = {"REML", "DL", "PM", "ML", "HS", "HSk", "SJ", "HE", "EB", "GENQ", "GENQM"};
+    static final String[] TAU = {"REML", "DL", "DLIT", "PM", "PMM", "MP", "ML", "HS", "HSk", "SJ", "SJIT", "HE", "EB", "GENQ", "GENQM"};
 
     DataTable table; File file; List<String> sheets = new ArrayList<>();
     final JComboBox<String> typeBox = Ui.combo(Arrays.stream(TYPES).map(t -> t[1]).toArray(String[]::new));
@@ -103,7 +103,8 @@ public class MainWindow extends JFrame {
         orchardChk = Ui.check("Orchard plot (subgroups)", false), caterChk = Ui.check("Caterpillar plot (subgroups)", false), goshChk = Ui.check("GOSH plot (heterogeneity diagnostics)", false), goshTrimOrdChk = Ui.check("Limit the ordinary GOSH plot to the central 99% of subsets", false), goshHlChk = Ui.check("Colour subsets by the most influential study", false), goshClChk = Ui.check("Detect clusters of subsets (colour by cluster)", false), goshRegChk = Ui.check("GOSH for meta-regression (coefficients and residual heterogeneity)", false), goshTrimChk = Ui.check("Limit the GOSH meta-regression plot axes to the central 99% of the subsets", true);
     JSpinner permIterSp = new JSpinner(new SpinnerNumberModel(5000, 100, 100000, 1000)), goshSubSp = new JSpinner(new SpinnerNumberModel(20000, 1000, 500000, 5000));
     JTextField permSeedF = new JTextField("1", 6), goshSeedF = new JTextField("1", 6);
-    JComboBox<String> biasMethod = Ui.combo("Default", "Egger", "Begg", "Thompson", "Harbord", "Peters", "Macaskill", "Deeks", "Pustejovsky", "Schwarzer");
+    static String[] biasItems() { String[] a = new String[Bias.LIST.length + 1]; a[0] = "Default"; System.arraycopy(Bias.LIST, 0, a, 1, Bias.LIST.length); return a; }
+    JComboBox<String> biasMethod = Ui.combo(biasItems());
     JComboBox<String> tfSide = Ui.combo("Auto", "Left", "Right"), tfEst = Ui.combo("L0", "R0", "Q0"), tfModel = Ui.combo("As the analysis (metafor)", "Common effect (meta)");
     JSpinner dpiSp = new JSpinner(new SpinnerNumberModel(300, 72, 1200, 100)); JComboBox<String> fmtBox = Ui.combo("PNG", "TIFF", "JPG", "SVG", "PDF"); JComboBox<String> goshPalBox = Ui.combo(ExtraPlots.PALETTE_NAMES);
     final List<Object[]> plots = new ArrayList<>(); // {title, DoubleFunction<BufferedImage>}
