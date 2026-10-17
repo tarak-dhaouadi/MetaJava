@@ -1,5 +1,10 @@
 # Changelog
 
+### Changed - faster GOSH cluster detection (no change in any result)
+- The cluster detection was entirely single-threaded and took 1-4 s per GOSH analysis (ordinary and meta-regression), after every change of a setting. It now runs on the worker pool: the 18 EM fits of the Gaussian mixture (1 to 6 components, 3 starts each) run in parallel, and inside each fit the E step (over subsets), the M step (over components) and the assignment of every subset to its cluster do too; the silhouette widths of the separation check (one point per task) are computed in parallel as well.
+- The random stream is unchanged: the k-means++ starting centres are drawn one after the other from the seeded generator exactly as before, the fits are then compared in the original order, and every sum is accumulated in its original order. Clusters, silhouette widths, ICL / BIC, inclusion rates and the report are therefore bit-for-bit identical to the previous version and to a single-threaded run (checked on ordinary and meta-regression GOSH, 8 000 and 200 000 subsets, 1 and 4 threads).
+- The silhouette width over the combined space that was computed in every merge round of the separation check but overwritten before being read is no longer computed.
+
 ### Changed - faster analysis when many analyses are selected (no change in any result)
 - All sections of a run (subgroups, leave-one-out, cumulative, influence, GOSH, selection model, Drapery report, ...) are now started together in the shared worker pool, heaviest first, instead of the heavy ones running one after another. The output keeps the order of the sections.
 - The plots of a section are rendered in parallel; the GOSH meta-regression runs at the same time as the ordinary GOSH (its output stays right below it).

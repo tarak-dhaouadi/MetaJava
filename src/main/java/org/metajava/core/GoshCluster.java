@@ -99,9 +99,16 @@ public final class GoshCluster {
         double[][] F; if (r.nUsed <= FIT_MAX) F = Z; else { F = new double[FIT_MAX][]; int[] perm = new int[r.nUsed]; for (int i = 0; i < perm.length; i++) perm[i] = i;
             for (int i = 0; i < FIT_MAX; i++) { int j = i + rng.nextInt(perm.length - i); int t = perm[i]; perm[i] = perm[j]; perm[j] = t; F[i] = Z[perm[i]]; } }
         Mix best = null; double bestIcl = Double.POSITIVE_INFINITY;
-        for (int g = 1; g <= MAX_G; g++) {
-            if (F.length < 10 * g) break;
-            Mix mx = null; for (int start = 0; start < 3; start++) { Mix t = Mix.fit(F, g, rng); if (t != null && (mx == null || t.ll > mx.ll)) mx = t; }
+        // The 3 starts of every number of components are independent EM fits. Their initial centres are drawn here, one after the other from the
+        // seeded generator (exactly the random stream of a serial run); the EM fits then run in parallel and are compared in the original order,
+        // so the result does not depend on the number of threads.
+        final int nStart = 3; int gMax = 0; while (gMax < MAX_G && F.length >= 10 * (gMax + 1)) gMax++;
+        final double[][][] init = new double[gMax * nStart][][]; final Mix[] fits = new Mix[gMax * nStart];
+        for (int g = 1; g <= gMax; g++) for (int start = 0; start < nStart; start++) init[(g - 1) * nStart + start] = Mix.start(F, g, rng);
+        final double[][] Ff = F;
+        Par.forRange(fits.length, q -> fits[q] = Mix.fit(Ff, q / nStart + 1, init[q]));
+        for (int g = 1; g <= gMax; g++) {
+            Mix mx = null; for (int start = 0; start < nStart; start++) { Mix t = fits[(g - 1) * nStart + start]; if (t != null && (mx == null || t.ll > mx.ll)) mx = t; }
             if (mx == null) continue;
             int npar = g * m + g * m * (m + 1) / 2 + (g - 1); double nF = F.length;
             double bic = -2 * mx.ll + npar * Math.log(nF);
@@ -111,8 +118,9 @@ public final class GoshCluster {
         }
         if (best == null) { r.G = 1; r.fillSummary(X, masks, k, sizes, ok); r.note = "The mixture model could not be fitted; no clusters reported."; return r; }
         // assign every valid subset
-        int[] lab = new int[r.nUsed]; int[] cnt = new int[best.G];
-        for (int i = 0; i < r.nUsed; i++) { lab[i] = best.assign(Z[i]); cnt[lab[i]]++; }
+        final int[] lab = new int[r.nUsed]; int[] cnt = new int[best.G]; final Mix bestF = best;
+        Par.forRange(r.nUsed, i -> lab[i] = bestF.assign(Z[i]));   // every subset is independent (up to 500 000 of them)
+        for (int i = 0; i < r.nUsed; i++) cnt[lab[i]]++;
         // clusters smaller than 1% of the subsets (or 10 subsets) are merged into the nearest larger cluster
         int minSz = (int) Math.max(10, Math.ceil(0.01 * r.nUsed)); boolean changed = true;
         while (changed && best.G > 1) { changed = false; int small = -1; for (int g = 0; g < best.G; g++) if (cnt[g] < minSz && (small < 0 || cnt[g] < cnt[small])) small = g;
@@ -140,9 +148,11 @@ public final class GoshCluster {
             double[] rE = null, rH = null; double aE = Double.NaN, aH = Double.NaN;
             while (true) {
                 int[] sl = new int[S]; for (int i = 0; i < S; i++) sl[i] = lab[smp[i]];
-                double[][] sres = silhouette(P, sl, G0); sv = sres[0][0]; per = sres[1];
                 {   // a cluster counts when it is separated from the others in the effects or in the heterogeneity: its best silhouette width of the two
-                    double[][] sE = nE > 0 ? silhouette(PE, sl, G0) : null, sH = useH ? silhouette(PH, sl, G0) : null; double[] pc = new double[G0]; int[] ns = new int[G0]; for (int v : sl) ns[v]++; double tot = 0;
+                    // (the silhouette over the combined space P that used to be computed here was overwritten below without being read, so it is no longer computed)
+                    final double[][][] sEH = new double[2][][]; final int[] slf = sl; final int G0f = G0; final boolean uH = useH;
+                    Par.forRange(2, t -> { if (t == 0) { if (nE > 0) sEH[0] = silhouette(PE, slf, G0f); } else if (uH) sEH[1] = silhouette(PH, slf, G0f); });
+                    double[][] sE = sEH[0], sH = sEH[1]; double[] pc = new double[G0]; int[] ns = new int[G0]; for (int v : sl) ns[v]++; double tot = 0;
                     int[] fl = new int[G0]; for (int v : lab) fl[v]++;   // share of the cluster among all valid subsets
                     for (int g = 0; g < G0; g++) { double bst = Double.NaN; if (sE != null && !(sE[1][g] <= bst)) bst = sE[1][g];
                         // heterogeneity route: stricter threshold (put on the scale of the effects threshold) and its own minimum share
@@ -203,13 +213,14 @@ public final class GoshCluster {
     static double[][] silhouette(double[][] P, int[] lab, int G) {
         int S = P.length, D = S > 0 ? P[0].length : 0; double[] sumPer = new double[G]; int[] cnt = new int[G]; for (int i = 0; i < S; i++) cnt[lab[i]]++;
         if (D == 0) { double[] nan = new double[G]; Arrays.fill(nan, Double.NaN); return new double[][]{{Double.NaN}, nan}; }
-        double tot = 0;
-        for (int i = 0; i < S; i++) {
-            double[] sum = new double[G]; for (int j = 0; j < S; j++) { if (j == i) continue; double q = 0; for (int e = 0; e < D; e++) { double dd = P[i][e] - P[j][e]; q += dd * dd; } sum[lab[j]] += Math.sqrt(q); }
+        double tot = 0; final double[] sw = new double[S]; final int DD = D;
+        Par.forRange(S, i -> {   // every point is independent: parallel over points, then summed below in the order of the points (identical rounding to a serial loop)
+            double[] sum = new double[G]; double[] pi = P[i]; for (int j = 0; j < S; j++) { if (j == i) continue; double[] pj = P[j]; double q = 0; for (int e = 0; e < DD; e++) { double dd = pi[e] - pj[e]; q += dd * dd; } sum[lab[j]] += Math.sqrt(q); }
             int c = lab[i]; double si = 0;
             if (cnt[c] > 1) { double a = sum[c] / (cnt[c] - 1), b = Double.POSITIVE_INFINITY; for (int g = 0; g < G; g++) if (g != c && cnt[g] > 0) b = Math.min(b, sum[g] / cnt[g]); double mx = Math.max(a, b); si = Double.isInfinite(b) || mx <= 0 ? 0 : (b - a) / mx; }
-            tot += si; sumPer[c] += si;
-        }
+            sw[i] = si;
+        });
+        for (int i = 0; i < S; i++) { tot += sw[i]; sumPer[lab[i]] += sw[i]; }
         double[] per = new double[G]; for (int g = 0; g < G; g++) per[g] = cnt[g] > 0 ? sumPer[g] / cnt[g] : Double.NaN;
         return new double[][]{{tot / S}, per};
     }
@@ -240,12 +251,20 @@ public final class GoshCluster {
     static final class Mix {
         int G, m; double[] pi; double[][] mu; double[][][] cov, prec; double[] logDet; double ll; double[][] resp;
 
-        static Mix fit(double[][] F, int G, SplittableRandom rng) {
-            int n = F.length, m = F[0].length; Mix x = new Mix(); x.G = G; x.m = m;
-            // k-means++ start
+        /** k-means++ choice of the G initial centres (the only place where the random generator is used). */
+        static double[][] start(double[][] F, int G, SplittableRandom rng) {
+            int n = F.length;
             double[][] c = new double[G][]; c[0] = F[rng.nextInt(n)].clone(); double[] dist = new double[n];
             for (int g = 1; g < G; g++) { double tot = 0; for (int i = 0; i < n; i++) { double best = Double.MAX_VALUE; for (int h = 0; h < g; h++) best = Math.min(best, d2(F[i], c[h])); dist[i] = best; tot += best; }
                 double u = rng.nextDouble() * tot, acc = 0; int pick = n - 1; for (int i = 0; i < n; i++) { acc += dist[i]; if (acc >= u) { pick = i; break; } } c[g] = F[pick].clone(); }
+            return c;
+        }
+
+        static Mix fit(double[][] F, int G, SplittableRandom rng) { return fit(F, G, start(F, G, rng)); }
+
+        /** k-means iterations from the given centres (modified), then EM; deterministic, no random numbers. */
+        static Mix fit(double[][] F, int G, double[][] c) {
+            int n = F.length, m = F[0].length; Mix x = new Mix(); x.G = G; x.m = m;
             int[] a = new int[n];
             for (int it = 0; it < 15; it++) { for (int i = 0; i < n; i++) { int bg = 0; double bd = Double.MAX_VALUE; for (int g = 0; g < G; g++) { double q = d2(F[i], c[g]); if (q < bd) { bd = q; bg = g; } } a[i] = bg; }
                 double[][] s = new double[G][m]; int[] cn = new int[G]; for (int i = 0; i < n; i++) { cn[a[i]]++; for (int v = 0; v < m; v++) s[a[i]][v] += F[i][v]; }
@@ -262,21 +281,24 @@ public final class GoshCluster {
         }
 
         boolean mstep(double[][] F) {
-            int n = F.length; double ridge = 1e-4;
-            for (int g = 0; g < G; g++) {
-                double nk = 0; for (int i = 0; i < n; i++) nk += resp[i][g]; if (nk < 2) return false; pi[g] = nk / n;
+            final int n = F.length; final double ridge = 1e-4; final boolean[] okG = new boolean[G];
+            Par.forRange(G, g -> {   // the components are independent; every sum inside one component keeps its serial order
+                double nk = 0; for (int i = 0; i < n; i++) nk += resp[i][g]; if (nk < 2) return; pi[g] = nk / n;
                 for (int v = 0; v < m; v++) { double s = 0; for (int i = 0; i < n; i++) s += resp[i][g] * F[i][v]; mu[g][v] = s / nk; }
                 for (int v = 0; v < m; v++) for (int w = v; w < m; w++) { double s = 0; for (int i = 0; i < n; i++) s += resp[i][g] * (F[i][v] - mu[g][v]) * (F[i][w] - mu[g][w]); cov[g][v][w] = cov[g][w][v] = s / nk + (v == w ? ridge : 0); }
-                prec[g] = Lin.inv(cov[g]); double det = Lin.det(cov[g]); if (prec[g] == null || !(det > 0)) return false; logDet[g] = Math.log(det);
-            }
+                prec[g] = Lin.inv(cov[g]); double det = Lin.det(cov[g]); if (prec[g] == null || !(det > 0)) return; logDet[g] = Math.log(det); okG[g] = true;
+            });
+            for (int g = 0; g < G; g++) if (!okG[g]) return false;
             return true;
         }
 
         /** E step: updates the responsibilities and returns the log-likelihood. */
         double estep(double[][] F) {
-            int n = F.length; double ll = 0; double[] lp = new double[G];
-            for (int i = 0; i < n; i++) { double mx = Double.NEGATIVE_INFINITY; for (int g = 0; g < G; g++) { lp[g] = logDens(g, F[i]); if (lp[g] > mx) mx = lp[g]; }
-                double s = 0; for (int g = 0; g < G; g++) s += Math.exp(lp[g] - mx); double lse = mx + Math.log(s); ll += lse; for (int g = 0; g < G; g++) resp[i][g] = Math.exp(lp[g] - lse); }
+            final int n = F.length; final double[] lse = new double[n];
+            Par.forRange(n, i -> {   // rows are independent
+                double[] lp = new double[G]; double mx = Double.NEGATIVE_INFINITY; for (int g = 0; g < G; g++) { lp[g] = logDens(g, F[i]); if (lp[g] > mx) mx = lp[g]; }
+                double s = 0; for (int g = 0; g < G; g++) s += Math.exp(lp[g] - mx); double l = mx + Math.log(s); lse[i] = l; for (int g = 0; g < G; g++) resp[i][g] = Math.exp(lp[g] - l); });
+            double ll = 0; for (int i = 0; i < n; i++) ll += lse[i];   // summed in row order, as in a serial loop
             return ll;
         }
 
