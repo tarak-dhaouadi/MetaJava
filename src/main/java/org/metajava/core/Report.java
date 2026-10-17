@@ -301,6 +301,7 @@ public final class Report {
             sb.append("- predictor:   ").append(pred).append(NL).append("- weight:      inverse variance").append(NL);
             sb.append("- reference:   ").append(b.methodBias.equals("Egger") ? "Egger et al. (1997), BMJ" : b.methodBias.equals("Thompson") ? "Thompson and Sharp (1999), Stat Med" : b.methodBias.equals("Harbord") ? "Harbord et al. (2006), Stat Med" : b.methodBias.equals("Peters") ? "Peters et al. (2006), JAMA" : b.methodBias.equals("Macaskill") ? "Macaskill et al. (2001), Stat Med" : b.methodBias.equals("Deeks") ? "Deeks et al. (2005), J Clin Epidemiol" : "Pustejovsky and Rodgers (2019), Res Synth Methods").append(NL);
         }
+        if (!b.note.isEmpty()) sb.append(NL).append("Note: ").append(b.note).append(NL);
         return sb.toString();
     }
 

@@ -1,5 +1,8 @@
 # Changelog
 
+### Fixed - tests for funnel plot asymmetry (meta) after a Peto analysis
+- With method "Peto" the (meta) tests used the Peto one-step estimates; meta::metabias refits with the inverse variance method first (and warns). MetaJava now does the same and says so in the report. All other (meta) tests were checked against the R source of meta 8.5-0 (metabias, linregcore, kentau) and reproduce it.
+
 ### Added - metafor versions of the tests for funnel plot asymmetry
 - The "Test method" list (9. Publication bias) now names the package behind every test: Egger (meta), Egger (metafor), Begg (meta), Begg (metafor), Thompson (meta), Thompson (metafor), Harbord (meta), Peters (meta), Peters (metafor), Macaskill (meta), Macaskill (metafor), Deeks (meta), Deeks (metafor), Pustejovsky (meta), Pustejovsky (metafor), Schwarzer (meta). "Default" is unchanged. Harbord and Schwarzer exist only in meta. Projects saved earlier (bare names) open as the (meta) entry.
 - metafor::regtest(): Egger = `model = "lm", predictor = "sei"`; Thompson = `model = "rma", predictor = "sei"` (mixed-effects meta-regression with the tau² estimator of the analysis; Wald z-test, or Knapp-Hartung t-test when the analysis uses Hartung-Knapp, scale factor >= 1 with an ad hoc correction); Macaskill = `"ni"`; Peters = `"ninv"`; Deeks = `"sqrtninv"` with the effective sample size; Pustejovsky = `"sqrtninv"` with n.e n.c / (n.e + n.c). Weights are 1/vi of the effect measure of the analysis. The report adds metafor's limit estimate (intercept) with CI.

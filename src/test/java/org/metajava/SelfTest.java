@@ -707,6 +707,12 @@ public class SelfTest {
             check(Bias.LIST.length == 16 && Bias.methodsFor("bin", "OR").contains("Deeks (metafor)") == false && Bias.methodsFor("bin", "DOR").contains("Deeks (metafor)"), "list of test methods");
             String rep = Report.biasText(eg, br) + Report.biasText(bg, br); check(rep.contains("metafor::regtest") && rep.contains("metafor::ranktest") && rep.contains("Limit estimate") && rep.contains("exact"), "metafor reports are produced");
             check(Plots.biasPlot(eg, br, new Plots.Opts()) != null && Plots.biasPlot(bg, br, new Plots.Opts()) != null, "plots of the metafor tests");
+            {   // Peto analysis: meta::metabias refits with the inverse variance method; reference from numpy on the first 10 studies of the "Binary outcome" example
+                double[] pe = {49, 4, 36, 17, 17, 168, 42, 63, 49, 244}, pn = {100, 92, 112, 34, 40, 490, 130, 100, 104, 524}, pc = {36, 7, 8, 19, 13, 22, 89, 40, 56, 137}, pm = {100, 194, 42, 48, 38, 82, 228, 72, 196, 296};
+                MetaData pd = new MetaData(); pd.put("event.e", pe).put("n.e", pn).put("event.c", pc).put("n.c", pm); pd.studlab = new String[]{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"};
+                MetaSpec ps = new MetaSpec(); ps.type = "bin"; ps.sm = "OR"; ps.methodTau = "DL"; ps.method = "Inverse"; MetaResult pinv = Meta.run(ps, pd); ps = ps.clone(); ps.method = "Peto"; MetaResult ppeto = Meta.run(ps, pd);
+                check(Math.abs(Bias.run(ppeto, "Egger (meta)", false).statistic - Bias.run(pinv, "Egger (meta)", false).statistic) < 1e-12 && Math.abs(Bias.run(ppeto, "Begg (meta)", false).statistic - Bias.run(pinv, "Begg (meta)", false).statistic) < 1e-12, "Peto analysis: the (meta) tests use the inverse variance estimates, as meta::metabias");
+            }
         } catch (Exception e) { e.printStackTrace(); check(false, "asymmetry-test (meta / metafor) tests threw " + e); }
 
         // ---- data validation

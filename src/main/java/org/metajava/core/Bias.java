@@ -15,6 +15,7 @@ public final class Bias {
         public boolean correct;
         public String error;
         public String methodBias;
+        public String note = "";
         /** "meta" (meta::metabias) or "metafor" (metafor::regtest / metafor::ranktest). */
         public String pkg = "meta";
         // metafor only
@@ -47,7 +48,10 @@ public final class Bias {
     }
 
     public static Result run(MetaResult r, String method, boolean correct) {
-        MetaSpec s = r.spec; MetaData d = r.data; Result res = new Result(); res.methodBias = method; res.correct = correct;
+        Result res = new Result(); res.methodBias = method; res.correct = correct;
+        // meta::metabias refits a Peto analysis with the inverse variance method (TE and seTE of the log odds ratio) before testing; metafor::regtest/ranktest use the model's own yi/vi
+        if (!isMetafor(method) && r.spec.type.equals("bin") && "Peto".equals(r.spec.method)) { r = Meta.run(r.spec.forAux(), r.data); res.note = "Peto method: the test uses the inverse variance estimates of the log odds ratio (as meta::metabias)."; }
+        MetaSpec s = r.spec; MetaData d = r.data;
         boolean mf = isMetafor(method); method = baseName(method);
         if (method == null) method = s.type.equals("bin") ? (s.sm.equals("OR") ? "Harbord" : s.sm.equals("DOR") ? "Deeks" : "Egger") : "Egger";
         if (mf && (method.equals("Harbord") || method.equals("Schwarzer"))) { res.methodBias = method; res.pkg = "metafor"; res.error = method + " test is not available in metafor (use \"" + method + " (meta)\")."; return res; }
