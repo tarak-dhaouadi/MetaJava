@@ -206,8 +206,8 @@ public final class Report {
         if (p.k < 2) return b.toString();
         if (s.random && !p.lrp) {
             b.append("Quantifying heterogeneity (with ").append(lv).append("% CIs):").append(NL);
-            b.append(" tau^2 = ").append(Fmt.num(p.tau2, 4)); if (!s.isGlmm() && !Double.isNaN(p.seTau2)) b.append(" (SE = ").append(Fmt.num(p.seTau2, 4)).append(")"); if (!Double.isNaN(p.loTau2)) b.append(" ").append(Fmt.ci(p.loTau2, p.upTau2, 4));
-            b.append("; tau = ").append(Fmt.num(p.tau, 4)); if (!Double.isNaN(p.loTau)) b.append(" ").append(Fmt.ci(p.loTau, p.upTau, 4)); b.append(NL);
+            b.append(" tau^2 = ").append(Fmt.num(p.tau2, 4)); if (!s.isGlmm() && !Double.isNaN(p.seTau2)) b.append(" (SE = ").append(Fmt.num(p.seTau2, 4)).append(")"); if (!Double.isNaN(p.loTau2)) b.append(" [").append(p.loTau2Sign).append(Fmt.num(p.loTau2, 4)).append("; ").append(p.upTau2Sign).append(Fmt.num(p.upTau2, 4)).append("]");
+            b.append("; tau = ").append(Fmt.num(p.tau, 4)); if (!Double.isNaN(p.loTau)) b.append(" [").append(p.loTau2Sign).append(Fmt.num(p.loTau, 4)).append("; ").append(p.upTau2Sign).append(Fmt.num(p.upTau, 4)).append("]"); b.append(NL);
         } else b.append("Quantifying heterogeneity (with ").append(lv).append("% CIs):").append(NL);
         b.append(" I^2 = ").append(Fmt.num(100 * p.I2, 1)).append("% [").append(Fmt.num(100 * p.loI2, 1)).append("%; ").append(Fmt.num(100 * p.upI2, 1)).append("%]; H = ")
          .append(Fmt.num(p.H, 2)).append(" ").append(Fmt.ci(p.loH, p.upH, 2)).append(NL);

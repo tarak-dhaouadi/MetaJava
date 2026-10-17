@@ -20,7 +20,7 @@ public class Pool {
     public String randomLabelSuffix = "";
     public double altTau2 = Double.NaN, altGain = Double.NaN;   // tau^2 of a higher mode of the likelihood (NaN: none), see Rma.higherMode()
     public double tau2, tau, loTau2 = Double.NaN, upTau2 = Double.NaN, loTau = Double.NaN, upTau = Double.NaN;
-    public String tauCiMethod = "";
+    public String tauCiMethod = "", loTau2Sign = "", upTau2Sign = "";   // signs: "<" / ">" when the search range of the interval was hit (metafor lb.sign / ub.sign)
     public double Q, pQ, H, loH, upH, I2, loI2, upI2;
     public int dfQ;
     public double loPred = Double.NaN, upPred = Double.NaN, dfPred = Double.NaN, sePred = Double.NaN;
@@ -89,7 +89,7 @@ public class Pool {
         p.tauCiMethod = "";
         if (cnt >= 3 && m != null && !tc.isEmpty() && (!s.skipTauCi || s.methodI2.equals("tau2"))) {
             Rma.TauCI ci = m.confint(tc, s.levelHetstat);
-            p.loTau2 = ci.lbTau2; p.upTau2 = ci.ubTau2; p.loTau = ci.lbTau; p.upTau = ci.ubTau; p.tauCiMethod = tc;
+            p.loTau2 = ci.lbTau2; p.upTau2 = ci.ubTau2; p.loTau = ci.lbTau; p.upTau = ci.ubTau; p.tauCiMethod = tc; p.loTau2Sign = ci.lbSign; p.upTau2Sign = ci.ubSign;
             if (s.methodI2.equals("tau2")) {
                 double sv = Rma.typicalV(cnt, 1, v, ones2(cnt));
                 p.H = Math.sqrt((p.tau2 + sv) / sv); p.I2 = p.tau2 / (p.tau2 + sv);
@@ -199,7 +199,7 @@ public class Pool {
         int cnt = sel.length; p.lrp = true; p.glmm = true; p.nHarm = Double.NaN;
         java.util.Arrays.fill(p.wCommon, Double.NaN); p.wRandom = new double[cnt]; java.util.Arrays.fill(p.wRandom, Double.NaN);
         double nullv = s.nullValue(), nv = Double.isNaN(nullv) ? 0 : nullv, alpha = 1 - s.levelMa, zc = Dist.qnorm(1 - alpha / 2); double nan = Double.NaN;
-        p.tau2 = p.tau = p.loTau2 = p.upTau2 = p.loTau = p.upTau = nan; p.tauCiMethod = "";
+        p.tau2 = p.tau = p.loTau2 = p.upTau2 = p.loTau = p.upTau = nan; p.tauCiMethod = ""; p.loTau2Sign = p.upTau2Sign = "";
         // meta fits all studies with complete data (including single and double zero studies); only user-excluded studies are dropped
         java.util.List<Integer> all = new java.util.ArrayList<>(); Glmm.Data g = s.glmm;
         for (int i : subset) if (!Double.isNaN(g.x1[i]) && !Double.isNaN(g.x2[i]) && !Double.isNaN(g.s1[i]) && !Double.isNaN(g.s2[i]) && g.s1[i] > 0 && g.s2[i] > 0) all.add(i);
