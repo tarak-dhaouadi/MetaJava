@@ -152,7 +152,7 @@ public final class Reg {
         g.logLik = fs.ll; g.deviance = fs.deviance; g.aic = fs.aic; g.bic = fs.bic; g.aicc = fs.aicc;
         // QE, QM
         g.QE = g.fit.QE; g.dfQE = k - p; g.pQE = Dist.pchisqUpper(g.QE, g.dfQE);
-        g.knha = s.methodRandomCi.equals("HK"); g.adhoc = g.knha ? adhocOf(s) : ""; g.adhocSe = g.adhoc.equals("se"); g.level = s.levelMa;
+        g.knha = s.methodRandomCi.equals("HK"); g.adhoc = g.knha && s.adhocRegression ? adhocOf(s) : ""; g.adhocSe = g.adhoc.equals("se"); g.level = s.levelMa;
         Wald W = wald(g.fit, g.knha, g.adhoc, intercept, s.levelMa);
         g.est = g.fit.beta.clone(); g.se = W.se; g.s2 = W.s2; g.adjCoef = W.adj; g.zCoef = W.zDist; g.qmChi = W.qmChi; g.qmClassic = W.qmClassic; g.vbDL = W.vbDL;
         g.zval = W.z; g.pval = new double[p]; g.lb = new double[p]; g.ub = new double[p];

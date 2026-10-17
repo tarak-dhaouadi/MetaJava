@@ -1,5 +1,7 @@
 # Changelog
 
+### Added - check box "Apply ad hoc correction to meta-regression" (below "Intercept", checked by default): unchecked = conventional Hartung-Knapp in the meta-regression, checked = the ad hoc variant chosen in the meta-analysis settings.
+
 ### Fixed - meta-regression no longer falls back to conventional Knapp-Hartung for the ad hoc options "ci" and "IQWiG6"
 - Only "se" (scale factor floored at 1) was carried over to meta-regression; "ci" and "IQWiG6" were silently ignored. Both are now applied to every coefficient exactly as `Pool` / meta::metagen apply them to the pooled estimate: **"ci"** - where the Hartung-Knapp interval is narrower than the classic z interval, the classic SE and the z distribution are used; **"IQWiG6"** - where it is narrower than the DerSimonian-Laird-based interval, the classic SE of the fitted model replaces the Hartung-Knapp SE (t distribution kept).
 - Also applied to: the test of moderators (classic covariance matrix when the rule fired for every tested moderator: chi-square for "ci", F for "IQWiG6"), the confidence and prediction bands of the regression plots, the permutation test statistics, and the regression behind Thompson (metafor). The report states the correction and the coefficients it was triggered for.

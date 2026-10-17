@@ -1338,6 +1338,8 @@ public class SelfTest {
                     near(rg[j].se[1], Math.sqrt(rg[j].fit.vb[1][1]), 1e-12, "meta-regression, ad hoc \"" + ahs[j] + "\": classic SE replaces the Hartung-Knapp SE");
                     check(Report.regText(rg[j], Meta.run(spOf(ahs[j]), rd), 1, "x").contains("Ad hoc correction \"" + ahs[j] + "\""), "meta-regression report states the \"" + ahs[j] + "\" correction");
                 }
+                for (int j = 1; j <= 3; j++) { MetaSpec sp = spOf(ahs[j]); sp.adhocRegression = false; Reg offR = Reg.run(Meta.run(sp, rd), java.util.List.of("x"), nd, java.util.List.<String>of(), new java.util.HashMap<String, String[]>(), true);
+                    near(offR.se[1], rg[0].se[1], 1e-12, "meta-regression, ad hoc \"" + ahs[j] + "\" with the check box unchecked: conventional Hartung-Knapp SE"); near(offR.pval[1], rg[0].pval[1], 1e-12, "meta-regression, check box unchecked (" + ahs[j] + "): conventional p-value"); }
                 check(rg[2].zCoef[1] && Math.abs(rg[2].pval[1] - Dist.pnormTwoSided(rg[2].zval[1])) < 1e-12, "meta-regression, ad hoc \"ci\": z distribution for the corrected coefficient");
                 check(!rg[3].zCoef[1] && Math.abs(rg[3].pval[1] - Dist.ptTwoSided(rg[3].zval[1], kk - 2)) < 1e-12, "meta-regression, ad hoc \"IQWiG6\": t distribution kept");
             }
