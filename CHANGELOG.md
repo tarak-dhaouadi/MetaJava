@@ -1,5 +1,8 @@
 # Changelog
 
+### Fixed - Default forest plot style: heterogeneity line with confidence intervals of I² / tau²
+- With "CI of I²" / "CI of tau²" selected, the heterogeneity line of the Default (meta) style dropped below the axis and the figure grew taller. It now stays on the row of the x-axis and the plot is moved to the right (the figure gets wider), as in the RevMan 5, BMJ and STATA styles. Same for every effect type.
+
 ### Fixed - tests for funnel plot asymmetry (meta) after a Peto analysis
 - With method "Peto" the (meta) tests used the Peto one-step estimates; meta::metabias refits with the inverse variance method first (and warns). MetaJava now does the same and says so in the report. All other (meta) tests were checked against the R source of meta 8.5-0 (metabias, linregcore, kentau) and reproduce it.
 

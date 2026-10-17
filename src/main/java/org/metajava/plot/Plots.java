@@ -365,7 +365,7 @@ public final class Plots {
         { double need = 0;   // STATA: the note lines stand at the level of the axis, so the plot is moved right until the longest line ends clearly left of the axis (no cap)
           if (K != 3) for (int i = tail; i < nrow; i++) need = Math.max(need, M + f11.stringWidth(rows.get(i).text.replace(IT, "")) + 6 + 8);
           else for (int i = 0; i < nNote; i++) need = Math.max(need, M + f11.stringWidth(fTxt.get(i)) + 6 + 18);
-          int extra = (int) Math.ceil(need - axL); if (extra > 0 && (K == 3 || extra <= 140 || (K != 0 && (o.ciI2 || o.ciTau)))) { sh0[0] = extra; px0 += extra; px1 += extra; for (Col c : post) c.xl += extra; W += extra; axL += extra; axR += extra; } }
+          int extra = (int) Math.ceil(need - axL); if (extra > 0 && (K == 3 || extra <= 140 || o.ciI2 || o.ciTau)) { sh0[0] = extra; px0 += extra; px1 += extra; for (Col c : post) c.xl += extra; W += extra; axL += extra; axR += extra; } }
         W = Math.max(W, (int) Math.ceil(axR + M));
         // ---- footer text: starts directly under the last row, as in meta::forest, and is only pushed below the axis if a line would actually overlap the axis / tick labels horizontally.
         double tyEnd = y;
