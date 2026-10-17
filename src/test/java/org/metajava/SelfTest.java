@@ -724,6 +724,29 @@ public class SelfTest {
                 MetaSpec ps = new MetaSpec(); ps.type = "bin"; ps.sm = "OR"; ps.methodTau = "DL"; ps.method = "Inverse"; MetaResult pinv = Meta.run(ps, pd); ps = ps.clone(); ps.method = "Peto"; MetaResult ppeto = Meta.run(ps, pd);
                 check(Math.abs(Bias.run(ppeto, "Egger (meta)", false).statistic - Bias.run(pinv, "Egger (meta)", false).statistic) < 1e-12 && Math.abs(Bias.run(ppeto, "Begg (meta)", false).statistic - Bias.run(pinv, "Begg (meta)", false).statistic) < 1e-12, "Peto analysis: the (meta) tests use the inverse variance estimates, as meta::metabias");
             }
+            {   // parallel code: bounded submission, and results that do not depend on the number of threads
+                final int oldThreads = Par.threads();
+                try {
+                    for (int lim : new int[]{1, 3}) {
+                        final java.util.concurrent.atomic.AtomicInteger running = new java.util.concurrent.atomic.AtomicInteger(), peak = new java.util.concurrent.atomic.AtomicInteger();
+                        java.util.List<java.util.concurrent.Callable<Integer>> ts = new java.util.ArrayList<>();
+                        for (int i = 0; i < 10; i++) { final int id = i; ts.add(() -> { int c = running.incrementAndGet(); peak.accumulateAndGet(c, Math::max); Thread.sleep(15); running.decrementAndGet(); return id; }); }
+                        Par.setThreads(Par.maxThreads()); java.util.List<java.util.concurrent.Future<Integer>> fu = Par.submitLimited(ts, lim); boolean order = true; for (int i = 0; i < 10; i++) order &= fu.get(i).get() == i;
+                        check(order && peak.get() <= lim && running.get() == 0, "Par.submitLimited(limit " + lim + "): all 10 tasks done in order, at most " + lim + " at a time (peak " + peak.get() + ")");
+                    }
+                    check(Par.heavyLimit() >= 1 && Par.heavyLimit() <= Math.max(1, Par.threads()), "memory-based limit for heavy sections is between 1 and the number of threads");
+                    MetaSpec ts0 = new MetaSpec(); ts0.type = "gen"; ts0.sm = "MD"; ts0.methodTau = "REML"; ts0.prediction = true; ts0.random = true; ts0.common = false;
+                    String[] ptxt = new String[2]; java.awt.image.BufferedImage[] bj = new java.awt.image.BufferedImage[2]; double[][] est = new double[2][]; int[][] plab = new int[2][];
+                    for (int q = 0; q < 2; q++) {
+                        Par.setThreads(q == 0 ? 1 : Par.maxThreads()); MetaResult rq = Meta.run(ts0, gen(BT, BS, false));
+                        ptxt[q] = Report.summary(rq); bj[q] = Plots.baujat(rq, new Plots.Opts());
+                        Gosh gq = Gosh.run(rq, 20000, 1); est[q] = gq.est.clone(); GoshCluster cq = gq.detectClusters(); plab[q] = cq == null ? new int[0] : cq.label.clone();
+                    }
+                    check(ptxt[0].equals(ptxt[1]) && ptxt[0].contains("Sensitivity analysis by tau^2 estimator"), "summary with the tau^2 sensitivity table: identical on 1 and " + Par.maxThreads() + " threads");
+                    check(same(bj[0], bj[1]), "Baujat plot: identical on 1 and " + Par.maxThreads() + " threads");
+                    check(java.util.Arrays.equals(est[0], est[1]) && java.util.Arrays.equals(plab[0], plab[1]), "GOSH estimates and cluster labels: identical on 1 and " + Par.maxThreads() + " threads");
+                } finally { Par.setThreads(oldThreads); }
+            }
         } catch (Exception e) { e.printStackTrace(); check(false, "asymmetry-test (meta / metafor) tests threw " + e); }
 
         // ---- data validation

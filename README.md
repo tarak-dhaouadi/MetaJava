@@ -336,3 +336,7 @@ The result is `dist/metajava-0.1.0.jar`.
 GPL-2.0-or-later (see [LICENSE.md](LICENSE.md) and [COPYRIGHTS.md](COPYRIGHTS.md)), compatible with the GPL (≥ 2)
 R packages meta and metafor whose methods it re-implements. If you use MetaJava, please see
 [CITATION.cff](CITATION.cff) and cite meta and metafor as well.
+
+### Threads and memory
+
+Analyses use a shared worker pool: 4 threads by default, never more than the number of cores (`-Dmetajava.threads=N`). The sections of a run are computed at the same time, but at most one memory-hungry section (GOSH, leave-one-out, influence, ...) per 400 MB of maximum heap at a time (`-Dmetajava.heavy=N`; the maximum heap is set with `-Xmx`). Results do not depend on either setting.

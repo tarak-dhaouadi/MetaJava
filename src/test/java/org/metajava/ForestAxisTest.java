@@ -54,7 +54,7 @@ public class ForestAxisTest {
                 dd.n = dd.get(sm.equals("PLN") ? "event" : sm.equals("IRLN") ? "event" : "mean").length;
                 String tag = sm + " variant " + v + " " + th;
                 try {
-                    MetaResult rr = Meta.run(sp, dd); Plots.Opts o = new Plots.Opts(); o.theme = th; Plots.forest(rr, o); double[] ax = Plots.lastForestAxis; double mn = Double.POSITIVE_INFINITY, mx = 0;
+                    MetaResult rr = Meta.run(sp, dd); Plots.Opts o = new Plots.Opts(); o.theme = th; Plots.forest(rr, o); double[] ax = Plots.lastForestAxis(); double mn = Double.POSITIVE_INFINITY, mx = 0;
                     for (int i = 0; i < rr.TE.length; i++) { double bl = Meta.back(rr.spec, rr.lower[i], Double.NaN); if (bl > 0) mn = Math.min(mn, bl);   // a bound of 0 (zero events) cannot lie on a log axis: its line is cut with an arrow
                          mx = Math.max(mx, Meta.back(rr.spec, rr.upper[i], Double.NaN)); }
                     check(ax[0] <= mn * (1 + 1e-9), "lower limit " + ax[0] + " above the lowest bound " + mn + ": " + tag);

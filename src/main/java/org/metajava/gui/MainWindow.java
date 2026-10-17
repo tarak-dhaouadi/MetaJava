@@ -632,13 +632,17 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
                     finally { Report.stopCapture(); sink.remove(); fracs.set(slot, 0); done.incrementAndGet(); progressTo(gen, progressOf(done.get(), fracs, total)); }
                 };
                 final Runnable timed = !isHeavy ? task : () -> Par.withProgress(fr -> { fracs.set(slot, (int) (1000 * Math.min(1.0, Math.max(0.0, fr)))); progressTo(gen, progressOf(done.get(), fracs, total)); }, task);
-                order.add(new Object[]{timed, sc.length > 2 ? (Integer) sc[2] : (isHeavy ? 4 : 9)});
+                order.add(new Object[]{timed, sc.length > 2 ? (Integer) sc[2] : (isHeavy ? 4 : 9), isHeavy});
             }
             // All sections run at the same time in the shared pool (the heaviest are started first); a section that is waiting for its own parallel loop leaves the idle threads to the others.
             // The results stay in the order of the sections, so the output is identical to a serial run.
             order.sort((a, b) -> Integer.compare((Integer) a[1], (Integer) b[1]));   // stable: equal ranks keep the order of the sections
             final List<java.util.concurrent.Future<?>> fs = new ArrayList<>();
-            for (Object[] ob : order) { final Runnable t = (Runnable) ob[0]; fs.add(Par.submit(() -> { t.run(); return null; })); }
+            // the memory-hungry sections start in this order but at most Par.heavyLimit() at a time (one per 400 MB of maximum heap, -Dmetajava.heavy=N); the small ones are not limited
+            final List<java.util.concurrent.Callable<Object>> heavyTasks = new ArrayList<>(), lightTasks = new ArrayList<>();
+            for (Object[] ob : order) { final Runnable t = (Runnable) ob[0]; (((Boolean) ob[2]) ? heavyTasks : lightTasks).add(() -> { t.run(); return null; }); }
+            fs.addAll(Par.submitLimited(heavyTasks, Par.heavyLimit()));
+            for (java.util.concurrent.Callable<Object> t : lightTasks) fs.add(Par.submit(t));
             for (java.util.concurrent.Future<?> f : fs) f.get();
             checkCurrent(gen);
             SwingUtilities.invokeLater(() -> display(n, outs, r, gen, auto, scrollPos));

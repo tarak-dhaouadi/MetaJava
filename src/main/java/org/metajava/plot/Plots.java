@@ -308,7 +308,7 @@ public final class Plots {
           double nlo = Double.isNaN(uMin) ? lo : uMin, nhi = Double.isNaN(uMax) ? hi : uMax;
           if (!(nhi > nlo)) { if (!Double.isNaN(uMin) && Double.isNaN(uMax)) nhi = nlo + span; else if (Double.isNaN(uMin) && !Double.isNaN(uMax)) nlo = nhi - span; else { nlo = lo; nhi = hi; } }
           lo = nlo; hi = nhi; }
-        lastForestAxis = new double[]{log ? Math.exp(lo) : lo, log ? Math.exp(hi) : hi};
+        LAST_AXIS.set(new double[]{log ? Math.exp(lo) : lo, log ? Math.exp(hi) : hi});
         final double lo2 = lo, hi2 = hi; final int fx0 = px0, fw = plotW; final double[] sh0 = {0}; java.util.function.DoubleUnaryOperator X = v -> fx0 + sh0[0] + (v - lo2) / (hi2 - lo2) * fw;
         if (wmax <= 0) wmax = 1;
         // ---- vertical layout of the table
@@ -483,7 +483,9 @@ public final class Plots {
     }
 
     /** Limits (displayed scale) of the x-axis of the last forest plot drawn; for checks in the self tests. */
-    public static volatile double[] lastForestAxis;
+    /** Axis limits of the last forest plot drawn by the calling thread (back-transformed; for tests). Thread-local: forest plots are rendered in parallel. */
+    private static final ThreadLocal<double[]> LAST_AXIS = new ThreadLocal<>();
+    public static double[] lastForestAxis() { return LAST_AXIS.get(); }
 
     /** Nearest value of the 1-2-5 sequence below (up = false) or above (up = true) v, v itself when it belongs to the sequence. */
     public static double round125(double v, boolean up) {
@@ -729,7 +731,9 @@ public final class Plots {
     /** Baujat points (contribution to overall heterogeneity, influence on the overall result): one leave-one-out refit per study, computed once per analysis (rendering the
      *  plot again, e.g. to save it at a higher resolution, reuses them) and in parallel. Only the common-effect refit is read, so GLMM refits skip the random-effects fit
      *  and the likelihood-ratio heterogeneity test. */
-    private static synchronized void baujatPoints(MetaResult r) {
+    private static void baujatPoints(MetaResult r) {
+        if (r.baujatPts != null) return;
+        synchronized (r.baujatLock) {   // per analysis: other analyses (subgroups) are not held up, and the labels are stored before the points (both volatile)
         if (r.baujatPts != null) return;
         final MetaSpec s2 = r.spec.clone(); s2.skipTauCi = true; s2.skipLrt = true; s2.skipHet = true; if (s2.isGlmm()) s2.random = false;
         final Pool p = r.overall; final int n = r.TE.length; final List<Integer> use = new ArrayList<>();
@@ -742,6 +746,7 @@ public final class Plots {
         });
         List<double[]> pts = new ArrayList<>(); List<String> labs = new ArrayList<>(); for (int q = 0; q < xy.length; q++) { pts.add(xy[q]); labs.add(r.studlab[use.get(q)]); }
         r.baujatLabs = labs; r.baujatPts = pts;
+        }
     }
 
     public static BufferedImage baujat(MetaResult r, Opts o) {

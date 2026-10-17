@@ -72,8 +72,10 @@ public final class Par {
     /** Throws CancellationException when the condition attached to this thread is true (also usable inside long sequential loops). */
     public static void checkCancel() { BooleanSupplier c = CANCEL.get(); if (c != null && c.getAsBoolean()) throw new CancellationException("analysis superseded"); }
 
-    private static <T> Callable<T> inherit(Callable<T> c) {
-        final BooleanSupplier tok = CANCEL.get(); if (tok == null) return c;
+    private static <T> Callable<T> inherit(Callable<T> c) { return inherit(c, CANCEL.get()); }
+
+    private static <T> Callable<T> inherit(Callable<T> c, final BooleanSupplier tok) {
+        if (tok == null) return c;
         return () -> { BooleanSupplier old = CANCEL.get(); CANCEL.set(tok); try { return c.call(); } finally { if (old == null) CANCEL.remove(); else CANCEL.set(old); } };
     }
 
@@ -125,6 +127,36 @@ public final class Par {
 
     /** Submits a long-running task (e.g. one analysis section) to the pool without blocking the caller. */
     public static <T> Future<T> submit(Callable<T> c) { return pool().submit(inherit(c)); }
+
+    /**
+     * Submits the tasks in the given order, but with at most {@code limit} of them running at a time: the next one is submitted when a running one finishes
+     * (no pool thread ever waits for a permit). Meant for memory-hungry sections. Returns one future per task, in the order of the tasks; a failure or a cancellation
+     * is reported by the future of that task. The cancellation condition of the calling thread is inherited by every task.
+     */
+    public static <T> java.util.List<Future<T>> submitLimited(java.util.List<? extends Callable<T>> tasks, int limit) {
+        final int n = tasks.size(); final BooleanSupplier tok = CANCEL.get();
+        final java.util.List<CompletableFuture<T>> cfs = new java.util.ArrayList<>(n); for (int i = 0; i < n; i++) cfs.add(new CompletableFuture<>());
+        final AtomicInteger next = new AtomicInteger(); final Runnable[] launch = new Runnable[1];
+        launch[0] = () -> {
+            final int i = next.getAndIncrement(); if (i >= n) return;
+            final Callable<T> c = inherit(tasks.get(i), tok); final CompletableFuture<T> cf = cfs.get(i);
+            pool().submit(() -> { try { if (!cf.isCancelled()) cf.complete(c.call()); } catch (Throwable e) { cf.completeExceptionally(e); } finally { launch[0].run(); } });
+        };
+        for (int q = 0, m = Math.min(Math.max(1, limit), n); q < m; q++) launch[0].run();
+        return new java.util.ArrayList<Future<T>>(cfs);
+    }
+
+    /**
+     * How many memory-hungry sections (GOSH, leave-one-out, ...) of one run may be computed at the same time: one per {@value #HEAVY_MB} MB of maximum heap, at least 1
+     * and at most the number of threads. Override with -Dmetajava.heavy=N.
+     */
+    public static int heavyLimit() {
+        String p = System.getProperty("metajava.heavy");
+        if (p != null) try { return Math.max(1, Integer.parseInt(p.trim())); } catch (NumberFormatException e) { }
+        long mb = Runtime.getRuntime().maxMemory() >> 20;
+        return (int) Math.max(1, Math.min(threads, mb / HEAVY_MB));
+    }
+    static final int HEAVY_MB = 400;
 
     public static <T> T[] map(int n, IntFunction<T> f, T[] out) { forRange(n, i -> out[i] = f.apply(i)); return out; }
 }
