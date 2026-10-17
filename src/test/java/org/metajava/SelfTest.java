@@ -199,6 +199,17 @@ public class SelfTest {
         GoshCluster[] c = robustPair(1, 15, 0, 1, 2.5, GoshCluster.HET_MIN_SILHOUETTE); check(c[0].hetMinSil == GoshCluster.HET_MIN_SILHOUETTE && GoshCluster.HET_MIN_SILHOUETTE == 0.70 && c[0].minShare == GoshCluster.MIN_SHARE, "the thresholds of the two routes are recorded in the result");
     }
 
+    /** The tau^2 sensitivity table fits its fourteen estimators in parallel: the report must not depend on the number of threads. */
+    static void threadIndependenceTests() {
+        final int old = Par.threads();
+        try {
+            Par.setThreads(1); String a = Report.summary(Meta.run(genSpec("HR"), gen(LNHR, SEHR, true)));
+            Par.setThreads(Par.maxThreads()); String b = Report.summary(Meta.run(genSpec("HR"), gen(LNHR, SEHR, true)));
+            check(a.contains("Sensitivity analysis by tau^2 estimator"), "the summary contains the tau^2 sensitivity table");
+            check(a.equals(b), "the summary (tau^2 sensitivity table fitted in parallel) is identical with 1 thread and with " + Par.maxThreads() + " threads");
+        } finally { Par.setThreads(old); }
+    }
+
     /** The example data sets of the "Example data" button: each is bundled, readable, its columns are assigned automatically and the analysis runs. */
     static void exampleDataTests() {
         check(org.metajava.gui.Examples.ALL.size() == 5, "example data: five example data sets are offered");
@@ -833,7 +844,7 @@ public class SelfTest {
               GoshCluster c1 = GoshCluster.detect(X1, new String[]{"a", "b"}, mk, kk, szs, 1); check(c1.G == 1 && !c1.found(), "cluster detection: one Gaussian cloud gives a single cluster (G = " + c1.G + ")"); }
             clusterGateTests();
             remlModeTests();
-            exampleDataTests();
+            exampleDataTests(); threadIndependenceTests();
             clusterRobustnessTests();
             gs.detectClusters(); gr.detectClusters(); GoshReg gq2 = s1; gq2.detectClusters();
             check(gr.clusters != null && gr.clusters.nUsed == gr.nValid, "cluster detection uses the valid subsets of the meta-regression GOSH");

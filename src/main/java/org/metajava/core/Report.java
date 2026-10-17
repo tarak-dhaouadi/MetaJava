@@ -132,10 +132,16 @@ public final class Report {
         List<String> head = new ArrayList<>(List.of("Tau^2 estimator", smLabel(s), pct(s.levelMa) + "% CI")); if (test) head.add("p-value");
         head.add("I^2"); head.add("Het. p-value"); head.add("tau^2"); head.add(pct(s.levelPredict) + "% PI");
         List<String[]> rows = new ArrayList<>(); boolean any = false; Map<String, String> notes = new LinkedHashMap<>();
-        for (String m : TAU_SENS) {
+        // the fourteen refits are independent: run in parallel, each into its own slot; the rows and notes are then assembled in the order of TAU_SENS (identical output to a serial loop)
+        final Pool[] fits = new Pool[TAU_SENS.length]; final String[] fitErr = new String[TAU_SENS.length]; final boolean[] threw = new boolean[TAU_SENS.length]; final int[] allIdx = all;
+        Par.forRange(TAU_SENS.length, i -> {
+            try { MetaSpec c = s.clone(); c.methodTau = TAU_SENS[i]; c.methodTauCi = ""; c.prediction = true; fits[i] = Pool.compute(c, r.TE, r.seTE, allIdx, r.commonFn); }
+            catch (RuntimeException e) { fits[i] = null; threw[i] = true; fitErr[i] = e.getMessage(); }
+        });
+        for (int mi = 0; mi < TAU_SENS.length; mi++) {
+            String m = TAU_SENS[mi];
             List<String> row = new ArrayList<>(); row.add(m + (m.equals(s.methodTau) ? " *" : ""));
-            Pool p = null;
-            try { MetaSpec c = s.clone(); c.methodTau = m; c.methodTauCi = ""; c.prediction = true; p = Pool.compute(c, r.TE, r.seTE, all, r.commonFn); } catch (RuntimeException e) { p = null; if (MetaSpec.isGenq(m)) notes.put(m, e.getMessage()); }
+            Pool p = fits[mi]; if (threw[mi] && MetaSpec.isGenq(m)) notes.put(m, fitErr[mi]);
             if (p == null || Double.isNaN(p.teRandom)) { for (int j = 1; j < head.size(); j++) row.add("NA"); rows.add(row.toArray(new String[0])); continue; }
             any = true; boolean se0 = p.randomSe0();
             row.add(Fmt.num(bt(s, p.teRandom, p), d)); row.add(se0 ? "NA" : Fmt.ci(bt(s, p.loRandom, p), bt(s, p.upRandom, p), d));

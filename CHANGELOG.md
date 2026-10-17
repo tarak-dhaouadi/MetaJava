@@ -1,5 +1,11 @@
 # Changelog
 
+### Changed - faster analysis when many analyses are selected (no change in any result)
+- All sections of a run (subgroups, leave-one-out, cumulative, influence, GOSH, selection model, Drapery report, ...) are now started together in the shared worker pool, heaviest first, instead of the heavy ones running one after another. The output keeps the order of the sections.
+- The plots of a section are rendered in parallel; the GOSH meta-regression runs at the same time as the ordinary GOSH (its output stays right below it).
+- The 14 refits of the "Sensitivity analysis by tau^2 estimator" table run in parallel and are assembled in the original order.
+- Progress is computed from all running sections. Output text, tables and plots are identical to the previous version (checked section by section, with 1 to 16 threads).
+
 ### Added - metafor's other tau² interval types: PL, HT, Wald, Wald.log, Wald.sqrt
 - The "CI of tau²" list now has the remaining `confint.rma.uni(type = ...)` types of metafor 4.6-0, computed for the model fitted with the selected estimator, so they differ between estimators (the Q-profile interval is a property of the data and is the same for REML, ML, EB, PM, PMM, HE, HS, SJ, ...; DL keeps the Jackson default of meta; GENQ / GENQM keep the generalised Q-statistic interval).
 - PL: profile likelihood (REML likelihood for REML, ML likelihood for every other estimator), tau² fixed on [tau2.min, tau2] and [tau2, tau2.max], objective qchisq(1 - alpha, 1), uniroot tolerance eps^0.25. Wald: tau² +- z se.tau2 (lower bound at 0); Wald.log and Wald.sqrt: the log and square-root versions (tau² = 0 gives NA for the upper bound of Wald.log, as in R). HT: Higgins-Thompson interval for H² transformed to tau² (no moderators, k > 2). All use the se.tau2 of the estimator.

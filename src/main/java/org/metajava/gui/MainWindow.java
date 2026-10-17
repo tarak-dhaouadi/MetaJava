@@ -531,7 +531,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
     private volatile int generation = 0; private java.util.concurrent.Future<?> current;
     private final java.util.concurrent.ExecutorService coordinator = java.util.concurrent.Executors.newCachedThreadPool(r -> { Thread t = new Thread(r, "metajava-analysis"); t.setDaemon(true); return t; });
     final JProgressBar busy = new JProgressBar(0, 100);
-    private volatile double heavyFrac = 0; private final java.util.concurrent.atomic.AtomicInteger lastPct = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger lastPct = new java.util.concurrent.atomic.AtomicInteger();
     /** Any thread: reports the overall progress (0..1) of run `gen` to the top strip and the small bar; never goes backwards within a run, and posts to the UI thread only when the percentage changes. */
     void progressTo(int gen, double frac) {
         final int p = (int) Math.max(0, Math.min(99, Math.floor(frac * 100)));
@@ -558,10 +558,16 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
             n.pet = petChk.isSelected(); n.petPlot = petPlotChk.isSelected(); n.sel = selChk.isSelected(); n.selDir = (String) selDir.getSelectedItem(); n.fail = failChk.isSelected();
         } catch (Validate.Failed ex) { showValidation(ex); return;
         } catch (Exception ex) { if (auto) softError(ex); else error(ex); return; }
-        final int gen = ++generation; lastPct.set(0); heavyFrac = 0; if (current != null) current.cancel(true);
+        final int gen = ++generation; lastPct.set(0); if (current != null) current.cancel(true);
         status.setText("Running\u2026"); busy.setValue(0); busy.setIndeterminate(true); busy.setVisible(true); strip.start();   // the small bar is indeterminate until the first step reports: a long first section (e.g. a GLMM leave-one-out) must not look frozen
         final int scrollPos = resScroll.getVerticalScrollBar().getValue();
         current = coordinator.submit(() -> Par.withCancel(() -> gen != generation, () -> analyse(n, gen, auto, scrollPos)));   // loops inside the analysis stop as soon as it is superseded
+    }
+
+    /** Overall progress (0..1 of the part after the main fit) from the finished sections and the partial progress of the running ones. */
+    private static double progressOf(int done, java.util.concurrent.atomic.AtomicIntegerArray fracs, int total) {
+        double part = 0; for (int i = 0; i < fracs.length(); i++) part += fracs.get(i) / 1000.0;
+        return 0.05 + 0.95 * (done + part) / total;
     }
 
     private void checkCurrent(int gen) { if (gen != generation) throw new java.util.concurrent.CancellationException("superseded"); }
@@ -570,7 +576,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
     void analyse(Snap n, int gen, boolean auto, int scrollPos) {
         try {
             final MetaSpec s = n.s; final MetaResult r = Meta.run(s, n.d); checkCurrent(gen); progressTo(gen, 0.05);
-            final List<Out> outs = new ArrayList<>(); final List<Runnable> light = new ArrayList<>(), heavy = new ArrayList<>(); final java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
+            final List<Out> outs = new ArrayList<>(); final java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
             final List<Object[]> secs = new ArrayList<>();   // {body, heavy?}
             final Plots.Opts o = n.o;
             secs.add(new Object[]{(Runnable) () -> { addText("Meta-Analysis", Report.summary(r));
@@ -579,12 +585,12 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
                 addText("Subgroup Analysis: " + s2.subgroupName, "Subgroup Analysis Summary\n\n" + Report.subgroupText(rs) + Report.details(rs));
                 if (n.forest) addPlot("Subgroup Analysis Forest Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; q.testEffectSubgroup = n.sgTestEffect; q.analysisDetails = n.sgDetails; return Plots.forest(rs, q); });
                 if (n.orchard) addPlot("Orchard Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.orchard(rs, q); });
-                if (n.cater) addPlot("Caterpillar Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.caterpillar(rs, q); }); }, true});
+                if (n.cater) addPlot("Caterpillar Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.caterpillar(rs, q); }); }, true, 4});
             if (n.reg) secs.add(new Object[]{(Runnable) () -> regression(r, n), false});
             if (n.loo) secs.add(new Object[]{(Runnable) () -> { Meta.leaveOneOut(r); addText("Leave-One-Out Analysis", Report.looText(r));
-                if (n.looForest) addPlot("Leave-One-Out Analysis Forest Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.forestSeries(r, r.loo, r.looLabels, q, "loo"); }); }, true});
+                if (n.looForest) addPlot("Leave-One-Out Analysis Forest Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.forestSeries(r, r.loo, r.looLabels, q, "loo"); }); }, true, 1});
             if (n.cum) secs.add(new Object[]{(Runnable) () -> { Meta.cumulative(r, null); addText("Cumulative Meta-Analysis", Report.cumText(r));
-                if (n.cumForest) addPlot("Cumulative Meta-Analysis Forest Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.forestSeries(r, r.cum, r.cumLabels, q, "cum"); }); }, true});
+                if (n.cumForest) addPlot("Cumulative Meta-Analysis Forest Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.forestSeries(r, r.cum, r.cumLabels, q, "cum"); }); }, true, 2});
             if (n.funnel) secs.add(new Object[]{(Runnable) () -> addPlot("Funnel Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.contour = n.contour; q.studyLabels = n.labels; return Plots.funnel(r, q, null); }), false});
             if (n.funnelPrec) secs.add(new Object[]{(Runnable) () -> addPlot("Funnel Plot of Precision", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.contour = n.contour; q.studyLabels = n.labels; q.precision = true; return Plots.funnel(r, q, null); }), false});
             if (n.bias) secs.add(new Object[]{(Runnable) () -> { Bias.Result b = Bias.run(r, n.biasMethod.equals("Default") ? null : n.biasMethod, false); addText("Test for Funnel Plot Asymmetry", Report.biasText(b, r));
@@ -594,37 +600,45 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
                     if (n.tf) addPlot("Trim-and-Fill Funnel Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.funnel(r, q, tf); });
                     if (n.tfPrec) addPlot("Trim-and-Fill Funnel Plot of Precision", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.precision = true; return Plots.funnel(r, q, tf); }); } }, false});
             if (n.drap) secs.add(new Object[]{(Runnable) () -> { addPlot("Drapery Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return org.metajava.plot.Drapery.plot(r, q); });
-                if (n.drapReport) { org.metajava.plot.DraperyReport.Result dr = org.metajava.plot.DraperyReport.build(r, copy(o)); if (dr.available) addDrapery(dr); } }, false});
+                if (n.drapReport) { org.metajava.plot.DraperyReport.Result dr = org.metajava.plot.DraperyReport.build(r, copy(o)); if (dr.available) addDrapery(dr); } }, false, 6});
             if (n.doi) secs.add(new Object[]{(Runnable) () -> { Lfk l = Lfk.compute(r.TE, r.seTE, r.studlab); addText("Doi Plot and LFK Index", Report.lfkText(l, r));
                 if (l.lfk == l.lfk) addPlot("Doi Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; q.apexLine = n.doiApex; return Plots.doi(l, r, q); }); }, false});
             if (n.pet) secs.add(new Object[]{(Runnable) () -> { PubBias.PetPeese pp = PubBias.petPeese(r); addText("PET-PEESE", BiasReport.petPeeseText(pp, r));
                 if (n.petPlot && pp.error == null) addPlot("PET-PEESE Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.petPeese(pp, r, q); }); }, false});
-            if (n.sel) secs.add(new Object[]{(Runnable) () -> addText("Selection Model", BiasReport.selectionText(PubBias.selection(r, n.selDir), r)), false});
+            if (n.sel) secs.add(new Object[]{(Runnable) () -> addText("Selection Model", BiasReport.selectionText(PubBias.selection(r, n.selDir), r)), false, 5});
             if (n.fail) secs.add(new Object[]{(Runnable) () -> addText("Fail-Safe N", BiasReport.failSafeText(PubBias.failSafe(r), r)), false});
-            if (n.inf) secs.add(new Object[]{(Runnable) () -> influence(r, s, n), true});
+            if (n.inf) secs.add(new Object[]{(Runnable) () -> influence(r, s, n), true, 3});
             if (n.baujat) secs.add(new Object[]{(Runnable) () -> addPlot("Baujat Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.baujat(r, q); }), false});
             if (n.radial) secs.add(new Object[]{(Runnable) () -> addPlot("Radial Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = q.radialLabels; return Plots.radial(r, q); }), false});
             if (n.labbe) secs.add(new Object[]{(Runnable) () -> { if (!s.type.equals("bin")) { addText("L\u2019Abb\u00E9 Plot", "The L\u2019Abb\u00E9 plot requires binary outcome data (analysis type: metabin)."); return; }
                 if (!java.util.Arrays.asList("RR", "OR", "RD", "ASD").contains(s.sm)) addText("L\u2019Abb\u00E9 Plot", "Note: the line of the pooled effect is only drawn for RR, OR, RD and ASD;\nthe study event rates are shown without it.");
                 addPlot("L\u2019Abb\u00E9 Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = q.labbeLabels; return Plots.labbe(r, q); }); }, false});
             if (n.gosh) secs.add(new Object[]{(Runnable) () -> { Gosh gs = Gosh.run(r, n.goshSub, n.goshSeed); final GoshCluster gc = n.goshCl ? gs.detectClusters() : null; addText("GOSH Analysis", RegReport.goshText(gs, r));
-                addPlot("GOSH Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.goshPalette = n.goshPal; return ExtraPlots.gosh(gs, r, q, n.goshHl, gc, n.goshTrimOrd); });
-                if (n.goshReg) goshRegression(r, n); }, true});
+                addPlot("GOSH Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.goshPalette = n.goshPal; return ExtraPlots.gosh(gs, r, q, n.goshHl, gc, n.goshTrimOrd); }); }, true, 0});
+            if (n.gosh && n.goshReg) secs.add(new Object[]{(Runnable) () -> goshRegression(r, n), true, 0});   // independent of the ordinary GOSH: runs at the same time, its output stays right below the ordinary GOSH
             final int total = secs.size();
-            for (Object[] sc : secs) {
-                final Out out = new Out(); outs.add(out); final Runnable body = (Runnable) sc[0];
+            final List<Object[]> order = new ArrayList<>(); final List<Runnable> tasks = new ArrayList<>();
+            final java.util.concurrent.atomic.AtomicIntegerArray fracs = new java.util.concurrent.atomic.AtomicIntegerArray(total);   // progress (0..1000) of each running section
+            for (int si = 0; si < total; si++) {
+                Object[] sc = secs.get(si); final int slot = si;
+                final Out out = new Out(); outs.add(out); final Runnable body = (Runnable) sc[0]; final boolean isHeavy = (boolean) sc[1];
                 final Runnable task = () -> {
                     if (gen != generation) return;
                     sink.set(out.items); Report.startCapture();
-                    try { body.run(); for (Item it : out.items) if (it.render != null) it.img = it.render.apply(1.0); }   // plots are rendered here, not on the UI thread
+                    try { body.run();
+                        // the plots of this section are rendered here (not on the UI thread), in parallel when the section has several
+                        final List<Item> its = out.items; Par.forRange(its.size(), j -> { Item it = its.get(j); if (it.render != null) it.img = it.render.apply(1.0); }); }
                     catch (Exception ex) { out.error = ex; }
-                    finally { Report.stopCapture(); sink.remove(); heavyFrac = 0; final int dn = done.incrementAndGet(); progressTo(gen, 0.05 + 0.95 * dn / total); }
+                    finally { Report.stopCapture(); sink.remove(); fracs.set(slot, 0); done.incrementAndGet(); progressTo(gen, progressOf(done.get(), fracs, total)); }
                 };
-                (((boolean) sc[1]) ? heavy : light).add(task);
+                final Runnable timed = !isHeavy ? task : () -> Par.withProgress(fr -> { fracs.set(slot, (int) (1000 * Math.min(1.0, Math.max(0.0, fr)))); progressTo(gen, progressOf(done.get(), fracs, total)); }, task);
+                order.add(new Object[]{timed, sc.length > 2 ? (Integer) sc[2] : (isHeavy ? 4 : 9)});
             }
+            // All sections run at the same time in the shared pool (the heaviest are started first); a section that is waiting for its own parallel loop leaves the idle threads to the others.
+            // The results stay in the order of the sections, so the output is identical to a serial run.
+            order.sort((a, b) -> Integer.compare((Integer) a[1], (Integer) b[1]));   // stable: equal ranks keep the order of the sections
             final List<java.util.concurrent.Future<?>> fs = new ArrayList<>();
-            for (Runnable t : light) fs.add(Par.submit(() -> { t.run(); return null; }));
-            for (Runnable t : heavy) { checkCurrent(gen); heavyFrac = 0; Par.withProgress(fr -> { if (fr > heavyFrac) { heavyFrac = fr; progressTo(gen, 0.05 + 0.95 * (done.get() + Math.min(1.0, fr)) / total); } }, t); }
+            for (Object[] ob : order) { final Runnable t = (Runnable) ob[0]; fs.add(Par.submit(() -> { t.run(); return null; })); }
             for (java.util.concurrent.Future<?> f : fs) f.get();
             checkCurrent(gen);
             SwingUtilities.invokeLater(() -> display(n, outs, r, gen, auto, scrollPos));
