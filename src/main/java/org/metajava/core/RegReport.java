@@ -13,7 +13,7 @@ public final class RegReport {
     public static String permText(Reg g, Perm t, MetaResult r) {
         StringBuilder b = new StringBuilder();
         b.append("Permutation Test for Meta-Regression (as metafor::permutest)").append(NL).append(NL);
-        if (t.exact) b.append("Exact test: all ").append(t.nPerm).append(" permutations of the k = ").append(t.k).append(" rows of the model matrix.").append(NL);
+        if (t.exact) b.append("Exact test: all ").append(String.format(Locale.ROOT, "%,d", t.nPerm)).append(" unique permutations of the k = ").append(t.k).append(" rows of the model matrix (identical rows count once, as metafor).").append(NL);
         else b.append("Random test: ").append(t.iter).append(" permutations of the rows of the model matrix, the first one being the observed arrangement (as metafor), the others drawn with R's sample() (seed = ").append(t.seed).append(").").append(NL)
             .append("p-value = (number of permutations with |statistic| >= observed) / (number of permutations with a defined statistic), the observed arrangement included (Phipson and Smyth, 2010); smallest possible p = ").append(Fmt.num(1.0 / t.iter, 4)).append(".").append(NL);
         b.append("tau^2 estimator: ").append(g.method).append(" (re-estimated in every permutation); test statistics: ").append(t.knha ? "t / F (Knapp-Hartung)" : "z / QM").append(NL);

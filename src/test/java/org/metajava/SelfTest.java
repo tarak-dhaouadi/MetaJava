@@ -23,6 +23,19 @@ public class SelfTest {
     static int[] pixels(java.awt.image.BufferedImage im) { return im.getRGB(0, 0, im.getWidth(), im.getHeight(), null, 0, im.getWidth()); }
     static void near(double got, double want, double tol, String what) { check(Math.abs(got - want) <= tol, what + " (got " + got + ", expected " + want + " +/- " + tol + ")"); }
 
+    /** Meta-regression (REML) of k studies on a numeric moderator and/or a factor, for the permutation-count tests. */
+    static Reg permReg(int k, double[] num, String[] fac) {
+        double[] yi = new double[k], se = new double[k]; for (int i = 0; i < k; i++) { yi[i] = 0.3 + 0.4 * Math.sin(1.7 * i + 0.3) + 0.002 * i; se[i] = 0.15 + 0.1 * ((i * 7) % 5) / 5.0; }
+        MetaSpec sp = new MetaSpec(); sp.type = "gen"; sp.sm = "MD"; sp.methodTau = "REML"; MetaData md = new MetaData(); md.put("TE", yi); md.put("seTE", se); md.n = k; MetaResult mr = Meta.run(sp, md); lastPermMeta = mr;
+        java.util.Map<String, double[]> nd = new java.util.HashMap<>(); java.util.Map<String, String[]> fd = new java.util.HashMap<>(); java.util.List<String> nums = new java.util.ArrayList<>(), facs = new java.util.ArrayList<>();
+        if (num != null) { nd.put("x", num); nums.add("x"); } if (fac != null) { fd.put("f", fac); facs.add("f"); }
+        return Reg.run(mr, nums, nd, facs, fd, true);
+    }
+    static double[] binX(int k, int ones) { double[] x = new double[k]; for (int i = 0; i < k; i++) x[i] = i < ones ? 1 : 0; return x; }
+    static double[] seqX(int k) { double[] x = new double[k]; for (int i = 0; i < k; i++) x[i] = i + 1; return x; }
+    static MetaResult lastPermMeta;
+    static String[] levels(int... sizes) { int k = 0; for (int z : sizes) k += z; String[] f = new String[k]; int i = 0, l = 0; for (int z : sizes) { for (int q = 0; q < z; q++) f[i++] = "L" + l; l++; } return f; }
+
     static final double[] LNHR = {-0.6931, -0.6539, -0.7985, -0.5447, -0.8675, -0.4943, -0.7340, -0.6162, -0.9416, -0.5276};
     static final double[] SEHR = {0.0719, 0.0691, 0.0800, 0.0619, 0.0858, 0.0588, 0.0749, 0.0665, 0.0926, 0.0608};
     static final double[] Z = {0.5957, 0.4071, 0.6580, 0.6854, 0.2790, 0.3700, 0.5709, 0.5088, 0.5506, 0.4332, 0.6761, 0.6625, 0.5614, 0.7105, 0.6184, 0.4320, 0.6042, 0.4177, 0.6761, 0.5453};
@@ -942,10 +955,35 @@ public class SelfTest {
                 MetaSpec s10p = new MetaSpec(); s10p.type = "gen"; s10p.sm = "MD"; s10p.methodTau = "REML"; MetaData d10 = new MetaData(); d10.put("TE", y10); d10.put("seTE", s10); d10.n = 10;
                 Perm e10 = Perm.run(Reg.run(Meta.run(s10p, d10), java.util.List.of("x"), n10, java.util.List.of(), new java.util.HashMap<>(), true), 1000, false, 1);
                 check(e10.exact && e10.nPerm == 252, "binary moderator, k = 10, iter = 1000: exact over 252 unique permutations (MetaJava used the random test for k > 9)");
-                double[] x25 = new double[25], y25 = new double[25], s25 = new double[25]; for (int i = 0; i < 25; i++) { x25[i] = i; y25[i] = 0.1 * ((i * 7) % 11); s25[i] = 0.2 + 0.01 * (i % 4); }
-                java.util.Map<String, double[]> n25 = new java.util.HashMap<>(); n25.put("x", x25); MetaSpec s25p = new MetaSpec(); s25p.type = "gen"; s25p.sm = "MD"; s25p.methodTau = "REML"; MetaData d25 = new MetaData(); d25.put("TE", y25); d25.put("seTE", s25); d25.n = 25;
-                try { Perm.run(Reg.run(Meta.run(s25p, d25), java.util.List.of("x"), n25, java.util.List.of(), new java.util.HashMap<>(), true), 1000, true, 1); check(false, "exact test with 25! permutations is refused"); }
-                catch (IllegalArgumentException ex) { check(ex.getMessage().contains("too large"), "exact test with 25! permutations is refused (metafor: \"Number of iterations requested too large.\")"); }
+                // ---- the number of unique permutations is exact (BigInteger), known before anything is generated, and is not capped by an array or int limit
+                { int[][] sz = {{5, 5}, {3, 3, 2}, {1, 1, 1, 1, 1, 1, 1}, {2, 2, 2, 1}, {4, 1, 1}}; long[] want = {252, 560, 5040, 630, 30};
+                  for (int c = 0; c < sz.length; c++) { int kk = 0; for (int z : sz[c]) kk += z; int[] cur = new int[kk]; int pos = 0, lb = 0; for (int z : sz[c]) { for (int q = 0; q < z; q++) cur[pos++] = lb; lb++; }
+                    long en = 1; while (Perm.nextPermutation(cur)) en++;   // enumerates the unique permutations incrementally; returns false after the last one
+                    java.math.BigInteger uc = Perm.uniqueCount(sz[c]);
+                    check(uc.longValueExact() == want[c] && en == want[c] && Perm.metaforCount(sz[c], kk) == want[c], "unique permutations of groups " + java.util.Arrays.toString(sz[c]) + ": " + want[c] + " by formula, by incremental enumeration and by metafor's double formula"); }
+                  java.math.BigInteger c200 = Perm.uniqueCount(new int[]{100, 100}); check(c200.toString().equals("90548514656103281165404177077484163874504589675413336841320") && c200.bitLength() > 63, "unique permutations 100 + 100: C(200, 100) exactly (59 digits), no overflow");
+                  check(Perm.uniqueCount(new int[]{15, 15}).longValueExact() == 155117520L, "unique permutations 15 + 15 = 155,117,520");
+                  int[] allDistinct = new int[180]; java.util.Arrays.fill(allDistinct, 1); java.math.BigInteger f180 = java.util.stream.IntStream.rangeClosed(2, 180).mapToObj(java.math.BigInteger::valueOf).reduce(java.math.BigInteger.ONE, java.math.BigInteger::multiply);
+                  check(Double.isInfinite(Perm.metaforCount(allDistinct, 180)) && Perm.uniqueCount(allDistinct).equals(f180) && f180.toString().length() == 330, "180 distinct rows: metafor's double count overflows to Infinity, the exact count (180!) has 330 digits"); }
+                // categorical moderator: identical rows (same level) count once; the exact p equals the brute force over all 8! permutations
+                { String[] f8 = levels(3, 3, 2); Reg gf8 = permReg(8, null, f8); Perm.Plan pf = Perm.plan(gf8, 100, false, 600);
+                  check(pf.unique.longValueExact() == 560 && java.util.Arrays.equals(pf.groupSizes, new int[]{3, 3, 2}) && pf.feasible, "3-level factor 3 + 3 + 2: the plan reports 560 unique permutations (8!/(3! 3! 2!)) and group sizes 3, 3, 2");
+                  check(!pf.exact && Perm.plan(gf8, 1000, false, 600).exact && Perm.plan(gf8, 100, true, 600).exact, "plan: random when the count (560) exceeds iter (100), exact when it does not (iter = 1000) or when requested");
+                  Perm pe8 = Perm.run(gf8, 1000, false, 1); check(pe8.exact && pe8.nPerm == 560, "3-level factor: exact test over 560 unique permutations (iter = 1000)");
+                  int[] c8 = new int[3]; int cq8 = 0; double[] y8 = new double[8], v8 = new double[8]; for (int i = 0; i < 8; i++) { y8[i] = 0.3 + 0.4 * Math.sin(1.7 * i + 0.3) + 0.002 * i; double se8 = 0.15 + 0.1 * ((i * 7) % 5) / 5.0; v8[i] = se8 * se8; }
+                  for (int b = 0; b < 40320; b++) { int[] pi = Perm.unrank(8, b); double[][] Xp = new double[8][]; for (int i = 0; i < 8; i++) Xp[i] = gf8.X[pi[i]]; Rma m = Rma.fit(y8, v8, Xp, "REML", null); Reg.Wald w = Reg.wald(m, gf8.knha, gf8.adhocSe, true);
+                    for (int a2 = 0; a2 < 3; a2++) if (Math.abs(w.z[a2]) >= Math.abs(gf8.zval[a2]) - 1.5e-8) c8[a2]++; if (w.QM >= gf8.QM - 1.5e-8) cq8++; }
+                  for (int a2 = 0; a2 < 3; a2++) near(pe8.pval[a2], c8[a2] / 40320.0, 1e-12, "3-level factor: exact p-value of coefficient " + a2 + " equals the brute force over all 8! permutations"); near(pe8.pQM, cq8 / 40320.0, 1e-12, "3-level factor: exact omnibus p-value equals the brute force"); }
+                // an exact test that cannot be finished is refused with the count and the reasons, never replaced by an approximate test
+                { Reg gb = permReg(30, binX(30, 15), null);
+                  try { Perm.run(gb, 1000, true, 1, 0, 1e-9); check(false, "exact test 15 + 15 with a tiny time budget is refused"); }
+                  catch (Perm.InfeasibleExactTest ex) { String m = ex.getMessage(); Perm.Plan q = ex.plan;
+                    check(q.unique.longValueExact() == 155117520L && !q.feasible && q.exact && q.estimatedSeconds > 1e-9, "infeasible exact test: the plan carries the count (155,117,520), the time estimate and feasible = false");
+                    check(m.contains("155,117,520") && m.contains("not run") && m.contains("time budget") && m.contains("not of memory") && m.contains("random permutation test") && m.contains("not exact") && m.contains("2 distinct rows"), "infeasible exact test: the message names the count, the time limit, says it is not a memory limit and offers a random test (" + m.substring(0, Math.min(200, m.length())) + "...)"); }
+                  Perm rr = Perm.run(gb, 200, false, 1); check(!rr.exact && rr.iter == 200 && rr.plan.unique.longValueExact() == 155117520L && RegReport.permText(gb, rr, lastPermMeta).contains("Random test: 200 permutations"), "the random alternative is reported as a random test (not exact) and still carries the unique-permutation count");
+                  Perm rb = Perm.run(permReg(10, binX(10, 5), null), 1000, false, 1, 0, 0); check(rb.exact && rb.nPerm == 252, "an exact test needing at most iter fits is always run (count 252 <= iter = 1000), whatever the time budget");
+                  try { Perm.run(permReg(25, seqX(25), null), 1000, true, 1); check(false, "exact test with 25 distinct rows is refused"); }
+                  catch (Perm.InfeasibleExactTest ex) { check(ex.plan.unique.toString().length() == 26 && ex.getMessage().contains("cannot be enumerated") && ex.getMessage().contains("random permutation test"), "25 distinct rows (1.55e25 permutations): refused with the exact count and the reason, not by an int or array limit"); } }
             }
         } catch (Exception e) { e.printStackTrace(); check(false, "random permutation test (failed fits) tests threw " + e); }
 
