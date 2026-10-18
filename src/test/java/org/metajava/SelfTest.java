@@ -974,6 +974,13 @@ public class SelfTest {
                   for (int b = 0; b < 40320; b++) { int[] pi = Perm.unrank(8, b); double[][] Xp = new double[8][]; for (int i = 0; i < 8; i++) Xp[i] = gf8.X[pi[i]]; Rma m = Rma.fit(y8, v8, Xp, "REML", null); Reg.Wald w = Reg.wald(m, gf8.knha, gf8.adhocSe, true);
                     for (int a2 = 0; a2 < 3; a2++) if (Math.abs(w.z[a2]) >= Math.abs(gf8.zval[a2]) - 1.5e-8) c8[a2]++; if (w.QM >= gf8.QM - 1.5e-8) cq8++; }
                   for (int a2 = 0; a2 < 3; a2++) near(pe8.pval[a2], c8[a2] / 40320.0, 1e-12, "3-level factor: exact p-value of coefficient " + a2 + " equals the brute force over all 8! permutations"); near(pe8.pQM, cq8 / 40320.0, 1e-12, "3-level factor: exact omnibus p-value equals the brute force"); }
+                // safety factor of the exact-test time estimate: used in the budget check, configurable, documented as conservative, never a guarantee
+                { Reg gs = permReg(24, binX(24, 12), null);
+                  Perm.Plan s1 = Perm.plan(gs, 1000, true, 1e9, 1.0), s2 = Perm.plan(gs, 1000, true, 1e9, 2.0);
+                  check(s1.safetyFactor == 1.0 && s2.safetyFactor == 2.0 && Math.abs(s1.estimatedSeconds - s1.measuredSeconds) <= 1e-12 * s1.measuredSeconds && Math.abs(s2.estimatedSeconds - 2 * s2.measuredSeconds) <= 1e-12 * s2.measuredSeconds, "safety factor: estimate = measured time x factor");
+                  check(Perm.checkedSafety(null, 1.25) == 1.25 && Perm.checkedSafety("1.5", 1.25) == 1.5 && Perm.checkedSafety("0.5", 1.25) == 1.25 && Perm.checkedSafety("abc", 1.25) == 1.25 && Perm.checkedSafety("NaN", 1.25) == 1.25 && Perm.checkedSafety("1", 1.25) == 1.0, "safety factor: property parsing (values below 1 or not numbers fall back to 1.25)");
+                  check(Perm.defaultSafetyFactor() == 1.25 || System.getProperty("metajava.exactSafety") != null, "safety factor: default 1.25");
+                  Perm.Plan s3 = Perm.plan(gs, 1000, true, 1e-9, 1.25); check(!s3.feasible && s3.describe().contains("conservative estimate, not a guarantee") && s3.describe().contains("safety factor of 1.25") && Math.abs(s3.estimatedSeconds - 1.25 * s3.measuredSeconds) <= 1e-12 * s3.measuredSeconds, "safety factor: the budget check uses the adjusted estimate and the description calls it conservative, not a guarantee"); }
                 // an exact test that cannot be finished is refused with the count and the reasons, never replaced by an approximate test
                 { Reg gb = permReg(30, binX(30, 15), null);
                   try { Perm.run(gb, 1000, true, 1, 0, 1e-9); check(false, "exact test 15 + 15 with a tiny time budget is refused"); }

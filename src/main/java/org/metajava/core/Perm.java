@@ -19,7 +19,7 @@ import java.util.*;
  */
 public final class Perm {
     public String[] coefNames; public int k, p, iter; public long failed; public boolean exact, knha; public long nPerm, seed, attempts; public Plan plan;
-    public double[] z, pval; public double QM = Double.NaN, pQM = Double.NaN; public int dfQM; public String note = "";
+    public double seconds = Double.NaN; public double[] z, pval; public double QM = Double.NaN, pQM = Double.NaN; public int dfQM; public String note = "";
     static final double TOL = Math.sqrt(Math.ulp(1.0));
     /** Exact tests are enumerated in chunks of this many permutations (memory stays small however many there are). */
     static final int CHUNK = 20000;
@@ -36,13 +36,17 @@ public final class Perm {
     /**
      * @param exactBudgetSeconds longest wall-clock time an <em>exact</em> test may be estimated to need (measured from timed fits of this model, not a limit on k); longer exact tests are refused with an {@link InfeasibleExactTest}
      */
-    public static Perm run(Reg g, int iter, boolean wantExact, long seed, long maxDraws, double exactBudgetSeconds) {
+    public static Perm run(Reg g, int iter, boolean wantExact, long seed, long maxDraws, double exactBudgetSeconds) { return run(g, iter, wantExact, seed, maxDraws, exactBudgetSeconds, defaultSafetyFactor()); }
+
+    /** @param safetyFactor factor (at least 1) applied to the measured time estimate of an exact test before it is compared with the budget, see {@link #defaultSafetyFactor()} */
+    public static Perm run(Reg g, int iter, boolean wantExact, long seed, long maxDraws, double exactBudgetSeconds, double safetyFactor) {
+        final long tRun = System.nanoTime();
         final Rma f = g.fit; final int k = f.k, p = f.p; final double[] y = f.yi, v = f.vi; final String method = g.method;
         if (g.dfQM <= 0) throw new IllegalArgumentException("The permutation test needs at least one moderator.");
         Perm o = new Perm(); o.k = k; o.p = p; o.coefNames = g.coefNames; o.knha = g.knha; o.seed = seed; o.dfQM = g.dfQM;
         o.z = g.zval.clone(); o.QM = g.QM;
         iter = Math.max(2, iter);   // metafor: 'iter' must be >= 2
-        final Plan pl = plan(g, iter, wantExact, exactBudgetSeconds); o.plan = pl;   // the number of unique permutations is known before anything is generated or fitted
+        final Plan pl = plan(g, iter, wantExact, exactBudgetSeconds, safetyFactor); o.plan = pl;   // the number of unique permutations is known before anything is generated or fitted
         if (pl.exact && !pl.feasible) throw new InfeasibleExactTest(pl);
         final double[][] Xs = sortedRows(f.X); final int[] lab = groupLabels(Xs);
         boolean exact = pl.exact;
@@ -61,7 +65,8 @@ public final class Perm {
                 Par.checkCancel();
                 int m = (int) Math.min(CHUNK, total - done); final int[][] batch = new int[m][]; final double[][] res = new double[m][];
                 for (int b = 0; b < m; b++) { batch[b] = cur.clone(); nextPermutation(cur); }
-                Par.forRange(m, b -> res[b] = fitPermuted(f, y, v, rep, batch[b], method, knha, adhoc, icpt, null));
+                final long done0 = done; final java.util.function.DoubleConsumer outerSink = Par.progressSink();   // one overall progress fraction over all chunks
+                Par.withProgress(outerSink == null ? null : fr -> outerSink.accept(Math.min(1.0, (done0 + fr * res.length) / (double) total)), () -> Par.forRange(res.length, b -> res[b] = fitPermuted(f, y, v, rep, batch[b], method, knha, adhoc, icpt, null)));
                 for (int b = 0; b < m; b++) {
                     double[] st = res[b]; if (st == null) { o.failed++; continue; }
                     for (int a = 0; a < p; a++) if (!Double.isNaN(st[a])) { nv[a]++; if (Math.abs(st[a]) >= Math.abs(o.z[a]) - TOL) cnt[a]++; }
@@ -105,6 +110,7 @@ public final class Perm {
         o.pval = new double[p];
         for (int a = 0; a < p; a++) o.pval[a] = Double.isNaN(o.z[a]) || nv[a] == 0 ? Double.NaN : cnt[a] / (double) nv[a];
         o.pQM = Double.isNaN(o.QM) || nq == 0 ? Double.NaN : cq / (double) nq;
+        o.seconds = (System.nanoTime() - tRun) / 1e9;
         if (!exact && pl.unique.compareTo(java.math.BigInteger.valueOf(1_000_000)) <= 0) o.note = "The exact test (all " + String.format(java.util.Locale.ROOT, "%,d", pl.unique) + " unique permutations) is available for this model.";
         return o;
     }
@@ -142,13 +148,20 @@ public final class Perm {
 
     private static double factorial(int n) { if (n > 170) return Double.POSITIVE_INFINITY; double f = 1; for (int i = 2; i <= n; i++) f *= i; return f; }
 
+    /**
+     * Safety factor applied to the measured time estimate of an exact test before it is compared with the time budget: system property {@code metajava.exactSafety}, else 1.25.
+     * A value below 1 (or not a number) is ignored; 1 means no margin. The estimate stays an estimate: a conservative one, not a guarantee that the test finishes within the budget.
+     */
+    public static double defaultSafetyFactor() { return checkedSafety(System.getProperty("metajava.exactSafety"), 1.25); }
+    public static double checkedSafety(String s, double dflt) { try { double d = Double.parseDouble(s.trim()); return d >= 1 && d <= 100 ? d : dflt; } catch (RuntimeException e) { return dflt; } }
+
     /** Default time budget of an exact test in seconds: system property metajava.exactBudget, else 600. */
     public static double defaultBudgetSeconds() { try { return Double.parseDouble(System.getProperty("metajava.exactBudget", "600")); } catch (NumberFormatException e) { return 600; } }
 
     /** What the permutation test is going to do, known before any permutation is generated or fitted. */
     public static final class Plan {
         public int k, p, iter; public int[] groupSizes; public java.math.BigInteger unique, kFactorial; public double metaforCount;
-        public boolean exactRequested, exact, feasible = true; public double secondsPerFit = Double.NaN, estimatedSeconds = Double.NaN, budgetSeconds; public int threads; public String reason = "";
+        public boolean exactRequested, exact, feasible = true; public double secondsPerFit = Double.NaN, measuredSeconds = Double.NaN, safetyFactor = 1, estimatedSeconds = Double.NaN, budgetSeconds; public int threads; public String reason = "";
         static String n(java.math.BigInteger b) { return String.format(java.util.Locale.ROOT, "%,d", b); }
         static String big(java.math.BigInteger b) { return b.bitLength() < 63 ? n(b) : new java.math.BigDecimal(b).round(new java.math.MathContext(3)).toString() + " (" + b.toString().length() + " digits)"; }
         public static String dur(double s) { return s < 1 ? String.format(java.util.Locale.ROOT, "%.2f s", s) : s < 120 ? String.format(java.util.Locale.ROOT, "%.0f s", s) : s < 7200 ? String.format(java.util.Locale.ROOT, "%.0f min", s / 60) : s < 172800 ? String.format(java.util.Locale.ROOT, "%.1f h", s / 3600) : s < 3.15e7 ? String.format(java.util.Locale.ROOT, "%.0f days", s / 86400) : String.format(java.util.Locale.ROOT, "%.3g years", s / 3.156e7); }
@@ -159,7 +172,11 @@ public final class Perm {
             b.append("Unique permutations: ").append(big(unique)).append(" (k! = ").append(big(kFactorial)).append("; identical rows count once, as in metafor").append(groupSizes.length == k ? ", here all rows differ so k! applies" : "").append(").");
             if (!Double.isNaN(metaforCount) && (metaforCount == Double.POSITIVE_INFINITY || new java.math.BigDecimal(unique).subtract(new java.math.BigDecimal(metaforCount)).abs().compareTo(new java.math.BigDecimal(unique).multiply(new java.math.BigDecimal("1e-12"))) > 0)) b.append(" metafor's double-precision count: ").append(metaforCount).append(".");
             b.append(exact ? (exactRequested ? " Exact test requested." : " The number does not exceed iter = " + iter + ", so the test is exact (as metafor).") : " Random test with iter = " + iter + " (the number exceeds iter and no exact test was requested).");
-            if (exact && !Double.isNaN(estimatedSeconds)) b.append(" Estimated time: ").append(dur(estimatedSeconds)).append(" (about ").append(String.format(java.util.Locale.ROOT, "%.3g", secondsPerFit * 1e6)).append(" \u00B5s per permuted fit on ").append(threads).append(" thread").append(threads == 1 ? "" : "s").append(").");
+            if (exact && !Double.isNaN(estimatedSeconds)) {
+                b.append(" Estimated time: ").append(dur(estimatedSeconds)).append(" = ").append(dur(measuredSeconds)).append(" from the measured speed of this computer (about ").append(String.format(java.util.Locale.ROOT, "%,.0f", 1 / secondsPerFit)).append(" permuted fits per second on ").append(threads).append(" thread").append(threads == 1 ? "" : "s").append(")");
+                if (safetyFactor > 1) b.append(" \u00D7 a safety factor of ").append(String.format(java.util.Locale.ROOT, "%.3g", safetyFactor)).append(" (system property metajava.exactSafety)");
+                b.append(". This is a conservative estimate, not a guarantee: background load, throttling and other factors can make the real run longer.");
+            }
             if (!feasible) b.append(' ').append(reason);
             return b.toString();
         }
@@ -180,8 +197,11 @@ public final class Perm {
      * Counts the unique permutations and decides, before any permutation is generated: exact when requested or when the count does not exceed {@code iter} (metafor), else random.
      * For an exact test the time is estimated from timed permuted fits of this very model; the test is infeasible when it cannot be enumerated at all (more than 2^63 - 1 permutations) or is estimated to take longer than {@code budgetSeconds}.
      */
-    public static Plan plan(Reg g, int iter, boolean wantExact, double budgetSeconds) {
-        final Rma f = g.fit; Plan pl = new Plan(); pl.k = f.k; pl.p = f.p; pl.iter = Math.max(2, iter); pl.exactRequested = wantExact; pl.budgetSeconds = budgetSeconds;
+    public static Plan plan(Reg g, int iter, boolean wantExact, double budgetSeconds) { return plan(g, iter, wantExact, budgetSeconds, defaultSafetyFactor()); }
+
+    /** As {@link #plan(Reg, int, boolean, double)}; the measured time is multiplied by {@code safetyFactor} (at least 1, else the default) and the product is compared with the budget. */
+    public static Plan plan(Reg g, int iter, boolean wantExact, double budgetSeconds, double safetyFactor) {
+        final Rma f = g.fit; Plan pl = new Plan(); pl.safetyFactor = safetyFactor >= 1 && safetyFactor <= 100 ? safetyFactor : defaultSafetyFactor(); pl.k = f.k; pl.p = f.p; pl.iter = Math.max(2, iter); pl.exactRequested = wantExact; pl.budgetSeconds = budgetSeconds;
         final double[][] Xs = sortedRows(f.X); final int[] lab = groupLabels(Xs); pl.groupSizes = groupSizes(lab); java.util.Arrays.sort(pl.groupSizes);
         for (int i = 0, j = pl.groupSizes.length - 1; i < j; i++, j--) { int t = pl.groupSizes[i]; pl.groupSizes[i] = pl.groupSizes[j]; pl.groupSizes[j] = t; }   // largest group first
         pl.unique = uniqueCount(pl.groupSizes); pl.kFactorial = factorialBig(f.k); pl.metaforCount = metaforCount(pl.groupSizes, f.k);
@@ -189,15 +209,29 @@ public final class Perm {
         if (!pl.exact) return pl;
         pl.threads = Par.threads();
         if (pl.unique.bitLength() > 63) { pl.feasible = false; pl.reason = "That is more permutations than can be counted in a 64-bit integer (2^63 - 1), so they cannot be enumerated."; return pl; }
-        if (pl.unique.compareTo(java.math.BigInteger.valueOf(pl.iter)) <= 0) { pl.estimatedSeconds = 0; return pl; }   // at most iter fits: never more work than the random test the user asked for
-        // time permuted fits of this model (a few random arrangements, one thread) to estimate the exact test
-        final int[] size = pl.groupSizes; int[] cur = lab.clone(); int g0 = size.length; double[][] rep = new double[g0][]; for (int i = 0; i < f.k; i++) rep[lab[i]] = Xs[i];
-        RRandom rng = new RRandom(1); long tw = System.nanoTime(); for (int w = 0; w < 300 && System.nanoTime() - tw < 4e8; w++) { int[] pi = new int[f.k]; int[] sm = rng.sample(f.k); for (int i = 0; i < f.k; i++) pi[i] = lab[sm[i]]; fitPermuted(f, f.yi, f.vi, rep, pi, g.method, g.knha, g.adhocSe, g.intercept, null); }   // untimed warm-up (JIT)
-        long t0 = System.nanoTime(); int done = 0;
-        while (done < 25 && (done < 5 || System.nanoTime() - t0 < 2e8)) { int[] pi = new int[f.k]; int[] sm = rng.sample(f.k); for (int i = 0; i < f.k; i++) pi[i] = lab[sm[i]]; fitPermuted(f, f.yi, f.vi, rep, pi, g.method, g.knha, g.adhocSe, g.intercept, null); done++; }
-        pl.secondsPerFit = (System.nanoTime() - t0) / 1e9 / done;
-        pl.estimatedSeconds = pl.unique.doubleValue() * pl.secondsPerFit / Math.max(1, Math.min(pl.threads, Runtime.getRuntime().availableProcessors()));
-        if (pl.estimatedSeconds > budgetSeconds) { pl.feasible = false; pl.reason = "That is estimated to take longer than the time budget of " + Plan.dur(budgetSeconds) + "."; }
+        if (pl.unique.compareTo(java.math.BigInteger.valueOf(pl.iter)) <= 0) { pl.estimatedSeconds = 0; pl.measuredSeconds = 0; return pl; }   // at most iter fits: never more work than the random test the user asked for
+        // Time the real thing: random arrangements are fitted through the same parallel loop the exact test uses (so thread scaling, memory allocation and garbage collection are included),
+        // in rounds, until the throughput is stable (the JIT compiler needs a few hundred milliseconds to warm up; a single short timing of one thread was off by a factor of 3 either way).
+        final int[] size = pl.groupSizes; final int k = f.k; int g0 = size.length; final double[][] rep = new double[g0][]; for (int i = 0; i < k; i++) rep[lab[i]] = Xs[i];
+        final RRandom rng = new RRandom(1); int n = 1000; double perPerm = Double.NaN, prev = Double.NaN; long sampled = 0; final long tStart = System.nanoTime();
+        for (int round = 0; ; round++) {
+            Par.checkCancel();
+            final int[][] batch = new int[n][]; for (int b = 0; b < n; b++) { int[] sm = rng.sample(k), pi = new int[k]; for (int i = 0; i < k; i++) pi[i] = lab[sm[i]]; batch[b] = pi; }
+            final double[][] res = new double[n][];
+            long t0 = System.nanoTime(); Par.forRange(n, b -> res[b] = fitPermuted(f, f.yi, f.vi, rep, batch[b], g.method, g.knha, g.adhocSe, g.intercept, null)); double wall = (System.nanoTime() - t0) / 1e9 / n;
+            sampled += n; perPerm = round == 0 ? wall : Math.min(wall, prev);   // best of the last two rounds: later rounds are warmer, and a disturbed round is ignored
+            boolean stable = round >= 2 && (System.nanoTime() - tStart) / 1e9 >= 1.0 && Math.abs(wall - prev) <= 0.1 * prev;   // at least a second: the JIT compiler is not done before
+            prev = wall;
+            if (stable || (System.nanoTime() - tStart) / 1e9 > 4 || sampled >= 3 * pl.unique.doubleValue()) break;
+            if (wall * n < 0.1) n *= 2;   // rounds of at least ~0.1 s
+        }
+        // the part that is not parallel: the next-permutation generator and the tally, per permutation
+        int[] cur = lab.clone(); long tg = System.nanoTime(); final int ng = 200000; for (int b = 0; b < ng; b++) { int[] c = cur.clone(); nextPermutation(cur); if (c[0] < 0) cur[0] = c[0]; }
+        double serial = (System.nanoTime() - tg) / 1e9 / ng + 2e-8;
+        pl.secondsPerFit = perPerm + serial;   // wall-clock seconds per permutation with all threads working together
+        pl.measuredSeconds = pl.unique.doubleValue() * pl.secondsPerFit;
+        pl.estimatedSeconds = pl.measuredSeconds * pl.safetyFactor;   // the conservative estimate: this is what the budget check and the output use
+        if (pl.estimatedSeconds > budgetSeconds) { pl.feasible = false; pl.reason = "That is estimated (conservatively, see above) to take longer than the time budget of " + Plan.dur(budgetSeconds) + "."; }
         return pl;
     }
 

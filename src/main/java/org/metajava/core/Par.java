@@ -69,6 +69,9 @@ public final class Par {
         try { r.run(); } finally { if (old == null) PROGRESS.remove(); else PROGRESS.set(old); }
     }
 
+    /** The progress sink attached to this thread (null when none): lets a sequence of loops report one overall fraction instead of 0..1 per loop. */
+    public static DoubleConsumer progressSink() { return IN_LOOP.get() == null ? PROGRESS.get() : null; }
+
     /** Throws CancellationException when the condition attached to this thread is true (also usable inside long sequential loops). */
     public static void checkCancel() { BooleanSupplier c = CANCEL.get(); if (c != null && c.getAsBoolean()) throw new CancellationException("analysis superseded"); }
 

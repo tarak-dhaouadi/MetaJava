@@ -18,6 +18,7 @@ public final class RegReport {
             .append("p-value = (number of permutations with |statistic| >= observed) / (number of permutations with a defined statistic), the observed arrangement included (Phipson and Smyth, 2010); smallest possible p = ").append(Fmt.num(1.0 / t.iter, 4)).append(".").append(NL);
         b.append("tau^2 estimator: ").append(g.method).append(" (re-estimated in every permutation); test statistics: ").append(t.knha ? "t / F (Knapp-Hartung)" : "z / QM").append(NL);
         if (t.knha) b.append(g.hkNote()).append(NL);
+        if (t.exact && !Double.isNaN(t.seconds) && t.plan != null && t.plan.estimatedSeconds > 0) b.append("Computing time: ").append(Perm.Plan.dur(t.seconds)).append(". Conservative estimate beforehand: ").append(Perm.Plan.dur(t.plan.estimatedSeconds)).append(" (measured speed ").append(Perm.Plan.dur(t.plan.measuredSeconds)).append(t.plan.safetyFactor > 1 ? " x safety factor " + Fmt.num(t.plan.safetyFactor, 3) : "").append("; an estimate, not a guarantee).").append(NL);
         if (t.failed > 0 && t.exact) b.append("Note: ").append(t.failed).append(" permutations could not be fitted and were left out.").append(NL);
         if (t.failed > 0 && !t.exact) b.append("Note: ").append(t.failed).append(" permuted fits failed and were redrawn (as metafor), so ").append(t.attempts).append(" permutations were drawn to obtain ").append(t.iter).append(" valid fits.").append(NL);
         if (!t.note.isEmpty()) b.append("Note: ").append(t.note).append(NL);
