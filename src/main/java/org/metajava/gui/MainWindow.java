@@ -47,7 +47,8 @@ public class MainWindow extends JFrame {
     JComboBox<String> studlabBox = Ui.combo(), subgroupBox = Ui.combo(), orderBox = Ui.combo(), sheetBox = Ui.combo();
     JList<String> covList = new JList<>(), facList = new JList<>();
     // reference category of each categorical factor (factor -> level); the combo boxes only show the factor being configured
-    final JComboBox<String> cfgFactorBox = Ui.combo(), refBox = Ui.combo(); final Map<String, String> refChoice = new HashMap<>(); JPanel refPanel; JLabel refNote;
+    // adjFactorBox: factor that colours the studies of the adjusted regression plot (filled with the selected factors only)
+    final JComboBox<String> cfgFactorBox = Ui.combo(), refBox = Ui.combo(), adjFactorBox = Ui.combo(); final Map<String, String> refChoice = new HashMap<>(); JPanel refPanel; JLabel refNote;
     final JLabel fileLabel = Ui.muted("No file loaded");
     final JTable preview = new JTable(); final JPanel results = new JPanel(); final JScrollPane resScroll;
     // settings
@@ -91,7 +92,7 @@ public class MainWindow extends JFrame {
     JComboBox<String> funnelThemeBox = Ui.combo(org.metajava.plot.FunnelThemes.NAMES);   // Default / MetaWin style / STATA style
     JTextField xLeft = new JTextField(10), xRight = new JTextField(10); JTextField drapTargetF = new JTextField(10), xMinF = new JTextField(10), xMaxF = new JTextField(10), xTickF = new JTextField(10); JSpinner digitsSp = new JSpinner(new SpinnerNumberModel(2, 0, 6, 1)), spacingSp = new JSpinner(new SpinnerNumberModel(1.0, 0.6, 2.5, 0.1));
     // other analyses
-    JCheckBox sgChk = Ui.check("Subgroup analysis (uses the subgroup column)", false), sgPred = Ui.check("Subgroup prediction interval", false), sgTestEffect = Ui.check("Test for effect in subgroup", false), sgDetails = Ui.check("Details of meta-analysis methods", false), regChk = Ui.check("Meta-regression", false), bubbleChk = Ui.check("Bubble plot", true), regLine = Ui.check("Regression line", true), regCI = Ui.check("Confidence interval", false), regPI = Ui.check("Prediction interval", false), adjChk = Ui.check("Regression plot with categorical moderator adjustment", false), regAdhoc = Ui.check("Apply ad hoc correction to meta-regression", true), regIntercept = Ui.check("Intercept", true),
+    JCheckBox sgChk = Ui.check("Subgroup analysis (uses the subgroup column)", false), sgPred = Ui.check("Subgroup prediction interval", false), sgTestEffect = Ui.check("Test for effect in subgroup", false), sgDetails = Ui.check("Details of meta-analysis methods", false), regChk = Ui.check("Meta-regression", false), bubbleChk = Ui.check("Bubble plot", true), regLine = Ui.check("Regression line", true), regCI = Ui.check("Confidence interval", false), regPI = Ui.check("Prediction interval", false), adjChk = Ui.check("Regression plot with categorical moderator adjustment", false), regIntercept = Ui.check("Intercept", true),
         looChk = Ui.check("Leave-one-out analysis", false), looForest = Ui.check("Forest plot", true), cumChk = Ui.check("Cumulative meta-analysis", false), cumForest = Ui.check("Forest plot", true),
         funnelChk = Ui.check("Funnel plot", false), funnelPrecChk = Ui.check("Funnel plot of precision", false), contourChk = Ui.check("Contour-enhanced", false), labChk = Ui.check("Study labels", true), biasChk = Ui.check("Test for funnel plot asymmetry", false), biasPlotChk = Ui.check("Plot", true),
         tfChk = Ui.check("Trim and fill", false), tfPrecChk = Ui.check("Trim and fill funnel plot of precision", false), infChk = Ui.check("Outlier & influence diagnostics (metafor)", false), baujatChk = Ui.check("Baujat plot", false), radialChk = Ui.check("Radial (Galbraith) plot", false),
@@ -192,20 +193,21 @@ public class MainWindow extends JFrame {
         f.row("X-axis minimum", xMinF); f.row("X-axis maximum", xMaxF); f.row("X-axis tick interval", xTickF); f.row("X-axis left label", xLeft); f.row("X-axis right label", xRight); f.row("Digits", digitsSp); f.row("Row spacing", spacingSp);
         p.add(f); p.add(Box.createVerticalStrut(8));
         Ui.Section sg = new Ui.Section("5. Subgroup analysis", false); sg.row("Subgroup variable", subgroupBox); sg.row(null, sgChk); sg.row(null, tauCommon); sg.row(null, sgPred); sg.row(null, sgTestEffect); sg.row(null, sgDetails); sg.row(null, orchardChk); sg.row(null, caterChk); p.add(sg); p.add(Box.createVerticalStrut(8));
-        Ui.Section rg = new Ui.Section("6. Meta-regression", false); rg.row(null, regChk); rg.row("Covariates (numeric)", new JScrollPane(covList)); rg.row("Factors (categorical)", new JScrollPane(facList)); rg.row(null, buildRefPanel()); rg.row(null, regIntercept); regIntercept.addActionListener(e -> updateRefPanel()); regAdhoc.setToolTipText("Checked: the ad hoc variant of the Hartung-Knapp adjustment chosen under 'Ad hoc HK variance correction' (se, ci, IQWiG6) is applied to the meta-regression. Unchecked: conventional Hartung-Knapp. Only relevant with the Hartung-Knapp method; the meta-analysis itself is not affected."); rg.row(null, regAdhoc); rg.row(null, bubbleChk); rg.row(null, regLine); rg.row(null, regCI); rg.row(null, regPI);
+        Ui.Section rg = new Ui.Section("6. Meta-regression", false); rg.row(null, regChk); rg.row("Covariates (numeric)", new JScrollPane(covList)); rg.row("Factors (categorical)", new JScrollPane(facList)); rg.row(null, buildRefPanel()); rg.row(null, regIntercept); regIntercept.addActionListener(e -> updateRefPanel()); rg.row(null, bubbleChk); rg.row(null, regLine); rg.row(null, regCI); rg.row(null, regPI);
         regCI.setToolTipText("Confidence bounds of the regression line (dashed lines) with the area between them filled in a light colour");
         regPI.setToolTipText("Prediction bounds of the regression line (dotted lines) with the area between them filled in an even lighter colour than the confidence area: where the true effect of a new study with these moderator values is expected to lie");
         regSymbolBox.setToolTipText("Symbol drawn for each study in the bubble plot and the regression plot with categorical moderator adjustment");
         regSymSize.setToolTipText("Multiplier of the study-symbol size (1.0 = default); symbols stay proportional to the study weights");
         regStyleBox.setToolTipText("Default = meta style; ggplot2 style = look of a ggplot2 plot (minimal theme, coloured circles, line and confidence band). The colours below apply to the ggplot2 style and to the adjusted regression plot");
-        adjChk.setToolTipText("Regression plot of the model of this section with all selected covariates and factors: x = the first numeric covariate, study symbols coloured by the first factor; the line (and confidence band) is the prediction for the reference category of each factor, the other numeric covariates held at their mean. Without a numeric covariate no plot can be drawn");
+        adjChk.setToolTipText("Regression plot of the model of this section with all selected covariates and factors: x = the first numeric covariate, study symbols coloured by the factor chosen in the list below (one of the selected factors; the first one by default); the line (and confidence band) is the prediction for the reference category of each factor, the other numeric covariates held at their mean. Without a numeric covariate no plot can be drawn");
         rg.row("Bubble plot style", regStyleBox); rg.row("Study symbol", regSymbolBox); rg.row("Size of study symbol", regSymSize); rg.row("Study symbol colour", regColPoints); rg.row("Regression line colour", regColLine); rg.row("Confidence area colour", regColBand); rg.row("Confidence lines colour", regColBandLine); rg.row("Prediction area colour", regColPred); rg.row("Prediction line colour", regColPredLine);
         regStyleEn = e -> { boolean on = RegPlots.GG.equals(regStyleBox.getSelectedItem()) || adjChk.isSelected(); regColPoints.setEnabled(on); regColLine.setEnabled(on); regColBand.setEnabled(on); regColBandLine.setEnabled(on); regColPred.setEnabled(on); regColPredLine.setEnabled(on); };
         regStyleBox.addActionListener(regStyleEn); adjChk.addActionListener(regStyleEn); regStyleEn.actionPerformed(null);
+        adjFactorBox.setToolTipText("Factor whose categories colour the studies of the regression plot with categorical moderator adjustment; the list only contains the factors selected in the model"); adjChk.addActionListener(e -> adjFactorBox.setEnabled(adjChk.isSelected() && adjFactorBox.getItemCount() > 0)); adjFactorBox.setEnabled(false);
         permChk.setToolTipText("Permutation test for the moderators (metafor::permutest): the rows of the model matrix are permuted and the model is refitted each time. Applies to the model of this section.");
         permIterSp.setToolTipText("Number of random permutations (ignored by the exact test). Precision of the p-value is about 1/iterations."); permSeedF.setToolTipText("Seed of the random number generator: the same seed gives the same p-values");
         cmpChk.setToolTipText("Fits every subset of the selected covariates / factors on the same studies and compares AIC, AICc, BIC (maximum likelihood), tau\u00B2, I\u00B2 and R\u00B2");
-        rg.row(null, adjChk); rg.row(null, permChk); rg.row("Permutations", permIterSp); rg.row("Random seed (permutations)", permSeedF); rg.row(null, permExactChk); rg.row(null, cmpChk); p.add(rg); p.add(Box.createVerticalStrut(8));
+        rg.row(null, adjChk); rg.row("Colour studies by factor", adjFactorBox); rg.row(null, permChk); rg.row("Permutations", permIterSp); rg.row("Random seed (permutations)", permSeedF); rg.row(null, permExactChk); rg.row(null, cmpChk); p.add(rg); p.add(Box.createVerticalStrut(8));
         Ui.Section lo = new Ui.Section("7. Leave-one-out analysis", false); lo.row(null, looChk); lo.row(null, looForest); p.add(lo); p.add(Box.createVerticalStrut(8));
         Ui.Section cu = new Ui.Section("8. Cumulative meta-analysis", false); cu.row(null, cumChk); cu.row(null, cumForest); p.add(cu); p.add(Box.createVerticalStrut(8));
 funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill funnel plot. Default = meta style; MetaWin style = power-enhanced (sunset) funnel with contour bands, always contour-enhanced; STATA style = Stata look (pale-blue frame, grey pseudo 95% limits or contour bands, framed legend). Imputed studies of the trim-and-fill plot are orange in the MetaWin and STATA styles");
@@ -374,9 +376,11 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
         try {
             Object cur = cfgFactorBox.getSelectedItem(); cfgFactorBox.removeAllItems(); for (String f : facs) cfgFactorBox.addItem(f);
             if (cur != null && facs.contains(cur)) cfgFactorBox.setSelectedItem(cur);
+            Object curAdj = adjFactorBox.getSelectedItem(); adjFactorBox.removeAllItems(); for (String f : facs) adjFactorBox.addItem(f);   // only the factors selected in the model
+            if (curAdj != null && facs.contains(curAdj)) adjFactorBox.setSelectedItem(curAdj);
             fillRefBox();
         } finally { suppress = old; }
-        for (Component c : refPanel.getComponents()) c.setEnabled(on); cfgFactorBox.setEnabled(on); refBox.setEnabled(on);
+        for (Component c : refPanel.getComponents()) c.setEnabled(on); cfgFactorBox.setEnabled(on); refBox.setEnabled(on); adjFactorBox.setEnabled(on && adjChk.isSelected());
         refNote.setText(on ? (regIntercept.isSelected() ? "The selected category is used as the reference for this factor." : "Without an intercept every category gets its own coefficient (no reference).") : "Select a categorical factor above to choose its reference category.");
     }
 
@@ -466,7 +470,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
     MetaSpec buildSpec() {
         MetaSpec s = new MetaSpec(); s.type = TYPES[typeBox.getSelectedIndex()][0]; String sm = (String) smBox.getSelectedItem(); s.sm = "(none)".equals(sm) ? "" : sm;
         s.method = (String) methodBox.getSelectedItem(); if (glmmModelBox.getSelectedItem() != null) s.modelGlmm = (String) glmmModelBox.getSelectedItem(); s.nAGQ = Integer.parseInt((String) nagqBox.getSelectedItem()); int mi = modelBox.getSelectedIndex(); s.random = mi != 1; s.common = mi != 0; s.methodTau = (String) tauBox.getSelectedItem(); s.genqWeights = (String) genqWBox.getSelectedItem(); s.genqCustom = genqCustomF.getText();
-        String tc = (String) tauCiBox.getSelectedItem(); s.methodTauCi = tc.equals("Default") ? null : tc.equals("None") ? "" : tc; s.methodRandomCi = (String) randCiBox.getSelectedItem(); s.adhocRegression = regAdhoc.isSelected(); s.adhocHakn = noneToEmpty((String) adhocBox.getSelectedItem());
+        String tc = (String) tauCiBox.getSelectedItem(); s.methodTauCi = tc.equals("Default") ? null : tc.equals("None") ? "" : tc; s.methodRandomCi = (String) randCiBox.getSelectedItem(); s.adhocHakn = noneToEmpty((String) adhocBox.getSelectedItem());
         s.methodPredict = (String) predBox.getSelectedItem(); s.adhocHaknPi = noneToEmpty((String) adhocPiBox.getSelectedItem()); s.prediction = predChk.isSelected(); s.methodI2 = (String) i2Box.getSelectedItem(); s.methodCommonCi = (String) commonCiBox.getSelectedItem();
         double lv = dbl(levelF, 0.95); s.level = s.levelMa = s.levelHetstat = lv; double pl = dbl(predLevelF, 95) / 100; s.levelPredict = pl > 0.5 && pl < 1 ? pl : 0.95; s.backtransf = backChk.isSelected(); s.incr = dbl(incrF, 0.5); s.methodIncr = ((String) incrBox.getSelectedItem()).replace(" ", "");
         s.mhExact = mhExact.isSelected(); s.allstudies = allStudies.isSelected(); s.methodSmd = (String) smdBox.getSelectedItem(); s.pooledvar = pooledvar.isSelected(); String ci = (String) ciBox.getSelectedItem(); s.methodCi = ci.equals("Default") ? null : ci;
@@ -523,7 +527,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
     static final class Out { final List<Item> items = new ArrayList<>(); Exception error; }
     /** Everything the background code needs, captured on the UI thread (Swing components are never read from worker threads). */
     static final class Snap {
-        MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; Map<String, String> refs = new HashMap<>(); String biasMethod, tfSide, tfEst, tfModel, selDir; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
+        MetaSpec s, sSub; MetaData d, dSub; DataTable tbl; Plots.Opts o; List<String> nums, facs; Map<String, String> refs = new HashMap<>(); String biasMethod, tfSide, tfEst, tfModel, selDir, adjFactor; List<String> dataWarn = new ArrayList<>(); boolean pet, petPlot, sel, fail;
         String goshPal = "Default"; boolean perm, permExact, cmp, orchard, cater, gosh, goshHl, goshCl, goshReg, goshTrim, goshTrimOrd; int permIter, goshSub; long permSeed, goshSeed;
         boolean tfPrec, drap, drapReport, doi, doiApex, labbe, sg, forest, sgTestEffect, sgDetails, reg, regIntercept, bubble, regLine, adj, loo, looForest, cum, cumForest, funnel, funnelPrec, contour, labels, bias, biasPlot, tf, inf, baujat, radial;
     }
@@ -548,7 +552,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
             n.tbl = table; n.s = buildSpec(); n.d = buildData(n.s, false); n.dataWarn = validateData(n.s); n.o = forestOpts();
             n.forest = forestChk.isSelected(); n.sg = sel(subgroupBox) != null && sgChk.isSelected(); n.sgTestEffect = sgTestEffect.isSelected(); n.sgDetails = sgDetails.isSelected();
             if (n.sg) { n.sSub = n.s.clone(); n.dSub = buildData(n.sSub, true); }
-            n.reg = regChk.isSelected(); n.nums = chosen(covList); n.facs = chosen(facList); n.refs = chosenRefs(n.facs); n.regIntercept = regIntercept.isSelected(); n.bubble = bubbleChk.isSelected(); n.regLine = regLine.isSelected(); n.adj = adjChk.isSelected();
+            n.reg = regChk.isSelected(); n.nums = chosen(covList); n.facs = chosen(facList); n.refs = chosenRefs(n.facs); n.regIntercept = regIntercept.isSelected(); n.bubble = bubbleChk.isSelected(); n.regLine = regLine.isSelected(); n.adj = adjChk.isSelected(); n.adjFactor = (String) adjFactorBox.getSelectedItem();
             n.loo = looChk.isSelected(); n.looForest = looForest.isSelected(); n.cum = cumChk.isSelected(); n.cumForest = cumForest.isSelected();
             n.funnel = funnelChk.isSelected(); n.funnelPrec = funnelPrecChk.isSelected(); n.contour = contourChk.isSelected(); n.labels = labChk.isSelected(); n.bias = biasChk.isSelected(); n.biasPlot = biasPlotChk.isSelected(); n.biasMethod = (String) biasMethod.getSelectedItem();
             n.tf = tfChk.isSelected(); n.tfPrec = tfPrecChk.isSelected(); n.tfSide = (String) tfSide.getSelectedItem(); n.tfEst = (String) tfEst.getSelectedItem(); n.tfModel = (String) tfModel.getSelectedItem(); n.inf = infChk.isSelected(); n.baujat = baujatChk.isSelected(); n.radial = radialChk.isSelected(); n.drap = drapChk.isSelected(); n.drapReport = drapReportChk.isSelected(); n.doi = doiChk.isSelected(); n.doiApex = doiApexChk.isSelected(); n.labbe = labbeChk.isSelected();
@@ -697,7 +701,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
         if (n.cmp) { try { ModelCompare mc = ModelCompare.run(r, nums, nd, facs, fd, n.regIntercept); addText("Model Comparison", RegReport.compareText(mc, r)); }
             catch (IllegalArgumentException ex) { addText("Model Comparison", ex.getMessage()); } }
         if (n.bubble && g.x1 != null) addPlot("Bubble Plot", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.studyLabels = n.labels; q.regLine = n.regLine; return Plots.bubble(g, q, r); });
-        if (n.adj) addPlot("Regression Plot (adjusted for all moderators)", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.studyLabels = n.labels; q.regLine = n.regLine; return RegPlots.adjusted(g, nums, facs, q, r); });
+        if (n.adj) addPlot("Regression Plot (adjusted for all moderators)", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.studyLabels = n.labels; q.regLine = n.regLine; return RegPlots.adjusted(g, nums, facs, n.adjFactor, q, r); });
     }
 
     /** GOSH with the meta-regression model of section 6: output right below the ordinary GOSH analysis and plot. */
@@ -725,7 +729,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
             Reg g = Reg.run(r, nums, nd, facs, fd, n.regIntercept, n.refs); if (g.k == k) { X = g.fit.X; names = g.coefNames; } }
         boolean hk = X != null && s.methodRandomCi.equals("HK");   // regression model with test="knha" (adhoc when the se-floor is on)
         int[] okIdx = new int[k]; for (int j = 0; j < k; j++) okIdx[j] = ok.get(j);
-        Influence in = Influence.run(y, v, X, s.methodTau, lab, names == null ? new String[]{"intrcpt"} : names, hk, hk && s.adhocRegression && s.adhocHakn.equals("se"), org.metajava.core.Pool.genqWeightsFor(s, okIdx));
+        Influence in = Influence.run(y, v, X, s.methodTau, lab, names == null ? new String[]{"intrcpt"} : names, hk, hk && s.adhocHakn.equals("se"), org.metajava.core.Pool.genqWeightsFor(s, okIdx));
         addText("Outlier and Influence Diagnostics", Report.influenceText(in));
         addPlot("Influence Diagnostics Plots", sc -> { Plots.Opts q = new Plots.Opts(); q.scale = sc; return Plots.influence(in, q); });
     }

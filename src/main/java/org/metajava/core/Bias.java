@@ -12,14 +12,14 @@ public final class Bias {
         public double[] plotX, plotY;          // regression plot data (radial form)
         public String plotXlab = "", plotYlab = "";
         public double kendallKs, kendallSe; public String methodTau = "DL";
-        public boolean correct; public boolean adhocApplied; public String adhocKind = "";
+        public boolean correct;
         public String error;
         public String methodBias;
         public String note = "";
         /** "meta" (meta::metabias) or "metafor" (metafor::regtest / metafor::ranktest). */
         public String pkg = "meta";
         // metafor only
-        public String model = "", predictor = "", testKind = "";
+        public String model = "", predictor = "", testKind = "", hkNote = "";
         public double limitEst = Double.NaN, limitLo = Double.NaN, limitHi = Double.NaN;
         public boolean exactP;   // ranktest: exact Kendall p-value (no ties) instead of the normal approximation
         public boolean ties;

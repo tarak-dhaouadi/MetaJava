@@ -12,7 +12,7 @@ import java.util.*;
  * Phipson and Smyth (2010) the observed arrangement counts as one of them, p = (r + 1) / (iter + 1), so p is never 0.
  */
 public final class Perm {
-    public String[] coefNames; public int k, p, iter, failed; public boolean exact, knha, qmChi; public long nPerm, seed;
+    public String[] coefNames; public int k, p, iter, failed; public boolean exact, knha; public long nPerm, seed;
     public double[] z, pval; public double QM = Double.NaN, pQM = Double.NaN; public int dfQM; public String note = "";
     public static final int MAX_EXACT_K = 9;
     static final double TOL = Math.sqrt(Math.ulp(1.0));
@@ -21,20 +21,20 @@ public final class Perm {
     public static Perm run(Reg g, int iter, boolean wantExact, long seed) {
         final Rma f = g.fit; final int k = f.k, p = f.p; final double[] y = f.yi, v = f.vi; final double[][] X = f.X; final String method = g.method;
         if (g.dfQM <= 0) throw new IllegalArgumentException("The permutation test needs at least one moderator.");
-        Perm o = new Perm(); o.k = k; o.p = p; o.coefNames = g.coefNames; o.knha = g.knha; o.qmChi = g.qmChi; o.seed = seed; o.dfQM = g.dfQM;
+        Perm o = new Perm(); o.k = k; o.p = p; o.coefNames = g.coefNames; o.knha = g.knha; o.seed = seed; o.dfQM = g.dfQM;
         o.z = g.zval.clone(); o.QM = g.QM;
         double fact = 1; for (int i = 2; i <= k && fact < 1e12; i++) fact *= i;
         boolean exact = k <= MAX_EXACT_K && (wantExact || fact <= iter);
         o.exact = exact; o.iter = exact ? (int) fact : Math.max(1, iter); o.nPerm = o.iter;
         final int n = o.iter; final int[][] perms = exact ? null : randomPerms(k, n, seed);
         final double[][] zp = new double[n][]; final double[] qp = new double[n];
-        final boolean knha = g.knha, icpt = g.intercept; final String adhoc = g.adhoc; final double lvl = g.level;
+        final boolean knha = g.knha, adhoc = g.adhocSe, icpt = g.intercept;
         Par.forRange(n, b -> {
             int[] pi = exact ? unrank(k, b) : perms[b];
             double[][] Xp = new double[k][]; for (int i = 0; i < k; i++) Xp[i] = X[pi[i]];
             try {
                 Rma m = Rma.fit(y, v, Xp, method, f.aw);   // GENQ / GENQM: the weights stay with the studies (metafor: permutest keeps the weights, permutes the moderators)
-                Reg.Wald W = Reg.wald(m, knha, adhoc, icpt, lvl);
+                Reg.Wald W = Reg.wald(m, knha, adhoc, icpt);
                 boolean bad = Double.isNaN(W.QM); for (double zz : W.z) bad |= Double.isNaN(zz);
                 if (bad) return; zp[b] = W.z; qp[b] = W.QM;
             } catch (RuntimeException e) { /* singular permuted fit: dropped, as metafor does */ }

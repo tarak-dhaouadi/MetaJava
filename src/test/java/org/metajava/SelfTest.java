@@ -20,6 +20,7 @@ public class SelfTest {
     static boolean same(BufferedImage a, BufferedImage b) { if (a.getWidth() != b.getWidth() || a.getHeight() != b.getHeight()) return false; for (int y = 0; y < a.getHeight(); y++) for (int x = 0; x < a.getWidth(); x++) if (a.getRGB(x, y) != b.getRGB(x, y)) return false; return true; }
     static int darkCount(BufferedImage im, int x0, int y0, int x1, int y1) { int n = 0; for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) { int rgb = im.getRGB(x, y); if ((rgb >> 16 & 255) < 60 && (rgb >> 8 & 255) < 60 && (rgb & 255) < 60) n++; } return n; }
     static void check(boolean ok, String what) { checks++; if (!ok) { failures++; System.out.println("FAIL: " + what); } else System.out.println("ok:   " + what); }
+    static int[] pixels(java.awt.image.BufferedImage im) { return im.getRGB(0, 0, im.getWidth(), im.getHeight(), null, 0, im.getWidth()); }
     static void near(double got, double want, double tol, String what) { check(Math.abs(got - want) <= tol, what + " (got " + got + ", expected " + want + " +/- " + tol + ")"); }
 
     static final double[] LNHR = {-0.6931, -0.6539, -0.7985, -0.5447, -0.8675, -0.4943, -0.7340, -0.6162, -0.9416, -0.5276};
@@ -40,7 +41,6 @@ public class SelfTest {
 
     // ------------------------------------------------------------------ Hartung-Knapp ad hoc corrections: helpers
     static MetaSpec hkSpec(String methodRandomCi, String adhoc) { MetaSpec s = new MetaSpec(); s.type = "gen"; s.sm = "MD"; s.methodTau = "REML"; s.prediction = false; s.common = false; s.random = true; s.methodRandomCi = methodRandomCi; s.adhocHakn = adhoc; return s; }
-    static MetaSpec spOf(String adhoc) { MetaSpec sp = new MetaSpec(); sp.type = "gen"; sp.sm = "MD"; sp.methodTau = "REML"; sp.prediction = false; sp.methodRandomCi = "HK"; sp.adhocHakn = adhoc; return sp; }
     static int[] allIdx(int n) { int[] a = new int[n]; for (int i = 0; i < n; i++) a[i] = i; return a; }
     static Pool hkPool(String adhoc, double[] y, double[] se, int[] sel) { return Pool.compute(hkSpec("HK", adhoc), y, se, sel, null); }
     /** True when the line of the table that starts with the label contains all the given cells in order. */
@@ -1323,26 +1323,36 @@ public class SelfTest {
             MetaSpec hk = new MetaSpec(); hk.type = "gen"; hk.sm = "MD"; hk.methodTau = "REML"; hk.common = true; hk.random = true; hk.prediction = false; hk.methodRandomCi = "HK";
             near(Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false).statistic, 4.542625895, 1e-8, "Thompson (metafor) with Hartung-Knapp: t of test = \"knha\"");
             hk.adhocHakn = "se"; Bias.Result ah = Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false); near(ah.statistic, 4.500617511, 1e-8, "Thompson (metafor) with the ad hoc option \"se\": scale factor at least 1 (test = \"adhoc\")"); check("adhoc".equals(ah.testKind), "ad hoc test kind");
-            hk.adhocHakn = "ci"; near(Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false).statistic, 4.542625895, 1e-8, "Thompson (metafor) with the ad hoc option \"ci\": rule not triggered for these data, so identical to plain Knapp-Hartung");
-            hk.adhocHakn = "IQWiG6"; near(Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false).statistic, 4.542625895, 1e-8, "Thompson (metafor) with the ad hoc option \"IQWiG6\": rule not triggered for these data, so identical to plain Knapp-Hartung");
-            // meta-regression: the ad hoc options "se", "ci" and "IQWiG6" are all carried over to the coefficients (homogeneous data: Hartung-Knapp interval narrower than the classic one)
-            {
-                int kk = 12; double[] yy = new double[kk], ss = new double[kk], xx = new double[kk]; java.util.Random rr = new java.util.Random(5);
-                for (int i = 0; i < kk; i++) { xx[i] = rr.nextGaussian(); ss[i] = 0.2 + 0.2 * rr.nextDouble(); yy[i] = 0.3 + 0.2 * xx[i] + 0.1 * ss[i] * rr.nextGaussian(); }
-                MetaData rd = new MetaData(); rd.put("TE", yy); rd.put("seTE", ss); rd.n = kk; rd.studlab = new String[kk]; for (int i = 0; i < kk; i++) rd.studlab[i] = "S" + i;
-                java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", xx); Reg[] rg = new Reg[4]; String[] ahs = {"", "se", "ci", "IQWiG6"};
-                for (int j = 0; j < 4; j++) { MetaSpec sp = new MetaSpec(); sp.type = "gen"; sp.sm = "MD"; sp.methodTau = "REML"; sp.prediction = false; sp.methodRandomCi = "HK"; sp.adhocHakn = ahs[j]; rg[j] = Reg.run(Meta.run(sp, rd), java.util.List.of("x"), nd, java.util.List.<String>of(), new java.util.HashMap<String, String[]>(), true); }
-                check(rg[1].s2 >= 1 && rg[1].se[1] > rg[0].se[1], "meta-regression, ad hoc \"se\": scale factor floored at 1 widens the Hartung-Knapp SE");
-                for (int j = 2; j <= 3; j++) {
-                    check(rg[j].adjCoef[1] && rg[j].se[1] > rg[0].se[1], "meta-regression, ad hoc \"" + ahs[j] + "\": rule triggered, SE differs from the conventional Hartung-Knapp one (no fall-back)");
-                    near(rg[j].se[1], Math.sqrt(rg[j].fit.vb[1][1]), 1e-12, "meta-regression, ad hoc \"" + ahs[j] + "\": classic SE replaces the Hartung-Knapp SE");
-                    check(Report.regText(rg[j], Meta.run(spOf(ahs[j]), rd), 1, "x").contains("Ad hoc correction \"" + ahs[j] + "\""), "meta-regression report states the \"" + ahs[j] + "\" correction");
-                }
-                for (int j = 1; j <= 3; j++) { MetaSpec sp = spOf(ahs[j]); sp.adhocRegression = false; Reg offR = Reg.run(Meta.run(sp, rd), java.util.List.of("x"), nd, java.util.List.<String>of(), new java.util.HashMap<String, String[]>(), true);
-                    near(offR.se[1], rg[0].se[1], 1e-12, "meta-regression, ad hoc \"" + ahs[j] + "\" with the check box unchecked: conventional Hartung-Knapp SE"); near(offR.pval[1], rg[0].pval[1], 1e-12, "meta-regression, check box unchecked (" + ahs[j] + "): conventional p-value"); }
-                check(rg[2].zCoef[1] && Math.abs(rg[2].pval[1] - Dist.pnormTwoSided(rg[2].zval[1])) < 1e-12, "meta-regression, ad hoc \"ci\": z distribution for the corrected coefficient");
-                check(!rg[3].zCoef[1] && Math.abs(rg[3].pval[1] - Dist.ptTwoSided(rg[3].zval[1], kk - 2)) < 1e-12, "meta-regression, ad hoc \"IQWiG6\": t distribution kept");
+            hk.adhocHakn = "ci"; near(Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false).statistic, 4.542625895, 1e-8, "meta's ad hoc option \"ci\" has no metafor counterpart: plain Knapp-Hartung, as in the meta-regression");
+        }
+        // ---- ad hoc Knapp-Hartung options in the meta-regression and the metafor tests: as metafor (only "se" = test "adhoc"), with a note in the output for the options without a metafor counterpart
+        {
+            double[] hy = {0.30, 0.35, 0.28, 0.33, 0.31, 0.36, 0.29, 0.34}, hse = {0.10, 0.12, 0.09, 0.11, 0.10, 0.13, 0.10, 0.12}, hx = {1, 2, 3, 4, 5, 6, 7, 8};
+            MetaData hd = new MetaData(); hd.put("TE", hy.clone()); hd.put("seTE", hse.clone()); hd.n = 8; String[] hl = new String[8]; for (int i = 0; i < 8; i++) hl[i] = "S" + i; hd.studlab = hl;
+            for (String ah : new String[]{"", "se", "ci", "IQWiG6"}) {
+                MetaSpec hs = new MetaSpec(); hs.type = "gen"; hs.sm = "MD"; hs.methodTau = "REML"; hs.common = false; hs.random = true; hs.methodRandomCi = "HK"; hs.adhocHakn = ah; hs.prediction = false; MetaResult hr = Meta.run(hs, hd);
+                Reg hg = Reg.run(hr, java.util.List.of("x"), java.util.Map.of("x", hx), java.util.List.of(), java.util.Map.of(), true); String nt = hg.hkNote(); Bias.Result hb = Bias.run(hr, "Thompson (metafor)", false);
+                boolean floor = ah.equals("se"); String hlab = ah.isEmpty() ? "no ad hoc option" : "ad hoc option " + ah;
+                near(hg.s2, floor ? 1.0 : 0.08078154654, 1e-9, "meta-regression Knapp-Hartung scale factor, " + hlab + (floor ? " (floored at 1: metafor test = adhoc)" : " (plain knha)"));
+                near(hb.statistic, floor ? 0.688880784 : 9.699557269, 1e-8, "Thompson (metafor) t, " + hlab);
+                check(nt.contains(floor ? "test = \"adhoc\"" : "test = \"knha\"") && nt.contains("Scale factor = " + (floor ? "1.0000" : "0.0808")), "meta-regression note names the Knapp-Hartung test used, " + hlab);
+                check(nt.contains("no metafor counterpart") == (!ah.isEmpty() && !floor), "meta-regression note explains an ad hoc option without metafor counterpart, " + hlab);
+                check(hb.hkNote.contains("no metafor counterpart") == (!ah.isEmpty() && !floor), "metafor-test note explains an ad hoc option without metafor counterpart, " + hlab);
+                check(Report.regText(hg, hr, 1, "").contains(nt) && RegReport.permText(hg, Perm.run(hg, 50, false, 1), hr).contains(nt) && (hb.hkNote.isEmpty() || Report.biasText(hb, hr).contains(hb.hkNote)), "the notes appear in the meta-regression, permutation and funnel-test outputs, " + hlab);
             }
+        }
+        // ---- regression plot with categorical moderator adjustment: the factor that colours the studies is the one chosen among the selected factors (not always the first)
+        {
+            double[] cy = {0.30, 0.35, 0.28, 0.45, 0.31, 0.52, 0.29, 0.48, 0.40, 0.33, 0.50, 0.38}, cse = {0.10, 0.12, 0.09, 0.11, 0.10, 0.13, 0.10, 0.12, 0.11, 0.09, 0.12, 0.10}, cx = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+            String[] f1 = {"A", "B", "A", "B", "A", "B", "A", "B", "A", "B", "A", "B"}, f2 = {"P", "P", "Q", "Q", "R", "R", "P", "Q", "R", "P", "Q", "R"};
+            MetaData cd = new MetaData(); cd.put("TE", cy.clone()); cd.put("seTE", cse.clone()); cd.n = 12; String[] cl = new String[12]; for (int i = 0; i < 12; i++) cl[i] = "S" + i; cd.studlab = cl;
+            MetaSpec csp = new MetaSpec(); csp.type = "gen"; csp.sm = "MD"; csp.methodTau = "REML"; csp.common = false; csp.random = true; csp.prediction = false; MetaResult cr = Meta.run(csp, cd);
+            java.util.Map<String, double[]> cnd = new java.util.HashMap<>(); cnd.put("x", cx); java.util.Map<String, String[]> cfd = new java.util.HashMap<>(); cfd.put("f1", f1); cfd.put("f2", f2);
+            Reg cg = Reg.run(cr, java.util.List.of("x"), cnd, java.util.List.of("f1", "f2"), cfd, true); java.util.List<String> cf = java.util.List.of("f1", "f2"), cn1 = java.util.List.of("x");
+            int[] pDef = pixels(org.metajava.plot.RegPlots.adjusted(cg, cn1, cf, new Plots.Opts(), cr)), pF1 = pixels(org.metajava.plot.RegPlots.adjusted(cg, cn1, cf, "f1", new Plots.Opts(), cr)), pF2 = pixels(org.metajava.plot.RegPlots.adjusted(cg, cn1, cf, "f2", new Plots.Opts(), cr)), pBad = pixels(org.metajava.plot.RegPlots.adjusted(cg, cn1, cf, "nope", new Plots.Opts(), cr)), pNull = pixels(org.metajava.plot.RegPlots.adjusted(cg, cn1, cf, null, new Plots.Opts(), cr));
+            check(java.util.Arrays.equals(pDef, pF1) && java.util.Arrays.equals(pDef, pNull) && java.util.Arrays.equals(pDef, pBad), "adjusted regression plot: no choice, null or an unknown name colours by the first selected factor (as before)");
+            check(!java.util.Arrays.equals(pF1, pF2), "adjusted regression plot: choosing the second selected factor changes the colouring and the legend");
+            check(java.util.Arrays.equals(pF2, pixels(org.metajava.plot.RegPlots.adjusted(cg, cn1, cf, "f2", new Plots.Opts(), cr))), "adjusted regression plot is reproducible");
         }
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);

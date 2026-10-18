@@ -61,46 +61,19 @@ public final class Reg {
     }
 
     /** Wald-type statistics of a fitted model: the Knapp-Hartung scale factor s2, the coefficient test statistics (z, or t with knha) and the omnibus test of the moderators (chi-square, or F with knha). */
-    public static final class Wald { public double s2 = 1, QM = Double.NaN; public int dfQM; public double[] se, z;
-        /** Ad hoc rules "ci" / "IQWiG6": adj[a] = the rule was triggered for coefficient a (its classic SE replaces the Hartung-Knapp SE); zDist[a] = the z distribution is used for it (rule "ci" only). */
-        public boolean[] adj, zDist; public boolean qmClassic, qmChi; public double[][] vbDL; }
+    public static final class Wald { public double s2 = 1, QM = Double.NaN; public int dfQM; public double[] se, z; }
 
-    /** Ad hoc variant of the Hartung-Knapp adjustment: "", "se", "ci" or "IQWiG6" (anything else counts as ""). */
-    static String adhocOf(MetaSpec s) { String a = s.adhocHakn == null ? "" : s.adhocHakn; return a.equals("se") || a.equals("ci") || a.equals("IQWiG6") ? a : ""; }
-
-    public static Wald wald(Rma fit, boolean knha, boolean adhocSe, boolean intercept) { return wald(fit, knha, adhocSe ? "se" : "", intercept, 0.95); }
-
-    /**
-     * Wald-type statistics. With knha, the ad hoc corrections of meta (adhoc.hakn.ci) are carried over to the coefficients of a meta-regression:
-     * "se": scale factor of the Hartung-Knapp covariance matrix floored at 1 (metafor test = "adhoc");
-     * "ci": per coefficient, when the Hartung-Knapp interval is narrower than the classic (z) interval, the classic SE and the z distribution are used;
-     * "IQWiG6": per coefficient, when the Hartung-Knapp interval is narrower than the interval of the DerSimonian-Laird model (z), the classic SE of the fitted model replaces the
-     * Hartung-Knapp SE (t distribution kept), exactly as in {@link Pool} for the pooled estimate. The omnibus test follows the correction of its coefficients: it uses the classic
-     * covariance matrix (chi-square for "ci", F for "IQWiG6") when the rule was triggered for every tested moderator, otherwise the Hartung-Knapp F test.
-     */
-    public static Wald wald(Rma fit, boolean knha, String adhoc, boolean intercept, double level) {
+    public static Wald wald(Rma fit, boolean knha, boolean adhocSe, boolean intercept) {
         int k = fit.k, p = fit.p; double[] w = fit.wTilde; double[] y = fit.yi; double[][] X = fit.X; Wald o = new Wald(); double[] bw = fit.betaW();   // metafor: RSS.knha always uses the weights 1/(vi + tau2)
-        if (adhoc == null) adhoc = "";
-        if (knha) { double rssw = 0; for (int j = 0; j < k; j++) { double f = 0; for (int a = 0; a < p; a++) f += X[j][a] * bw[a]; rssw += w[j] * (y[j] - f) * (y[j] - f); } o.s2 = rssw / (k - p); if (adhoc.equals("se")) o.s2 = Math.max(1, o.s2); }
-        o.se = new double[p]; o.z = new double[p]; o.adj = new boolean[p]; o.zDist = new boolean[p];
+        if (knha) { double rssw = 0; for (int j = 0; j < k; j++) { double f = 0; for (int a = 0; a < p; a++) f += X[j][a] * bw[a]; rssw += w[j] * (y[j] - f) * (y[j] - f); } o.s2 = rssw / (k - p); if (adhocSe) o.s2 = Math.max(1, o.s2); }
+        o.se = new double[p]; o.z = new double[p];
         for (int a = 0; a < p; a++) { o.se[a] = Math.sqrt(fit.vb[a][a] * o.s2); o.z[a] = fit.beta[a] / o.se[a]; }
-        boolean ci = knha && adhoc.equals("ci"), iq = knha && adhoc.equals("IQWiG6");
-        if ((ci || iq) && k > p) {
-            double al = 1 - level, tq = Dist.qt(1 - al / 2, k - p), zq = Dist.qnorm(1 - al / 2);
-            if (iq) o.vbDL = Rma.fit(y, fit.vi, X, "DL").vb;
-            for (int a = 0; a < p; a++) {
-                double wh = 2 * tq * o.se[a], seC = Math.sqrt(fit.vb[a][a]), wRef = 2 * zq * (ci ? seC : Math.sqrt(o.vbDL[a][a]));
-                if (wh < wRef) { o.adj[a] = true; o.zDist[a] = ci; o.se[a] = seC; o.z[a] = fit.beta[a] / seC; }
-            }
-        }
         int m0 = intercept ? 1 : 0, dm = p - m0; o.dfQM = dm;
         if (dm > 0) {
-            boolean all = true; for (int a = m0; a < p; a++) all &= o.adj[a];
-            o.qmClassic = (ci || iq) && all; o.qmChi = !knha || (ci && o.qmClassic); double sc = o.qmClassic ? 1 : o.s2;
             double[][] sub = new double[dm][dm]; double[] bb = new double[dm];
-            for (int a = 0; a < dm; a++) { bb[a] = fit.beta[a + m0]; for (int b = 0; b < dm; b++) sub[a][b] = fit.vb[a + m0][b + m0] * sc; }
+            for (int a = 0; a < dm; a++) { bb[a] = fit.beta[a + m0]; for (int b = 0; b < dm; b++) sub[a][b] = fit.vb[a + m0][b + m0] * o.s2; }
             double[][] inv = Lin.inv(sub); double qm = 0; for (int a = 0; a < dm; a++) for (int b = 0; b < dm; b++) qm += bb[a] * inv[a][b] * bb[b];
-            o.QM = o.qmChi ? qm : qm / dm;
+            o.QM = knha ? qm / dm : qm;
         }
         return o;
     }
@@ -125,8 +98,16 @@ public final class Reg {
     }
 
     public boolean adhocSe;   // Knapp-Hartung scale factor floored at 1 (ad hoc "se")
-    public String adhoc = ""; public double level = 0.95;   // ad hoc variant of the Hartung-Knapp adjustment ("", se, ci, IQWiG6) and the confidence level of the analysis
-    public boolean[] adjCoef, zCoef; public boolean qmChi, qmClassic; public double[][] vbDL;   // coefficients corrected by the "ci" / "IQWiG6" rule, z distribution used, omnibus test type
+    public String adhocOption = "";   // ad hoc option of the analysis ("", se, ci, IQWiG6); only "se" has a metafor counterpart (test = "adhoc")
+
+    /** One line saying which Knapp-Hartung test was used (as metafor: "knha", or "adhoc" for the option "se"), and why an ad hoc option without a metafor counterpart was not applied; empty without Knapp-Hartung. */
+    public String hkNote() {
+        if (!knha) return "";
+        String sf = " Scale factor = " + Fmt.num(s2, 4) + ".";
+        if (adhocSe) return "Knapp-Hartung t-test with the scale factor set to at least 1 (metafor: test = \"adhoc\", the ad hoc option \"se\")." + sf;
+        if (!adhocOption.isEmpty()) return "Knapp-Hartung t-test (metafor: test = \"knha\"). The ad hoc option \"" + adhocOption + "\" has no metafor counterpart: metafor's test = \"adhoc\" is the ad hoc option \"se\"; it is not applied to a meta-regression." + sf;
+        return "Knapp-Hartung t-test (metafor: test = \"knha\")." + sf;
+    }
     public double[][] X; public double[] yv, vv;   // design matrix, effects and variances as fitted (for permutation tests)
 
     public static Reg run(MetaResult r, List<String> numCovs, Map<String, double[]> numData, List<String> factors, Map<String, String[]> facData, boolean intercept) {
@@ -152,20 +133,19 @@ public final class Reg {
         g.logLik = fs.ll; g.deviance = fs.deviance; g.aic = fs.aic; g.bic = fs.bic; g.aicc = fs.aicc;
         // QE, QM
         g.QE = g.fit.QE; g.dfQE = k - p; g.pQE = Dist.pchisqUpper(g.QE, g.dfQE);
-        g.knha = s.methodRandomCi.equals("HK"); g.adhoc = g.knha && s.adhocRegression ? adhocOf(s) : ""; g.adhocSe = g.adhoc.equals("se"); g.level = s.levelMa;
-        Wald W = wald(g.fit, g.knha, g.adhoc, intercept, s.levelMa);
-        g.est = g.fit.beta.clone(); g.se = W.se; g.s2 = W.s2; g.adjCoef = W.adj; g.zCoef = W.zDist; g.qmChi = W.qmChi; g.qmClassic = W.qmClassic; g.vbDL = W.vbDL;
+        g.knha = s.methodRandomCi.equals("HK"); g.adhocSe = s.adhocHakn.equals("se"); g.adhocOption = s.adhocHakn;
+        Wald W = wald(g.fit, g.knha, g.adhocSe, intercept);
+        g.est = g.fit.beta.clone(); g.se = W.se; g.s2 = W.s2;
         g.zval = W.z; g.pval = new double[p]; g.lb = new double[p]; g.ub = new double[p];
         double alpha = 1 - s.levelMa;
-        if (g.knha) g.dfT = k - p;
         for (int a = 0; a < p; a++) {
-            if (g.knha && !W.zDist[a]) { double q = Dist.qt(1 - alpha / 2, g.dfT); g.pval[a] = Dist.ptTwoSided(g.zval[a], g.dfT); g.lb[a] = g.est[a] - q * g.se[a]; g.ub[a] = g.est[a] + q * g.se[a]; }
+            if (g.knha) { g.dfT = k - p; double q = Dist.qt(1 - alpha / 2, g.dfT); g.pval[a] = Dist.ptTwoSided(g.zval[a], g.dfT); g.lb[a] = g.est[a] - q * g.se[a]; g.ub[a] = g.est[a] + q * g.se[a]; }
             else { double q = Dist.qnorm(1 - alpha / 2); g.pval[a] = Dist.pnormTwoSided(g.zval[a]); g.lb[a] = g.est[a] - q * g.se[a]; g.ub[a] = g.est[a] + q * g.se[a]; }
         }
         int dm = W.dfQM;
         if (dm > 0) {
             g.dfQM = dm; g.QM = W.QM;
-            if (!W.qmChi) { g.qmTest = "QM"; g.pQM = Dist.pfUpper(g.QM, dm, k - p); }
+            if (g.knha) { g.qmTest = "QM"; g.pQM = Dist.pfUpper(g.QM, dm, k - p); }
             else g.pQM = Dist.pchisqUpper(g.QM, dm);
         }
         double sv = Rma.typicalV(k, p, v, X); g.I2 = 100 * g.tau2 / (g.tau2 + sv); g.H2 = (g.tau2 + sv) / sv;
@@ -178,28 +158,18 @@ public final class Reg {
     }
 
 
-    /** {standard error, critical value} of the fitted value at a model-matrix row, with the ad hoc rules "ci" / "IQWiG6" applied as for the coefficients (see {@link #wald}). */
-    private double[] seCrit(double[] x, double level) {
-        double v = 0, vd = 0; for (int a = 0; a < p; a++) for (int b = 0; b < p; b++) { v += x[a] * fit.vb[a][b] * x[b]; if (vbDL != null) vd += x[a] * vbDL[a][b] * x[b]; }
-        double se = Math.sqrt(Math.max(0, v * s2)), al = 1 - level, z = Dist.qnorm(1 - al / 2), q = knha ? Dist.qt(1 - al / 2, k - p) : z;
-        if (knha && adhoc.equals("ci") && 2 * q * se < 2 * z * Math.sqrt(Math.max(0, v))) { se = Math.sqrt(Math.max(0, v)); q = z; }
-        else if (knha && adhoc.equals("IQWiG6") && vbDL != null && 2 * q * se < 2 * z * Math.sqrt(Math.max(0, vd))) se = Math.sqrt(Math.max(0, v));
-        return new double[]{se, q};
-    }
-
-    /** Fitted value and confidence bounds {fit, lower, upper} of the model at a model-matrix row (z or, with KNHA, t quantile; with the ad hoc correction of the Hartung-Knapp adjustment, if any). */
+    /** Fitted value and confidence bounds {fit, lower, upper} of the model at a model-matrix row (z or, with KNHA, t quantile). */
     public double[] predict(double[] x, double level) {
-        double f = 0; for (int a = 0; a < p; a++) f += x[a] * fit.beta[a];
-        double[] sc = seCrit(x, level);
-        return new double[]{f, f - sc[1] * sc[0], f + sc[1] * sc[0]};
+        double f = 0, v = 0; for (int a = 0; a < p; a++) { f += x[a] * fit.beta[a]; for (int b = 0; b < p; b++) v += x[a] * fit.vb[a][b] * x[b]; }
+        double se = Math.sqrt(Math.max(0, v * s2)), al = 1 - level, q = knha ? Dist.qt(1 - al / 2, k - p) : Dist.qnorm(1 - al / 2);
+        return new double[]{f, f - q * se, f + q * se};
     }
 
-    /** Prediction-interval bounds {lower, upper} of the model at a model-matrix row (metafor::predict: fit +/- crit * sqrt(se^2 + tau^2); z, or t with KNHA, quantile; ad hoc corrected like the confidence bounds). */
+    /** Prediction-interval bounds {lower, upper} of the model at a model-matrix row (metafor::predict: fit +/- crit * sqrt(se^2 + tau^2); z, or t with KNHA, quantile). */
     public double[] predictInterval(double[] x, double level) {
-        double f = 0; for (int a = 0; a < p; a++) f += x[a] * fit.beta[a];
-        double[] sc = seCrit(x, level);
-        double se = Math.sqrt(sc[0] * sc[0] + Math.max(0, tau2));
-        return new double[]{f - sc[1] * se, f + sc[1] * se};
+        double f = 0, v = 0; for (int a = 0; a < p; a++) { f += x[a] * fit.beta[a]; for (int b = 0; b < p; b++) v += x[a] * fit.vb[a][b] * x[b]; }
+        double se = Math.sqrt(Math.max(0, v * s2) + Math.max(0, tau2)), al = 1 - level, q = knha ? Dist.qt(1 - al / 2, k - p) : Dist.qnorm(1 - al / 2);
+        return new double[]{f - q * se, f + q * se};
     }
 
     /** Inserts the reference-category rows into the rows of a coefficient table (row a = coefficient a). Columns whose header is empty (significance stars) stay blank, all other columns get a dash. */

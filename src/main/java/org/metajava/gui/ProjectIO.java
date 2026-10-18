@@ -107,6 +107,7 @@ final class ProjectIO {
             for (Field fd : fields) { String n = fd.getName(); if (n.equals("methodBox") || LISTS.contains(n)) continue; if (set.containsKey(n)) apply(fd.get(w), set.get(n)); }
             Object se = m.get("selections");
             if (se instanceof Map) for (Field fd : fields) if (LISTS.contains(fd.getName())) { Object v = ((Map<String, Object>) se).get(fd.getName()); if (v instanceof List) selectList((JList<String>) fd.get(w), (List<Object>) v); }
+            Object af = set.get("adjFactorBox"); if (af != null) w.adjFactorBox.setSelectedItem(af.toString());   // its items follow the factor selection restored just above
         } finally { w.suppress = false; w.loading = false; }
         w.schedule();
         if (table == null) w.showWelcome();
@@ -115,7 +116,7 @@ final class ProjectIO {
 
     // ------------------------------------------------------------------ reset to defaults
     /** Settings that a reset leaves alone: data structure, column assignments and boxes rebuilt from the data or from the analysis type. */
-    private static final Set<String> KEEP = new HashSet<>(Arrays.asList("studlabBox", "subgroupBox", "orderBox", "cfgFactorBox", "refBox", "smBox", "methodBox", "glmmModelBox"));
+    private static final Set<String> KEEP = new HashSet<>(Arrays.asList("studlabBox", "subgroupBox", "orderBox", "cfgFactorBox", "refBox", "adjFactorBox", "smBox", "methodBox", "glmmModelBox"));
 
     /** Current value of every plain setting (check boxes, options, text fields, spinners), taken once at start-up as the default state. */
     static Map<String, Object> defaults(MainWindow w) throws Exception {

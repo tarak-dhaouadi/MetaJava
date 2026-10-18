@@ -205,9 +205,13 @@ public final class RegPlots {
     private static double xOf(Reg g, int i) { return g.x1 != null ? g.x1[i] : g.plotX[i]; }
 
     // ------------------------------------------------------------------ plot adjusted for all moderators of the model
-    /** Regression plot that takes all selected moderators of the model into account: x = the first numeric covariate, study circles coloured by the first factor, the line is the model
+    /** Regression plot that takes all selected moderators of the model into account: x = the first numeric covariate, study circles coloured by the chosen factor (the first one by default), the line is the model
      *  prediction for the reference category of every factor with the other numeric covariates at their mean. */
-    public static BufferedImage adjusted(Reg g0, List<String> nums, List<String> facs, Plots.Opts o, MetaResult r) {
+    public static BufferedImage adjusted(Reg g0, List<String> nums, List<String> facs, Plots.Opts o, MetaResult r) { return adjusted(g0, nums, facs, null, o, r); }
+
+    /** As above; {@code colourBy} is the selected factor whose categories colour the studies (null, or a name that is not among {@code facs}: the first factor). */
+    public static BufferedImage adjusted(Reg g0, List<String> nums, List<String> facs, String colourBy, Plots.Opts o, MetaResult r) {
+        final int ci = colourBy == null || !facs.contains(colourBy) ? 0 : facs.indexOf(colourBy);   // index of the factor that colours the studies
         MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm();
         if (nums.isEmpty()) { Canvas c = new Canvas(620, 200, o.scale); c.g.setColor(Color.BLACK); c.text("This plot needs at least one numeric covariate (x-axis)", 310, 100, 12, 1, false); return c.img; }
         String[] cn = g0.coefNames; int p = g0.p, k = g0.k; double[][] X = g0.X;
@@ -225,15 +229,15 @@ public final class RegPlots {
         // colours by the first factor
         Color[] per = null; List<String> levels = new ArrayList<>(); Color[] pal = null;
         if (!facs.isEmpty()) {
-            String pre = facs.get(0) + ": "; List<Integer> cols = fcols.get(0); levels.add(refLevel.get(0)); for (int a : cols) { String lv = cn[a].substring(pre.length()); if (!levels.contains(lv)) levels.add(lv); }
+            String pre = facs.get(ci) + ": "; List<Integer> cols = fcols.get(ci); levels.add(refLevel.get(ci)); for (int a : cols) { String lv = cn[a].substring(pre.length()); if (!levels.contains(lv)) levels.add(lv); }
             pal = huePalette(levels.size()); per = new Color[k];
-            for (int j = 0; j < k; j++) { String lv = refLevel.get(0); for (int a : cols) if (X[j][a] > 0.5) lv = cn[a].substring(pre.length()); per[j] = pal[levels.indexOf(lv)]; }
+            for (int j = 0; j < k; j++) { String lv = refLevel.get(ci); for (int a : cols) if (X[j][a] > 0.5) lv = cn[a].substring(pre.length()); per[j] = pal[levels.indexOf(lv)]; }
         }
         // subtitle: reference categories and the other covariates at their mean
         List<String> sub = new ArrayList<>(); for (int q = 0; q < facs.size(); q++) sub.add(refLevel.get(q)); for (int q = 1; q < nums.size(); q++) { int a = Arrays.asList(cn).indexOf(nums.get(q)); sub.add(nums.get(q) + " = " + Canvas.tick3(mean[a])); }
         String subtitle = sub.isEmpty() ? "" : "Prediction shown for " + String.join(", ", sub);
         boolean leg = !levels.isEmpty(); int legW = 0;
-        if (leg) { Canvas pr = Canvas.probe(); FontMetrics fm = pr.g.getFontMetrics(Canvas.font(12f)); int w = fm.stringWidth(facs.get(0)); for (String l : levels) w = Math.max(w, fm.stringWidth(l) + 22); legW = w + 36; }
+        if (leg) { Canvas pr = Canvas.probe(); FontMetrics fm = pr.g.getFontMetrics(Canvas.font(12f)); int w = fm.stringWidth(facs.get(ci)); for (String l : levels) w = Math.max(w, fm.stringWidth(l) + 22); legW = w + 36; }
         List<LegItem> ileg = legendItems(o, s, true); int ext = legendExtra(ileg); Canvas c = new Canvas(720 + legW, 470 + ext, o.scale);
         double[] y = new double[k]; double dxl = Double.POSITIVE_INFINITY, dxh = Double.NEGATIVE_INFINITY, yl = Double.POSITIVE_INFINITY, yh = Double.NEGATIVE_INFINITY;
         for (int j = 0; j < k; j++) { dxl = Math.min(dxl, X[j][xcol]); dxh = Math.max(dxh, X[j][xcol]); double t = tr(g0.yv[j], log); yl = Math.min(yl, t); yh = Math.max(yh, t); }
@@ -245,7 +249,7 @@ public final class RegPlots {
         Graphics2D g = c.g; g.setColor(new Color(110, 110, 110)); g.setStroke(new BasicStroke(1.1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{5f, 4f}, 0)); c.line(a.x0, a.Y(nul), a.x1, a.Y(nul)); g.setStroke(new BasicStroke(1f));
         drawAll(a, g0, o, r, cv, log, colour(o.colPoints, POINTS_DEFAULT), per);
         drawLegend(c, (a.x0 + a.x1) / 2, a.y1 + 52, ileg);
-        if (leg) { double lx = a.x1 + 26, ly = (a.y0 + a.y1) / 2 - (levels.size() * 20 + 24) / 2.0; g.setColor(Color.BLACK); c.text(facs.get(0), lx, ly, 13f, 0, false);
+        if (leg) { double lx = a.x1 + 26, ly = (a.y0 + a.y1) / 2 - (levels.size() * 20 + 24) / 2.0; g.setColor(Color.BLACK); c.text(facs.get(ci), lx, ly, 13f, 0, false);
             for (int q = 0; q < levels.size(); q++) { double yy = ly + 20 + q * 20; drawSymbol(g, o.symbol, lx + 5.5, yy, 4.8, pal[q], 217, isOpen(o.symbol) ? pal[q] : new Color(0, 0, 0, 170), 0.9f); g.setColor(Color.BLACK); c.text(levels.get(q), lx + 20, yy + 4, 12f, 0, false); } }
         return c.img;
     }

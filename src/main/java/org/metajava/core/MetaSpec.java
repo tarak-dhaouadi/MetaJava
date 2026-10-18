@@ -21,7 +21,6 @@ public class MetaSpec implements Cloneable {
     public String methodI2 = "Q";
     public String methodCommonCi = "classic"; // classic, IVhet
     public String methodRandomCi = "classic"; // classic, HK, KR
-    public boolean adhocRegression = true;    // apply the ad hoc variant of Hartung-Knapp (adhocHakn) to meta-regression; false = conventional Hartung-Knapp there
     public String adhocHakn = "";             // "", se, ci, IQWiG6
     public String methodPredict = "V";        // V, HTS, HK, S, NNF, ""
     public String adhocHaknPi = "";           // "", se
