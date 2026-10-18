@@ -34,10 +34,17 @@ public final class Rma {
         m.X = X; m.p = X[0].length;
         double[] w0 = new double[m.k]; for (int i = 0; i < m.k; i++) w0[i] = 1 / v[i];
         m.ymc = centred(y); m.QE = m.k > m.p ? Math.max(0, rss(m.ymc, X, w0)) : 0; m.dfQ = m.k - m.p;   // metafor: QE <- max(0, Ymc' P Ymc)
-        if (MetaSpec.isGenq(method)) m.aw = genqW(genqWeights, w0).clone();
+        if (MetaSpec.isGenq(method)) { m.aw = genqW(genqWeights, w0).clone(); requireInvertible(X, m.aw); }
         m.tau2 = estimateTau2(m, m.aw);
         m.refit(m.tau2);
         return m;
+    }
+
+    /** metafor: .invcalc() stops (qr.solve: "singular matrix 'a' in solve") when sqrt(A) X is rank deficient, e.g. zero GENQ weights on all but one level of a moderator. */
+    private static void requireInvertible(double[][] X, double[] a) {
+        int k = X.length, p = X[0].length; double[][] xtax = new double[p][p];
+        for (int i = 0; i < k; i++) for (int s = 0; s < p; s++) for (int t = 0; t < p; t++) xtax[s][t] += X[i][s] * a[i] * X[i][t];
+        if (Lin.inv(xtax) == null) throw new IllegalArgumentException("Singular design matrix: X'AX is not invertible with the GENQ / GENQM weights (zero weights leave a moderator without variation).");
     }
 
     /** Fit with a given tau2 (metafor: rma(..., tau2 = value)); the weights of GENQ / GENQM are those of the fit. */

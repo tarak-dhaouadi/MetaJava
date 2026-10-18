@@ -815,7 +815,7 @@ public class SelfTest {
                 for (int a = 0; a < 3; a++) near(pt.pval[a], want[a], 1e-12, "permutest" + (hk == 1 ? " (KH)" : "") + ": exact p-value of coefficient " + a); near(pt.pQM, wq, 1e-12, "permutest" + (hk == 1 ? " (KH)" : "") + ": exact p-value of the omnibus test");
             }
             Perm r1 = Perm.run(g, 5000, false, 1), r2 = Perm.run(g, 5000, false, 1), r3 = Perm.run(g, 5000, false, 2);
-            check(!r1.exact && r1.pval[1] == r2.pval[1] && r1.pQM == r2.pQM, "permutest: random test is reproducible for a given seed"); near(r1.pval[1], 0.00575, 0.0035, "permutest: random p-value (k = 13) close to the reference 0.0057 from 20000 permutations"); check(r3.pval[1] > 0 && r1.pval[1] >= 1.0 / 5001, "permutest: random p-value is never 0");
+            check(!r1.exact && r1.pval[1] == r2.pval[1] && r1.pQM == r2.pQM, "permutest: random test is reproducible for a given seed"); near(r1.pval[1], 0.00575, 0.0035, "permutest: random p-value (k = 13) close to the reference 0.0057 from 20000 permutations"); check(r3.pval[1] > 0 && r1.pval[1] >= 1.0 / 5000, "permutest: random p-value is never 0");
             check(Perm.unrank(4, 0)[0] == 0 && Perm.unrank(4, 23)[0] == 3 && Perm.unrank(4, 23)[3] == 0, "permutest: lexicographic unranking");
             // GOSH: all 255 non-empty subsets of the first 8 trials (as metafor::gosh with p = 1: single studies included, tau^2 = 0 and I^2 = 0); I^2 = tau^2 / (tau^2 + typical sampling variance)
             MetaData gd = new MetaData(); gd.put("TE", java.util.Arrays.copyOf(by, 8)); gd.put("seTE", java.util.Arrays.copyOf(bse, 8)); gd.n = 8; Gosh gs = Gosh.run(Meta.run(bs, gd), 20000, 1);
@@ -878,6 +878,76 @@ public class SelfTest {
             String gtx = RegReport.goshRegText(gr, br), gtf = RegReport.goshRegText(s1, br); check(gtx.contains("8,100") && gtx.contains("exhaustive") && gtf.contains("random sample of 3,000 subsets"), "report text of the meta-regression GOSH states the number of valid subsets and whether all subsets or a sample were analysed");
             check(RegReport.goshText(gs, br).contains("Cluster detection"), "report text of the ordinary GOSH includes the cluster detection when requested");
         } catch (Exception e) { e.printStackTrace(); check(false, "permutest / model comparison / GOSH tests threw " + e); }
+
+        // ---- random permutation test and failed permuted fits. metafor (permutest.rma.uni, approximate test):
+        //      i <- 1; while (i <= X.iter) { res <- try(rma.uni(<permuted rows>)); if (inherits(res, "try-error")) next; ...; i <- i + 1 }   -> a failed fit is redrawn, iter valid fits are made
+        //      beta.perm[1,] <- x$beta; zval.perm[1,] <- x$zval; QM.perm[1] <- x$QM                                                          -> the observed fit is the first of the iter slots
+        //      pval <- mean(abs(zval.perm) >= abs(zval) - comptol, na.rm = TRUE)                                                              -> p = hits / iter, never 0
+        // The pinned numbers below come from this implementation (R is not available where the tests are developed); docs/permutest-parity.R prints the same quantities from metafor for a side-by-side check.
+        try {
+            { String h = "R generator: ";   // values of set.seed(s); sample(10) and set.seed(1); runif(3) in R >= 3.6
+              long[] sds = {1, 42, 123}; int[][] want = {{9, 4, 7, 1, 2, 5, 3, 10, 6, 8}, {1, 5, 10, 8, 2, 4, 6, 9, 7, 3}, {3, 10, 2, 8, 6, 9, 1, 7, 5, 4}};
+              for (int q = 0; q < 3; q++) { int[] sm = new RRandom(sds[q]).sample(10); boolean eq = true; for (int i = 0; i < 10; i++) eq &= sm[i] + 1 == want[q][i]; check(eq, h + "set.seed(" + sds[q] + "); sample(10)"); }
+              RRandom ru = new RRandom(1); near(ru.unifRand(), 0.2655087, 5e-8, h + "set.seed(1); runif: first value"); near(ru.unifRand(), 0.3721239, 5e-8, h + "second value"); near(ru.unifRand(), 0.5728534, 5e-8, h + "third value"); }
+            double[] yi = {0.12, 0.48, 0.31, 0.95, 0.66, 1.10, 0.40, 0.83}, sei = {0.20, 0.25, 0.18, 0.30, 0.22, 0.28, 0.24, 0.19}, xm = {0, 0, 0, 0, 1, 1, 1, 1};
+            java.util.Map<String, double[]> pnd = new java.util.HashMap<>(); pnd.put("x", xm);
+            for (double[] aw : new double[][]{{1, 1, 0, 0, 1, 0, 0, 0}, {1, 1, 1, 1, 1, 1, 1, 1}}) {
+                // GENQ weights of zero leave the moderator without variation among the weighted studies for some permutations (metafor: qr.solve() "singular matrix 'a' in solve" -> try-error)
+                MetaSpec ps = new MetaSpec(); ps.type = "gen"; ps.sm = "MD"; ps.methodTau = "GENQ"; ps.genqWeights = "Custom"; ps.genqCustom = java.util.Arrays.stream(aw).mapToObj(wq -> String.valueOf((int) wq)).collect(java.util.stream.Collectors.joining(","));
+                MetaData pd = new MetaData(); pd.put("TE", yi); pd.put("seTE", sei); pd.n = 8;
+                Reg pg = Reg.run(Meta.run(ps, pd), java.util.List.of("x"), pnd, java.util.List.of(), new java.util.HashMap<>(), true);
+                boolean zero = aw[2] == 0; String pLab = zero ? "GENQ with zero weights (some permuted fits fail)" : "GENQ, equal weights (no failing fit)"; int iter = 40; long seed = 123;
+                Perm pr = Perm.run(pg, iter, false, seed);
+                // independent sequential re-implementation of metafor's loop
+                double[][] Xs = new double[8][]; { Integer[] ix = {0, 1, 2, 3, 4, 5, 6, 7}; java.util.Arrays.sort(ix, (u, w) -> { for (int c = 0; c < 2; c++) if (pg.X[u][c] != pg.X[w][c]) return pg.X[u][c] < pg.X[w][c] ? -1 : 1; return 0; }); for (int i = 0; i < 8; i++) Xs[i] = pg.X[ix[i]]; }
+                RRandom rr = new RRandom(seed); java.util.List<double[]> pst = new java.util.ArrayList<>(); pst.add(new double[]{pg.zval[0], pg.zval[1], pg.QM}); int valid = 0, att = 0, fail = 0;
+                while (valid < iter) { int[] pi = rr.sample(8); att++; double[][] Xp = new double[8][]; for (int i = 0; i < 8; i++) Xp[i] = Xs[pi[i]];
+                    try { Rma m = Rma.fit(yi, java.util.stream.IntStream.range(0, 8).mapToDouble(i -> sei[i] * sei[i]).toArray(), Xp, "GENQ", aw); Reg.Wald w = Reg.wald(m, pg.knha, pg.adhocSe, true); valid++; if (valid > 1) pst.add(new double[]{w.z[0], w.z[1], w.QM}); }
+                    catch (RuntimeException ex) { fail++; } }
+                double[] ref = new double[3]; for (int a = 0; a < 3; a++) { int c = 0, nn = 0; double ob = a < 2 ? Math.abs(pg.zval[a]) : pg.QM; for (double[] t : pst) { if (Double.isNaN(t[a])) continue; nn++; if ((a < 2 ? Math.abs(t[a]) : t[a]) >= ob - Math.sqrt(Math.ulp(1.0))) c++; } ref[a] = c / (double) nn; }
+                check(pr.failed == fail && pr.attempts == att, "random permutation test, " + pLab + ": " + att + " draws, " + fail + " failed fits, as the sequential reference (got " + pr.attempts + " / " + pr.failed + ")");
+                check(pr.attempts - pr.failed == iter, "random permutation test, " + pLab + ": exactly iter valid fits are made (failed fits are redrawn)");
+                check(zero == (pr.failed > 0), "random permutation test, " + pLab + ": failed fits occur exactly in the zero-weight case");
+                near(pr.pval[0], ref[0], 0, "random permutation test, " + pLab + ": p-value of the intercept as the reference"); near(pr.pval[1], ref[1], 0, "random permutation test, " + pLab + ": p-value of the slope as the reference"); near(pr.pQM, ref[2], 0, "random permutation test, " + pLab + ": omnibus p-value as the reference");
+                check(pr.pval[1] >= 1.0 / iter - 1e-12 && Math.abs(pr.pval[1] * iter - Math.rint(pr.pval[1] * iter)) < 1e-9, "random permutation test, " + pLab + ": p = hits / iter, the observed fit being one of the iter slots (smallest p = 1/iter)");
+                int keep = Par.threads(); try { Par.setThreads(1); Perm p1 = Perm.run(pg, iter, false, seed); Par.setThreads(Par.maxThreads()); Perm pm = Perm.run(pg, iter, false, seed);
+                    check(p1.attempts == pr.attempts && p1.failed == pr.failed && p1.pval[1] == pr.pval[1] && pm.pval[1] == pr.pval[1] && pm.pQM == pr.pQM && p1.pQM == pr.pQM, "random permutation test, " + pLab + ": same result on 1 and on the maximum number of threads"); } finally { Par.setThreads(keep); }
+                if (zero) {
+                    check(pr.failed == 8 && pr.attempts == 48 && Math.abs(pr.pval[0] - 0.425) < 1e-12 && Math.abs(pr.pval[1] - 0.575) < 1e-12 && Math.abs(pr.pQM - 0.575) < 1e-12, "random permutation test, " + pLab + ": pinned result for seed 123, iter 40 (48 draws, 8 failed, p = 0.425 / 0.575, omnibus 0.575)");
+                    String tx = RegReport.permText(pg, pr, Meta.run(ps, pd)); check(tx.contains("8 permuted fits failed and were redrawn") && tx.contains("48 permutations were drawn to obtain 40 valid fits") && tx.contains("smallest possible p = 0.025"), "random permutation test, " + pLab + ": the output reports the redrawn fits");
+                    // safeguard: a cap on the number of draws gives a diagnostic instead of an endless loop
+                    try { Perm.run(pg, iter, false, seed, iter); check(false, "random permutation test: a cap below the number of draws needed throws"); }
+                    catch (IllegalArgumentException ex) { String m = ex.getMessage(); check(m.contains("only 34 of the 40 requested valid permuted fits") && m.contains("in 40 draws") && m.contains("6 permuted fits failed") && m.contains("first error: IllegalArgumentException: Singular design matrix") && m.contains("metafor keeps redrawing without limit") && m.contains("limited to 40 draws"), "random permutation test: an explicit limit on the draws is reached -> clear diagnostic (" + m + ")"); }
+                    Perm pc = Perm.run(pg, iter, false, seed, pr.attempts); check(pc.attempts == pr.attempts && pc.pval[1] == pr.pval[1], "random permutation test: a limit equal to the draws needed is enough, and the default has none (as metafor)");
+                    // exact test: a failing permutation leaves its slot undefined (metafor: NA, na.rm = TRUE), 144 of the 720 permutations fail here (the 3 weighted studies share one moderator value)
+                    Perm pe = Perm.run(pg, 1000, true, 1); check(pe.exact && pe.nPerm == 70 && pe.failed == 10, "exact permutation test, " + pLab + ": 10 of the 70 unique permutations fail and are left out");
+                    near(pe.pval[1], 2.0 / 3, 1e-12, "exact permutation test, " + pLab + ": p-value of the slope over the 60 valid fits");
+                }
+            }
+            // ---- exact or random, decided as metafor does: by the number of UNIQUE permutations (identical rows of the model matrix count once)
+            {   double[] y7 = java.util.Arrays.copyOf(yi, 7), s7 = java.util.Arrays.copyOf(sei, 7), v7 = new double[7], x7 = {0, 0, 0, 0, 1, 1, 1}; for (int i = 0; i < 7; i++) v7[i] = s7[i] * s7[i];
+                java.util.Map<String, double[]> n7 = new java.util.HashMap<>(); n7.put("x", x7);
+                MetaSpec s7p = new MetaSpec(); s7p.type = "gen"; s7p.sm = "MD"; s7p.methodTau = "REML"; MetaData d7 = new MetaData(); d7.put("TE", y7); d7.put("seTE", s7); d7.n = 7;
+                Reg g7 = Reg.run(Meta.run(s7p, d7), java.util.List.of("x"), n7, java.util.List.of(), new java.util.HashMap<>(), true);
+                Perm e7 = Perm.run(g7, 100, false, 1);   // 7!/(4! 3!) = 35 unique permutations <= iter: exact, although 7! = 5040 > iter
+                check(e7.exact && e7.nPerm == 35, "exact test is chosen by the number of unique permutations: binary moderator, k = 7, iter = 100 -> exact over 35 (not 5040)");
+                // brute force over all 7! = 5040 permutations: every unique permutation occurs 4! 3! times, so the proportions are those of the 35
+                int[] cnt = new int[2]; int cq = 0; for (int b = 0; b < 5040; b++) { int[] pi = Perm.unrank(7, b); double[][] Xp = new double[7][]; for (int i = 0; i < 7; i++) Xp[i] = g7.X[pi[i]];
+                    Rma m = Rma.fit(y7, v7, Xp, "REML", null); Reg.Wald w = Reg.wald(m, g7.knha, g7.adhocSe, true); for (int a2 = 0; a2 < 2; a2++) if (Math.abs(w.z[a2]) >= Math.abs(g7.zval[a2]) - 1.5e-8) cnt[a2]++; if (w.QM >= g7.QM - 1.5e-8) cq++; }
+                near(e7.pval[0], cnt[0] / 5040.0, 1e-12, "exact test over unique permutations: intercept p equals the all-7! brute force"); near(e7.pval[1], cnt[1] / 5040.0, 1e-12, "exact test over unique permutations: slope p equals the all-7! brute force"); near(e7.pQM, cq / 5040.0, 1e-12, "exact test over unique permutations: omnibus p equals the all-7! brute force");
+                check(!Perm.run(g7, 20, false, 1).exact && Perm.run(g7, 20, false, 1).iter == 20, "random test when the unique permutations (35) exceed iter (20)");
+                check(Perm.run(g7, 20, true, 1).exact, "exact = TRUE forces the exact test");
+                double[] y10 = new double[10], v10 = new double[10], x10 = new double[10]; for (int i = 0; i < 10; i++) { y10[i] = 0.1 + 0.9 * ((i * 7) % 10) / 10.0; v10[i] = 0.03 + 0.01 * ((i * 3) % 5); x10[i] = i < 5 ? 0 : 1; }
+                double[] s10 = new double[10]; for (int i = 0; i < 10; i++) s10[i] = Math.sqrt(v10[i]); java.util.Map<String, double[]> n10 = new java.util.HashMap<>(); n10.put("x", x10);
+                MetaSpec s10p = new MetaSpec(); s10p.type = "gen"; s10p.sm = "MD"; s10p.methodTau = "REML"; MetaData d10 = new MetaData(); d10.put("TE", y10); d10.put("seTE", s10); d10.n = 10;
+                Perm e10 = Perm.run(Reg.run(Meta.run(s10p, d10), java.util.List.of("x"), n10, java.util.List.of(), new java.util.HashMap<>(), true), 1000, false, 1);
+                check(e10.exact && e10.nPerm == 252, "binary moderator, k = 10, iter = 1000: exact over 252 unique permutations (MetaJava used the random test for k > 9)");
+                double[] x25 = new double[25], y25 = new double[25], s25 = new double[25]; for (int i = 0; i < 25; i++) { x25[i] = i; y25[i] = 0.1 * ((i * 7) % 11); s25[i] = 0.2 + 0.01 * (i % 4); }
+                java.util.Map<String, double[]> n25 = new java.util.HashMap<>(); n25.put("x", x25); MetaSpec s25p = new MetaSpec(); s25p.type = "gen"; s25p.sm = "MD"; s25p.methodTau = "REML"; MetaData d25 = new MetaData(); d25.put("TE", y25); d25.put("seTE", s25); d25.n = 25;
+                try { Perm.run(Reg.run(Meta.run(s25p, d25), java.util.List.of("x"), n25, java.util.List.of(), new java.util.HashMap<>(), true), 1000, true, 1); check(false, "exact test with 25! permutations is refused"); }
+                catch (IllegalArgumentException ex) { check(ex.getMessage().contains("too large"), "exact test with 25! permutations is refused (metafor: \"Number of iterations requested too large.\")"); }
+            }
+        } catch (Exception e) { e.printStackTrace(); check(false, "random permutation test (failed fits) tests threw " + e); }
 
         forestThemes(); funnelThemes(); trimFillEstimators();
 

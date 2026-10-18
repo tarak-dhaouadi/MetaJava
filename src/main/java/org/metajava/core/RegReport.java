@@ -14,11 +14,12 @@ public final class RegReport {
         StringBuilder b = new StringBuilder();
         b.append("Permutation Test for Meta-Regression (as metafor::permutest)").append(NL).append(NL);
         if (t.exact) b.append("Exact test: all ").append(t.nPerm).append(" permutations of the k = ").append(t.k).append(" rows of the model matrix.").append(NL);
-        else b.append("Random test: ").append(t.iter - t.failed).append(" random permutations of the rows of the model matrix (seed = ").append(t.seed).append(").").append(NL)
-            .append("p-value = (number of permutations with |statistic| >= observed + 1) / (permutations + 1) (Phipson and Smyth, 2010); smallest possible p = ").append(Fmt.num(1.0 / (t.iter - t.failed + 1), 4)).append(".").append(NL);
+        else b.append("Random test: ").append(t.iter).append(" permutations of the rows of the model matrix, the first one being the observed arrangement (as metafor), the others drawn with R's sample() (seed = ").append(t.seed).append(").").append(NL)
+            .append("p-value = (number of permutations with |statistic| >= observed) / (number of permutations with a defined statistic), the observed arrangement included (Phipson and Smyth, 2010); smallest possible p = ").append(Fmt.num(1.0 / t.iter, 4)).append(".").append(NL);
         b.append("tau^2 estimator: ").append(g.method).append(" (re-estimated in every permutation); test statistics: ").append(t.knha ? "t / F (Knapp-Hartung)" : "z / QM").append(NL);
         if (t.knha) b.append(g.hkNote()).append(NL);
-        if (t.failed > 0) b.append("Note: ").append(t.failed).append(" permutations could not be fitted and were left out.").append(NL);
+        if (t.failed > 0 && t.exact) b.append("Note: ").append(t.failed).append(" permutations could not be fitted and were left out.").append(NL);
+        if (t.failed > 0 && !t.exact) b.append("Note: ").append(t.failed).append(" permuted fits failed and were redrawn (as metafor), so ").append(t.attempts).append(" permutations were drawn to obtain ").append(t.iter).append(" valid fits.").append(NL);
         if (!t.note.isEmpty()) b.append("Note: ").append(t.note).append(NL);
         b.append(NL).append("Test of Moderators (coefficient").append(t.dfQM > 1 || !g.intercept ? "s" : "").append(" ").append(g.intercept ? (t.dfQM == 1 ? "2" : "2:" + t.p) : (t.dfQM == 1 ? "1" : "1:" + t.p)).append("):").append(NL);
         if (t.knha) b.append("F(df1 = ").append(t.dfQM).append(", df2 = ").append(t.k - t.p).append(") = ").append(Fmt.num(t.QM, 4)).append(", p-val* = ").append(pv(t.pQM)).append("  (asymptotic p-val = ").append(pv(g.pQM)).append(")").append(NL);

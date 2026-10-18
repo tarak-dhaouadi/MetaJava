@@ -254,7 +254,11 @@ restricted likelihood for REML (BIC and AICc then use k - p), the ordinary likel
 * **Permutation test (`permutest`)**: permutes the rows of the model matrix, refits the model (tau² is re-estimated each
   time) and reports permutation p-values for every coefficient and for the omnibus test of the moderators next to the
   asymptotic ones (`metafor::permutest.rma.uni`; with Knapp-Hartung the t / F statistics are permuted). Random permutations
-  (default 5000, seed settable, p = (r + 1) / (B + 1)) or, for k <= 9, the **exact** test over all k! permutations. Confidence
+  (default 5000, seed settable) or the **exact** test over all unique permutations of the rows of the model matrix (identical rows count once, so k!/(n1! n2! ...); chosen, as in metafor, when requested or when their number does not exceed `iter`). The random test follows
+  `permutest.rma.uni` (metafor 4.6-0): the permutations are drawn with R's generator (`set.seed(seed)`, `sample(k)`; the integer
+  seed gives the permutations metafor draws), the observed fit is the first of the `iter` permutations (p = hits / iter, never 0),
+  and a permuted fit that stops with an error is redrawn, without limit as in metafor, until `iter` valid fits exist (the analysis can
+  be cancelled). Confidence
   intervals by permutation (`permci`) are not included.
 * **Model comparison**: all subsets of the selected covariates / factors (up to 6 terms; otherwise null, single terms, full
   model and drop-one models) are fitted to the same studies and ranked by AICc: logLik, AIC, AICc, BIC (maximum likelihood,
