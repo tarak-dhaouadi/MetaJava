@@ -197,7 +197,7 @@ public final class Drapery {
     private static String num(double v) { String t = String.format(Locale.ROOT, "%.6f", v).replaceAll("0+$", "").replaceAll("\\.$", ""); return t; }
 
     private static String xlab(MetaSpec s, boolean rel) {
-        if (rel) return Plots.xlabFor(s);
+        if (rel) return Plots.xlabBack(s);   // relative effects are always drawn back-transformed
         switch (s.sm) { case "ZCOR": return "Fisher's z Transformed Correlation"; case "PLOGIT": case "PLN": case "PAS": case "PFT": return Plots.funnelXlab(s); default: return Plots.xlabFor(s); }
     }
 

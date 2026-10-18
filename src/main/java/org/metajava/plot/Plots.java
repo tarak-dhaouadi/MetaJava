@@ -17,6 +17,7 @@ public final class Plots {
         public String xLeft = "", xRight = "", xlab = ""; public String xMin = "", xMax = "", xTick = ""; public boolean showSubgroupName = true, testSubgroup = true, testEffectSubgroup = false; public boolean overallResults = true;
         public boolean weightsCol = true, effectCol = true, seCol = true, teCol = true; public double spacing = 1.0; public int digits = 2; public boolean predictionLine = true; public boolean apexLine = false; public String goshPalette = "Default";
         /** Overrides of the forest-plot theme ("Theme default" keeps what the theme prescribes). */
+        public boolean logAxis = false;   // regression plots of ratio measures: log-scaled OR / RR / HR axis (the fitted line is straight) instead of the back-transformed, curved line
         public boolean confInt = false; public String bubbleStyle = RegPlots.DEFAULT_STYLE, colPoints = RegPlots.POINTS_DEFAULT, colLine = RegPlots.LINE_DEFAULT, colBand = RegPlots.BAND_DEFAULT, colBandLine = RegPlots.BANDLINE_DEFAULT;   // regression plots
         public boolean predInt = false; public String colPred = RegPlots.PRED_DEFAULT, colPredLine = RegPlots.PREDLINE_DEFAULT, symbol = RegPlots.SYM_DEFAULT; public double symSize = 1.0;   // prediction interval, study symbol
         public String baujatTheme = BaujatPlot.DEFAULT, baujatSymbol = BaujatPlot.AUTO, baujatBack = BaujatPlot.AUTO;   // Baujat plot: theme, symbol colour, background colour
@@ -243,9 +244,9 @@ public final class Plots {
     static boolean boldRow(ForestTheme T, Row w) { return w.type == 0 ? false : w.type == 2 ? T.kind != 3 : T.boldPool; }
 
     /** Forest plot renderer. The look follows the theme in Opts (Default = meta::forest, RevMan 5, BMJ, STATA), then the individual colour / line-style overrides. */
-    static BufferedImage drawForest(List<Row> rows, MetaResult r, Opts o, boolean log, String smL, boolean showWeight, boolean loo) {
-        MetaSpec s = r.spec; final ForestTheme T = ForestTheme.of(o); final int K = T.kind; final float FS = 12f; int rowH = (int) Math.round(T.rowBase * o.spacing), M = 14, nrow = rows.size();
-        final String measure = xlabFor(s), lvl = Fmt.num(s.levelMa * 100, 0) + "% CI", mt = methodTag(s), mdl = s.random ? "Random" : "Fixed";
+    static BufferedImage drawForest(List<Row> rows, MetaResult r, Opts o, boolean log, String smL0, boolean showWeight, boolean loo) {
+        MetaSpec s = r.spec; final String smL = logRatio(s) ? "log" + smL0 : smL0; /* results not back-transformed: effect column headed logOR, logHR, ... */ final ForestTheme T = ForestTheme.of(o); final int K = T.kind; final float FS = 12f; int rowH = (int) Math.round(T.rowBase * o.spacing), M = 14, nrow = rows.size();
+        final String measure = forestMeasure(s), lvl = Fmt.num(s.levelMa * 100, 0) + "% CI", mt = methodTag(s), mdl = s.random ? "Random" : "Fixed";
         // ---- left-hand data columns (events, totals, means ...). BMJ merges events and total into "e / n"; STATA shows no data columns.
         String[] lh0 = loo ? (s.hasNull() ? new String[]{"P-value", "Tau²", "Tau", "I²"} : new String[]{"Tau²", "Tau", "I²"}) : leftHead(s);
         final boolean merge = K == 2 && !loo && (s.type.equals("bin") || s.type.equals("inc") || s.type.equals("prop") || s.type.equals("rate")), noData = T.noDataCols;
@@ -268,7 +269,8 @@ public final class Plots {
         int[] xr = new int[nl]; int cur = M + labW + (K == 3 ? 26 : 16); for (int j = 0; j < nl; j++) { cur += cw[j]; xr[j] = cur; cur += 14; }
         // ---- columns between the data columns and the plot (RevMan 5) and to the right of the plot (all other themes)
         final List<Col> pre = new ArrayList<>(), post = new ArrayList<>(); int[] gap;
-        final String measure1 = measure.contains(" ") ? measure.substring(0, measure.indexOf(' ')) : measure, measure2 = measure.contains(" ") ? measure.substring(measure.indexOf(' ') + 1).toLowerCase(Locale.ROOT) + " (" + lvl + ")" : "(" + lvl + ")";
+        final String mPre = measure.startsWith("Log ") ? "Log " : "", mRest = measure.substring(mPre.length());   // "Log Odds Ratio" is split as "Log Odds" / "ratio"
+        final String measure1 = mPre + (mRest.contains(" ") ? mRest.substring(0, mRest.indexOf(' ')) : mRest), measure2 = mRest.contains(" ") ? mRest.substring(mRest.indexOf(' ') + 1).toLowerCase(Locale.ROOT) + " (" + lvl + ")" : "(" + lvl + ")";
         final java.util.function.Function<Row, String> CB = w -> comb(K, w);
         switch (K) {
             case 1: if (showWeight) pre.add(new Col("", "Weight", w -> w.wtxt, 2, 2)); pre.add(new Col(measure, mt + ", " + mdl + ", " + lvl, CB, 2, 2)); gap = new int[0]; break;
@@ -558,14 +560,16 @@ public final class Plots {
     /** bottom: space (px) between the panel and the lower edge of the canvas. */
     static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom) { return axes(c, xl, xh, yl, yh, yRev, xlab, ylab, logX, title, bottom, false); }
     /** dense: denser tick labels on a log x-axis (funnel plots). */
-    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom, boolean dense) {
+    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom, boolean dense) { return axes(c, xl, xh, yl, yh, yRev, xlab, ylab, logX, title, bottom, dense, false); }
+    /** logY: yl and yh are natural logarithms and the y-axis is labelled with their exponentials (ratio measures on a log scale). */
+    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom, boolean dense, boolean logY) {
         Axes a = new Axes(); a.c = c; a.x0 = 70; a.x1 = c.w / c.scaleF() - 30; a.y0 = 40; a.y1 = c.h / c.scaleF() - bottom; a.xl = xl; a.xh = xh; a.yl = yl; a.yh = yh; a.yRev = yRev;
         Graphics2D g = c.g; g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
-        double[] xt = logX ? logTicks(Math.exp(xl), Math.exp(xh)) : Canvas.pretty(xl, xh, 6), yt = Canvas.pretty(yl, yh, 6);
+        double[] xt = logX ? logTicks(Math.exp(xl), Math.exp(xh)) : Canvas.pretty(xl, xh, 6), yt = logY ? logTicks(Math.exp(yl), Math.exp(yh)) : Canvas.pretty(yl, yh, 6);
         if (logX && dense) { double[] dt = logTicksDense(Math.exp(xl), Math.exp(xh)); if (dt.length > 0) xt = dt; }
         if (logX) { int inside = 0; for (double t : xt) { double v = Math.log(t); if (v >= xl && v <= xh) inside++; } if (inside < 2) xt = Canvas.pretty(Math.exp(xl), Math.exp(xh), 5); }   // narrow range: the 1-2-5 log ticks leave fewer than two labels
         for (double t : xt) { double v = logX ? Math.log(t) : t; if (v < xl || v > xh) continue; double xx = a.X(v); c.line(xx, a.y1, xx, a.y1 + 5); c.text(Canvas.tick(t), xx, a.y1 + 18, 10, 1, false); }
-        for (double t : yt) { if (t < yl - 1e-9 || t > yh + 1e-9) continue; double yy = a.Y(t); c.line(a.x0 - 5, yy, a.x0, yy); c.textRot(Canvas.tick(t), a.x0 - 10, yy, 10); }
+        for (double t : yt) { double v = logY ? Math.log(t) : t; if (v < yl - 1e-9 || v > yh + 1e-9) continue; double yy = a.Y(v); c.line(a.x0 - 5, yy, a.x0, yy); c.textRot(Canvas.tick(t), a.x0 - 10, yy, 10); }
         c.text(xlab, (a.x0 + a.x1) / 2, a.y1 + 40, 11, 1, false); c.textRot(ylab, 16, (a.y0 + a.y1) / 2, 11);
         if (title != null && !title.isEmpty()) c.text(title, (a.x0 + a.x1) / 2, 24, 13, 1, true);
         return a; }
@@ -575,7 +579,32 @@ public final class Plots {
     /** Untransformed proportions (PRAW) live in [0, 1]: the x-axis of a funnel plot is truncated there (the funnel is cut at 0 and 1). */
     static double[] clampRaw(MetaSpec s, double xl, double xh) { return "PRAW".equals(s.sm) ? new double[]{Math.max(xl, 0), Math.min(xh, 1)} : new double[]{xl, xh}; }
 
-    static String xlabFor(MetaSpec s) { switch (s.sm) { case "HR": return "Hazard Ratio"; case "OR": return "Odds Ratio"; case "RR": return "Risk Ratio"; case "RD": return "Risk Difference"; case "MD": return "Mean Difference"; case "SMD": return "Standardised Mean Difference"; case "ROM": return "Ratio of Means";
+    /** Measures whose working scale is the log of the plotted ratio (OR, RR, HR, IRR, DOR, ROM). */
+    static boolean logRatio(MetaSpec s) { return !s.backtransf && java.util.Arrays.asList("HR", "OR", "RR", "IRR", "DOR", "ROM").contains(s.sm); }
+    /** Axis label of the effect measure: the back-transformed name (Odds Ratio) when results are back-transformed, the name of the scale actually plotted (Log Odds Ratio,
+     *  Fisher's z Transformed Correlation, Logit Transformed Proportion ...) when "Back-transform results" is unchecked (as meta::xlab). */
+    static String xlabFor(MetaSpec s) {
+        if (!s.backtransf) switch (s.sm) {
+            case "HR": case "OR": case "RR": case "IRR": case "DOR": case "ROM": return "Log " + xlabBack(s);
+            case "ZCOR": return "Fisher's z Transformed Correlation";
+            case "PLOGIT": case "PLN": case "PAS": case "PFT": return funnelXlab(s);
+            case "MLN": return "Log Transformed Mean";
+            case "IRLN": return "Log Transformed Incidence Rate"; case "IRS": return "Square Root Transformed Incidence Rate"; case "IRFT": return "Freeman-Tukey Double Arcsine Transformed Incidence Rate";
+            default: break;
+        }
+        return xlabBack(s);
+    }
+    /** Compact header of the effect column of a forest plot (same scale as xlabFor, shorter names for the transformed proportions / rates). */
+    static String forestMeasure(MetaSpec s) {
+        if (s.backtransf) return xlabBack(s);
+        switch (s.sm) {
+            case "PLOGIT": return "Logit Proportion"; case "PLN": return "Log Proportion"; case "PAS": return "Arcsine Proportion"; case "PFT": return "FT Proportion";
+            case "IRLN": return "Log Incidence Rate"; case "IRS": return "Sqrt Incidence Rate"; case "IRFT": return "FT Incidence Rate"; case "ZCOR": return "Fisher's z";
+            case "MLN": return "Log Mean";
+            default: return xlabFor(s);
+        }
+    }
+    static String xlabBack(MetaSpec s) { switch (s.sm) { case "HR": return "Hazard Ratio"; case "OR": return "Odds Ratio"; case "RR": return "Risk Ratio"; case "RD": return "Risk Difference"; case "MD": return "Mean Difference"; case "SMD": return "Standardised Mean Difference"; case "ROM": return "Ratio of Means";
         case "ZCOR": case "COR": return "Correlation"; case "IRR": return "Incidence Rate Ratio"; case "IRD": return "Incidence Rate Difference"; case "PLOGIT": case "PLN": case "PRAW": case "PAS": case "PFT": return "Proportion"; case "MRAW": case "MLN": return "Mean"; case "IR": case "IRLN": case "IRS": case "IRFT": return "Incidence Rate"; case "DOR": return "Diagnostic Odds Ratio"; case "ASD": return "Arcsine Difference"; case "VE": return "Vaccine Efficacy"; default: return Report.smLabel(s); } }
 
     public static BufferedImage funnel(MetaResult r, Opts o, TrimFill tf) {
@@ -700,14 +729,14 @@ public final class Plots {
 
     public static BufferedImage bubble(Reg g0, Opts o, MetaResult r) {
         if (g0.x1 != null && RegPlots.GG.equals(o.bubbleStyle)) return RegPlots.ggBubble(g0, o, r);
-        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); List<RegPlots.LegItem> leg = RegPlots.legendItems(o, s, false); int ext = RegPlots.legendExtra(leg); Canvas c = new Canvas(620, 520 + ext, o.scale);
+        MetaSpec s = r.spec; final boolean ratio = s.backtransf && s.isRatioSm(), ly = ratio && o.logAxis, log = ratio && !ly; List<RegPlots.LegItem> leg = RegPlots.legendItems(o, s, false); int ext = RegPlots.legendExtra(leg); Canvas c = new Canvas(620, 520 + ext, o.scale);
         if (g0.x1 == null) { c.text("Bubble plot requires exactly one numeric covariate", 310, 260, 12, 1, false); return c.img; }
         double dxl = Arrays.stream(g0.x1).min().getAsDouble(), dxh = Arrays.stream(g0.x1).max().getAsDouble(), xl = dxl, xh = dxh, pad = (xh - xl) * 0.08 + 1e-9; xl -= pad; xh += pad;
         final boolean icpt = g0.intercept; double[][] cv = RegPlots.curve(g0, s, dxl, dxh, x -> icpt ? new double[]{1, x} : new double[]{x});
         double yl = Double.POSITIVE_INFINITY, yh = Double.NEGATIVE_INFINITY; for (double v : g0.y1) { double t = log ? Math.exp(v) : v; yl = Math.min(yl, t); yh = Math.max(yh, t); }
         for (int i = 0; i < cv[0].length; i++) for (int q : RegPlots.rowsShown(o)) { double t = log ? Math.exp(cv[q][i]) : cv[q][i]; yl = Math.min(yl, t); yh = Math.max(yh, t); }
         double yp = (yh - yl) * 0.1 + 1e-9; yl -= yp; yh += yp;
-        Axes a = axes(c, xl, xh, yl, yh, false, g0.xName, xlabFor(s), false, "", 60 + ext);
+        Axes a = axes(c, xl, xh, yl, yh, false, g0.xName, xlabFor(s) + (ly ? " (log scale)" : ""), false, "", 60 + ext, false, ly);   // results not back-transformed: the axis shows the log ratio
         double wmax = Arrays.stream(g0.size).max().getAsDouble(); Graphics2D g = c.g; Shape clip0 = g.getClip();
         g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
         if (o.predInt) metaPred(a, cv, log, g);   // prediction band: lighter than the confidence band, dotted bounds

@@ -118,7 +118,7 @@ public final class RegPlots {
 
     static String effectLabel(MetaSpec s) {
         String m = Plots.xlabFor(s).toLowerCase(Locale.ROOT);
-        return "Effect size (" + ((s.isRatioSm() && !s.backtransf) ? "log " + m : m) + ")";
+        return "Effect size (" + m + ")";
     }
 
     // ------------------------------------------------------------------ ggplot2-like frame
@@ -130,9 +130,12 @@ public final class RegPlots {
     }
     static final Color GRID = new Color(222, 222, 222), GRID_MINOR = new Color(240, 240, 240), TICK_TXT = new Color(77, 77, 77);
 
-    static Gg ggFrame(Canvas c, double left, double right, double top, double bottom, double xl, double xh, double yl, double yh, String title, String subtitle, String xlab, String ylab) {
+    static Gg ggFrame(Canvas c, double left, double right, double top, double bottom, double xl, double xh, double yl, double yh, String title, String subtitle, String xlab, String ylab) { return ggFrame(c, left, right, top, bottom, xl, xh, yl, yh, title, subtitle, xlab, ylab, false); }
+    /** logY: yl and yh are natural logarithms; grid lines and labels of the y-axis are at ratio values (0.25, 0.5, 1, 2, ...). */
+    static Gg ggFrame(Canvas c, double left, double right, double top, double bottom, double xl, double xh, double yl, double yh, String title, String subtitle, String xlab, String ylab, boolean logY) {
         Gg a = new Gg(); a.c = c; a.x0 = left; a.x1 = c.w / c.scaleF() - right; a.y0 = top; a.y1 = c.h / c.scaleF() - bottom; a.xl = xl; a.xh = xh; a.yl = yl; a.yh = yh;
-        Graphics2D g = c.g; double[] xt = Canvas.pretty(xl, xh, 6), yt = Canvas.pretty(yl, yh, 6);
+        Graphics2D g = c.g; double[] xt = Canvas.pretty(xl, xh, 6), yt = logY ? Plots.logTicks(Math.exp(yl), Math.exp(yh)) : Canvas.pretty(yl, yh, 6);
+        if (logY) for (int i = 0; i < yt.length; i++) yt[i] = Math.log(yt[i]);   // positions on the log scale; labels below are exponentiated again
         g.setStroke(new BasicStroke(0.8f)); g.setColor(GRID_MINOR);
         for (int i = 0; i + 1 < xt.length; i++) { double m = (xt[i] + xt[i + 1]) / 2; if (m > xl && m < xh) c.line(a.X(m), a.y0, a.X(m), a.y1); }
         for (int i = 0; i + 1 < yt.length; i++) { double m = (yt[i] + yt[i + 1]) / 2; if (m > yl && m < yh) c.line(a.x0, a.Y(m), a.x1, a.Y(m)); }
@@ -141,7 +144,7 @@ public final class RegPlots {
         for (double t : yt) if (t >= yl - 1e-9 && t <= yh + 1e-9) c.line(a.x0, a.Y(t), a.x1, a.Y(t));
         g.setColor(TICK_TXT);
         for (double t : xt) if (t >= xl - 1e-9 && t <= xh + 1e-9) c.text(Canvas.tick(t), a.X(t), a.y1 + 17, 11f, 1, false);
-        for (double t : yt) if (t >= yl - 1e-9 && t <= yh + 1e-9) c.text(Canvas.tick(t), a.x0 - 7, a.Y(t) + 4, 11f, 2, false);
+        for (double t : yt) if (t >= yl - 1e-9 && t <= yh + 1e-9) c.text(Canvas.tick(logY ? Math.exp(t) : t), a.x0 - 7, a.Y(t) + 4, 11f, 2, false);
         g.setColor(Color.BLACK); c.text(xlab, (a.x0 + a.x1) / 2, a.y1 + 40, 13f, 1, false); c.textRot(ylab, 16, (a.y0 + a.y1) / 2, 13f);
         c.text(title, a.x0, 28, 17f, 0, false);
         if (subtitle != null && !subtitle.isEmpty()) { g.setColor(new Color(60, 60, 60)); c.text(subtitle, a.x0, 48, 12.5f, 0, false); }
@@ -179,14 +182,14 @@ public final class RegPlots {
 
     /** ggplot2-style regression plot of a model with exactly one numeric covariate. */
     static BufferedImage ggBubble(Reg g0, Plots.Opts o, MetaResult r) {
-        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); List<LegItem> leg = legendItems(o, s, true); int ext = legendExtra(leg); Canvas c = new Canvas(720, 450 + ext, o.scale);
+        MetaSpec s = r.spec; final boolean ratio = s.backtransf && s.isRatioSm(), ly = ratio && o.logAxis, log = ratio && !ly; List<LegItem> leg = legendItems(o, s, true); int ext = legendExtra(leg); Canvas c = new Canvas(720, 450 + ext, o.scale);
         double dxl = Arrays.stream(g0.x1).min().getAsDouble(), dxh = Arrays.stream(g0.x1).max().getAsDouble();
         final boolean icpt = g0.intercept; double[][] cv = curve(g0, s, dxl, dxh, x -> icpt ? new double[]{1, x} : new double[]{x});
         double yl = Double.POSITIVE_INFINITY, yh = Double.NEGATIVE_INFINITY;
         for (double v : g0.y1) { double t = tr(v, log); yl = Math.min(yl, t); yh = Math.max(yh, t); }
         for (int i = 0; i < cv[0].length; i++) for (int q : rowsShown(o)) { double t = tr(cv[q][i], log); yl = Math.min(yl, t); yh = Math.max(yh, t); }
         double px = (dxh - dxl) * 0.05 + 1e-9, py = (yh - yl) * 0.06 + 1e-9;
-        Gg a = ggFrame(c, 66, 24, 58, 56 + ext, dxl - px, dxh + px, yl - py, yh + py, "Meta-Regression", "", g0.xName, effectLabel(s));
+        Gg a = ggFrame(c, 66, 24, 58, 56 + ext, dxl - px, dxh + px, yl - py, yh + py, "Meta-Regression", "", g0.xName, effectLabel(s) + (ly ? " - log scale" : ""), ly);
         drawAll(a, g0, o, r, cv, log, colour(o.colPoints, POINTS_DEFAULT), null);
         drawLegend(c, (a.x0 + a.x1) / 2, a.y1 + 52, leg);
         return c.img;
@@ -212,7 +215,7 @@ public final class RegPlots {
     /** As above; {@code colourBy} is the selected factor whose categories colour the studies (null, or a name that is not among {@code facs}: the first factor). */
     public static BufferedImage adjusted(Reg g0, List<String> nums, List<String> facs, String colourBy, Plots.Opts o, MetaResult r) {
         final int ci = colourBy == null || !facs.contains(colourBy) ? 0 : facs.indexOf(colourBy);   // index of the factor that colours the studies
-        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm();
+        MetaSpec s = r.spec; final boolean ratio = s.backtransf && s.isRatioSm(), lgY = ratio && o.logAxis, log = ratio && !lgY;
         if (nums.isEmpty()) { Canvas c = new Canvas(620, 200, o.scale); c.g.setColor(Color.BLACK); c.text("This plot needs at least one numeric covariate (x-axis)", 310, 100, 12, 1, false); return c.img; }
         String[] cn = g0.coefNames; int p = g0.p, k = g0.k; double[][] X = g0.X;
         int xcol = Arrays.asList(cn).indexOf(nums.get(0));
@@ -245,7 +248,7 @@ public final class RegPlots {
         double nul = log ? 1 : 0; yl = Math.min(yl, nul); yh = Math.max(yh, nul);
         double px = (dxh - dxl) * 0.05 + 1e-9, py = (yh - yl) * 0.06 + 1e-9;
         g0.plotX = new double[k]; for (int j = 0; j < k; j++) g0.plotX[j] = X[j][xcol];
-        Gg a = ggFrame(c, 66, 24 + legW, 70, 56 + ext, dxl - px, dxh + px, yl - py, yh + py, "Meta-regression with moderators", subtitle, nums.get(0), effectLabel(s));
+        Gg a = ggFrame(c, 66, 24 + legW, 70, 56 + ext, dxl - px, dxh + px, yl - py, yh + py, "Meta-regression with moderators", subtitle, nums.get(0), effectLabel(s) + (lgY ? " - log scale" : ""), lgY);
         Graphics2D g = c.g; g.setColor(new Color(110, 110, 110)); g.setStroke(new BasicStroke(1.1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{5f, 4f}, 0)); c.line(a.x0, a.Y(nul), a.x1, a.Y(nul)); g.setStroke(new BasicStroke(1f));
         drawAll(a, g0, o, r, cv, log, colour(o.colPoints, POINTS_DEFAULT), per);
         drawLegend(c, (a.x0 + a.x1) / 2, a.y1 + 52, ileg);
