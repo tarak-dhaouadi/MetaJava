@@ -341,6 +341,7 @@ public final class Report {
             else sb.append("- model:       mixed-effects meta-regression (model = \"rma\"), ").append(tauLabel(b.methodTau)).append(" estimator, tau^2 = ").append(Fmt.num(b.tau * b.tau, 4)).append(NL);
             sb.append("- test:        ").append(b.testKind.equals("z") ? "Wald-type z-test" : b.testKind.equals("knha") ? "Knapp-Hartung t-test (test = \"knha\")" : "Knapp-Hartung t-test with the scale factor set to at least 1 (test = \"adhoc\")").append(NL);
             if (!b.hkNote.isEmpty()) sb.append("- note:        ").append(b.hkNote).append(NL);
+            if (!b.warning.isEmpty()) sb.append("- warning:     ").append(b.warning).append(NL);
         }
         String resp = r.spec.sm.isEmpty() ? "effect" : (ratio ? "log " + longSm(r.spec.sm) : longSm(r.spec.sm));
         sb.append("- response:    ").append(resp).append(NL);

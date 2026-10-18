@@ -65,14 +65,15 @@ public final class Reg {
 
     public static Wald wald(Rma fit, boolean knha, boolean adhocSe, boolean intercept) {
         int k = fit.k, p = fit.p; double[] w = fit.wTilde; double[] y = fit.yi; double[][] X = fit.X; Wald o = new Wald(); double[] bw = fit.betaW();   // metafor: RSS.knha always uses the weights 1/(vi + tau2)
-        if (knha) { double rssw = 0; for (int j = 0; j < k; j++) { double f = 0; for (int a = 0; a < p; a++) f += X[j][a] * bw[a]; rssw += w[j] * (y[j] - f) * (y[j] - f); } o.s2 = rssw / (k - p); if (adhocSe) o.s2 = Math.max(1, o.s2); }
+        if (knha) { double rssw = 0; for (int j = 0; j < k; j++) { double f = 0; for (int a = 0; a < p; a++) f += X[j][a] * bw[a]; rssw += w[j] * (y[j] - f) * (y[j] - f); } o.s2 = rssw <= 2.220446049250313e-16 ? 0 : rssw / (k - p); if (adhocSe) o.s2 = Math.max(1, o.s2); }
         o.se = new double[p]; o.z = new double[p];
         for (int a = 0; a < p; a++) { o.se[a] = Math.sqrt(fit.vb[a][a] * o.s2); o.z[a] = fit.beta[a] / o.se[a]; }
         int m0 = intercept ? 1 : 0, dm = p - m0; o.dfQM = dm;
         if (dm > 0) {
             double[][] sub = new double[dm][dm]; double[] bb = new double[dm];
             for (int a = 0; a < dm; a++) { bb[a] = fit.beta[a + m0]; for (int b = 0; b < dm; b++) sub[a][b] = fit.vb[a + m0][b + m0] * o.s2; }
-            double[][] inv = Lin.inv(sub); double qm = 0; for (int a = 0; a < dm; a++) for (int b = 0; b < dm; b++) qm += bb[a] * inv[a][b] * bb[b];
+            double[][] inv = Lin.inv(sub); if (inv == null) { o.QM = Double.NaN; return o; }   // s2 = 0 (all effects equal): singular, QM undefined (metafor: NA)
+            double qm = 0; for (int a = 0; a < dm; a++) for (int b = 0; b < dm; b++) qm += bb[a] * inv[a][b] * bb[b];
             o.QM = knha ? qm / dm : qm;
         }
         return o;

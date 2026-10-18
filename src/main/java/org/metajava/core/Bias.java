@@ -19,7 +19,7 @@ public final class Bias {
         /** "meta" (meta::metabias) or "metafor" (metafor::regtest / metafor::ranktest). */
         public String pkg = "meta";
         // metafor only
-        public String model = "", predictor = "", testKind = "", hkNote = "";
+        public String model = "", predictor = "", testKind = "", hkNote = "", warning = "";
         public double limitEst = Double.NaN, limitLo = Double.NaN, limitHi = Double.NaN;
         public boolean exactP;   // ranktest: exact Kendall p-value (no ties) instead of the normal approximation
         public boolean ties;

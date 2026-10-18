@@ -1325,6 +1325,24 @@ public class SelfTest {
             hk.adhocHakn = "se"; Bias.Result ah = Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false); near(ah.statistic, 4.500617511, 1e-8, "Thompson (metafor) with the ad hoc option \"se\": scale factor at least 1 (test = \"adhoc\")"); check("adhoc".equals(ah.testKind), "ad hoc test kind");
             hk.adhocHakn = "ci"; near(Bias.run(Meta.run(hk, bd), "Thompson (metafor)", false).statistic, 4.542625895, 1e-8, "meta's ad hoc option \"ci\" has no metafor counterpart: plain Knapp-Hartung, as in the meta-regression");
         }
+        // ---- metafor details: Knapp-Hartung in a common-effect (FE) model is applied with metafor's warning; RSS.knha at machine epsilon (all effects equal) gives scale factor 0
+        {
+            double[] by = {0.92, 0.01, 1.25, -0.18, 0.78, 1.40, 0.05, 0.95, 0.30, 0.20, 0.85, 0.35, -0.05, 1.10}, bse = {0.30, 0.12, 0.35, 0.10, 0.22, 0.40, 0.15, 0.28, 0.09, 0.25, 0.18, 0.33, 0.11, 0.27};
+            MetaData bd = new MetaData(); bd.put("TE", by.clone()); bd.put("seTE", bse.clone()); bd.n = 14; String[] bl = new String[14]; for (int i = 0; i < 14; i++) bl[i] = "S" + i; bd.studlab = bl;
+            for (String ahx : new String[]{"", "se"}) {
+                MetaSpec fh = new MetaSpec(); fh.type = "gen"; fh.sm = "MD"; fh.methodTau = "REML"; fh.common = true; fh.random = false; fh.prediction = false; fh.methodRandomCi = "HK"; fh.adhocHakn = ahx;
+                MetaResult fr = Meta.run(fh, bd); Bias.Result fb = Bias.run(fr, "Thompson (metafor)", false);
+                near(fb.statistic, 3.904298081, 1e-8, "Thompson (metafor), common-effect analysis with HK: t of test = \"" + (ahx.isEmpty() ? "knha" : "adhoc") + "\" (scale factor 3.1667)"); near(fb.pval, 0.002093731361, 1e-9, "Thompson (metafor), common-effect analysis with HK: p-value");
+                check(fb.warning.equals("Knapp and Hartung method is not meant to be used in the context of FE models.") && Report.biasText(fb, fr).contains("Knapp and Hartung method is not meant"), "metafor's warning for Knapp-Hartung in an FE model appears in the output");
+            }
+            MetaSpec rs = new MetaSpec(); rs.type = "gen"; rs.sm = "MD"; rs.methodTau = "REML"; rs.common = false; rs.random = true; rs.prediction = false; rs.methodRandomCi = "HK";
+            check(Bias.run(Meta.run(rs, bd), "Thompson (metafor)", false).warning.isEmpty(), "no warning for Knapp-Hartung in a random-effects model");
+            double[] ey = {0.3, 0.3, 0.3, 0.3, 0.3, 0.3}, ese = {0.1, 0.12, 0.09, 0.11, 0.1, 0.13}, ex = {1, 2, 3, 4, 5, 6};
+            MetaData ed = new MetaData(); ed.put("TE", ey.clone()); ed.put("seTE", ese.clone()); ed.n = 6; String[] el = new String[6]; for (int i = 0; i < 6; i++) el[i] = "S" + i; ed.studlab = el;
+            MetaResult er = Meta.run(rs, ed); Reg eg = Reg.run(er, java.util.List.of("x"), java.util.Map.of("x", ex), java.util.List.of(), java.util.Map.of(), true);
+            near(eg.s2, 0.0, 0.0, "all effects equal: Knapp-Hartung scale factor is 0, as metafor");
+            rs.adhocHakn = "se"; near(Reg.run(Meta.run(rs, ed), java.util.List.of("x"), java.util.Map.of("x", ex), java.util.List.of(), java.util.Map.of(), true).s2, 1.0, 0.0, "all effects equal with the ad hoc option se: scale factor floored at 1");
+        }
         // ---- ad hoc Knapp-Hartung options in the meta-regression and the metafor tests: as metafor (only "se" = test "adhoc"), with a note in the output for the options without a metafor counterpart
         {
             double[] hy = {0.30, 0.35, 0.28, 0.33, 0.31, 0.36, 0.29, 0.34}, hse = {0.10, 0.12, 0.09, 0.11, 0.10, 0.13, 0.10, 0.12}, hx = {1, 2, 3, 4, 5, 6, 7, 8};

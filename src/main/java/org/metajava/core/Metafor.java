@@ -59,18 +59,19 @@ final class Metafor {
             res.varModel = "multiplicative"; res.testKind = "t";
         } else {
             int[] okIdx = new int[k]; for (int i = 0; i < k; i++) okIdx[i] = ok.get(i);
-            // metafor: the model of regtest() is fitted with the method of the analysed model: a common-effect analysis (method = "FE") gives a fixed-effects meta-regression, tau^2 = 0, Wald z-test
+            // metafor: the model of regtest() is fitted with the method of the analysed model: a common-effect analysis (method = "FE") gives a fixed-effects meta-regression, tau^2 = 0 (Wald z-test, or Knapp-Hartung t with metafor's warning when HK is selected)
             final boolean fe = !s.random; final String meth = fe ? "FE" : s.methodTau;
             Rma m = Rma.fit(te, v, X, meth, fe ? null : Pool.genqWeightsFor(s, okIdx));
             sigma = Math.sqrt(m.tau2); b0 = m.beta[0]; b1 = m.beta[1]; se0 = m.se[0]; se1 = m.se[1];
             res.varModel = fe ? "fixed" : "additive"; res.methodTau = meth;
-            if (!fe && s.methodRandomCi.equals("HK")) {   // metafor: test = "knha", or "adhoc" (scale factor at least 1) for the ad hoc option "se"; meta's ad hoc "ci" has no metafor counterpart
+            if (s.methodRandomCi.equals("HK")) {   // metafor: test = "knha", or "adhoc" (scale factor at least 1) for the ad hoc option "se"; meta's ad hoc "ci" has no metafor counterpart
                 double[] bw = m.betaW(); double rss = 0;
                 for (int i = 0; i < k; i++) { double f = bw[0] + bw[1] * x[i]; rss += m.wTilde[i] * (te[i] - f) * (te[i] - f); }
-                final boolean adhoc = s.adhocHakn.equals("se"); double s2 = rss / dfr; if (adhoc) s2 = Math.max(1, s2);
+                final boolean adhoc = s.adhocHakn.equals("se"); double s2 = rss <= 2.220446049250313e-16 ? 0 : rss / dfr; if (adhoc) s2 = Math.max(1, s2);   // metafor: s2w = 0 when RSS.knha is at machine epsilon (all yi equal), then the ad hoc floor
                 se0 = Math.sqrt(s2 * m.vb[0][0]); se1 = Math.sqrt(s2 * m.vb[1][1]);
                 stat = "t"; df = (double) dfr; zt = b1 / se1; pval = Dist.ptTwoSided(zt, dfr); crit = Dist.qt(1 - (1 - lvl) / 2, dfr);
                 res.testKind = adhoc ? "adhoc" : "knha";
+                if (fe) res.warning = "Knapp and Hartung method is not meant to be used in the context of FE models.";   // metafor: warning of rma.uni
                 if (!adhoc && !s.adhocHakn.isEmpty()) res.hkNote = "The ad hoc option \"" + s.adhocHakn + "\" has no metafor counterpart: metafor's test = \"adhoc\" is the ad hoc option \"se\"; it is not applied to this regression, so the plain Knapp-Hartung test (test = \"knha\") was used.";
             } else { stat = "z"; zt = b1 / se1; pval = Dist.pnormTwoSided(zt); crit = Dist.qnorm(1 - (1 - lvl) / 2); res.testKind = "z"; }
         }

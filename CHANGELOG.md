@@ -1,5 +1,9 @@
 # Changelog
 
+### Fixed - two remaining deviations from metafor (Knapp-Hartung)
+- **Common-effect analysis with Hartung-Knapp (Thompson (metafor)):** the fixed-effects meta-regression now applies the Knapp-Hartung test when HK is selected, as `rma(method = "FE", test = "knha")` does (before: Wald z), and the output carries metafor's warning "Knapp and Hartung method is not meant to be used in the context of FE models." (a `warning` line in the Details).
+- **All effects equal:** when the Knapp-Hartung residual sum of squares is at machine epsilon the scale factor is 0, as in metafor (before: 0/(k-p) rounding noise); with the ad hoc option "se" it is then floored at 1. Applies to the meta-regression, its permutation test and Thompson (metafor); the influence diagnostics already did this.
+
 ### Added - factor chosen for the regression plot with categorical moderator adjustment
 - New drop-down "Colour studies by factor" under the checkbox "Regression plot with categorical moderator adjustment" (section 6, Meta-regression). It only lists the categorical factors selected in the model, follows the factor selection live, keeps the chosen factor while it stays selected (otherwise falls back to the first one), is enabled only with the checkbox and at least one factor, and is saved with the project (not touched by "reset to defaults").
 - The chosen factor colours the studies and gives the legend title and categories of the plot; before, it was always the first selected factor. The line, band and prediction still use the reference category of every factor with the other numeric covariates at their mean. `RegPlots.adjusted(..., colourBy, ...)` is the new overload; the old signature keeps the first factor.
