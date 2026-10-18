@@ -1,4 +1,5 @@
 # Side-by-side check of MetaJava's permutation test against metafor (written against the metafor 4.6-0 sources).
+# NOTE: metafor stops Fisher scoring at a change <= 1e-5, so its REML tau2 (0.02448828) differs by ~3.5e-6 from MetaJava (0.02448478, the exact root); use rma(..., control = list(threshold = 1e-12)) to compare the fits at full precision. The permutation p-values agree either way.
 # Run in R with metafor installed; compare with the numbers MetaJava gives (SelfTest.java pins them).
 # Data: k = 8, binary moderator, GENQ weights of zero on five studies, so that some permuted fits fail
 # (qr.solve: "singular matrix 'a' in solve") -> metafor redraws them.

@@ -949,6 +949,21 @@ public class SelfTest {
             }
         } catch (Exception e) { e.printStackTrace(); check(false, "random permutation test (failed fits) tests threw " + e); }
 
+        // ---- ML / REML / EB: tau^2 solves the estimating equation to full precision. metafor stops its Fisher scoring when the change in tau^2 is <= 1e-5 (control: threshold), so its tau^2 is off by up to ~1e-5 (here 0.02448828 against the exact 0.02448478); MetaJava deliberately keeps the exact solution.
+        try {
+            double[] ry = {0.12, 0.48, 0.31, 0.95, 0.66, 1.10, 0.40, 0.83}, rs = {0.20, 0.25, 0.18, 0.30, 0.22, 0.28, 0.24, 0.19}, rx = {0, 0, 0, 0, 1, 1, 1, 1}; int rk = 8; double[] rv = new double[rk]; double[][] rX = new double[rk][]; for (int i = 0; i < rk; i++) { rv[i] = rs[i] * rs[i]; rX[i] = new double[]{1, rx[i]}; }
+            Rma rm = Rma.fit(ry, rv, rX, "REML", null); double t2 = rm.tau2, ybar = 0; for (double yv : ry) ybar += yv / rk;
+            double[] w = new double[rk]; for (int i = 0; i < rk; i++) w[i] = 1 / (rv[i] + t2);
+            double a11 = 0, a12 = 0, a22 = 0; for (int i = 0; i < rk; i++) { a11 += w[i]; a12 += w[i] * rx[i]; a22 += w[i] * rx[i] * rx[i]; } double det = a11 * a22 - a12 * a12;
+            double[][] P = new double[rk][rk]; for (int i = 0; i < rk; i++) for (int j = 0; j < rk; j++) { double h = (rX[i][0] * a22 * rX[j][0] - rX[i][0] * a12 * rX[j][1] - rX[i][1] * a12 * rX[j][0] + rX[i][1] * a11 * rX[j][1]) / det; P[i][j] = (i == j ? w[i] : 0) - w[i] * w[j] * h; }
+            double tr = 0; for (int i = 0; i < rk; i++) tr += P[i][i];
+            double[] pY = new double[rk]; for (int i = 0; i < rk; i++) for (int j = 0; j < rk; j++) pY[i] += P[i][j] * (ry[j] - ybar); double yppy = 0; for (int i = 0; i < rk; i++) yppy += pY[i] * pY[i];   // Y'P P Y (P symmetric)
+            double trPP = 0; for (int i = 0; i < rk; i++) for (int j = 0; j < rk; j++) trPP += P[i][j] * P[j][i];
+            double score = yppy - tr;
+            check(Math.abs(score) < 1e-8 * Math.max(1, trPP), "REML: tau^2 solves the estimating equation Y'PPY - tr(P) = 0 to full precision (score " + score + ", tr(PP) = " + trPP + ")");
+            near(t2, 0.024484777046880103, 1e-12, "REML: tau^2 of the exact solution (metafor's Fisher scoring, stopped at a change <= 1e-5, reports 0.02448828)");
+        } catch (Exception e) { e.printStackTrace(); check(false, "REML estimating-equation test threw " + e); }
+
         forestThemes(); funnelThemes(); trimFillEstimators();
 
         // ---- prediction interval and study symbols of the regression plots
