@@ -1341,6 +1341,14 @@ public class SelfTest {
             MetaData ed = new MetaData(); ed.put("TE", ey.clone()); ed.put("seTE", ese.clone()); ed.n = 6; String[] el = new String[6]; for (int i = 0; i < 6; i++) el[i] = "S" + i; ed.studlab = el;
             MetaResult er = Meta.run(rs, ed); Reg eg = Reg.run(er, java.util.List.of("x"), java.util.Map.of("x", ex), java.util.List.of(), java.util.Map.of(), true);
             near(eg.s2, 0.0, 0.0, "all effects equal: Knapp-Hartung scale factor is 0, as metafor");
+            // permutation test of the same degenerate fit: metafor (permutest.rma.uni) keeps the Inf / NaN statistics, removes each NA statistic separately (na.rm = TRUE): QM is NA in every permutation, so QMp = mean(numeric(0)) = NaN; Inf >= Inf counts as a hit
+            for (boolean exq : new boolean[]{false, true}) {
+                Perm ep = Perm.run(eg, 50, exq, 7);
+                check(Double.isNaN(ep.pQM), "all effects equal, permutation test (" + (exq ? "exact" : "random") + "): omnibus p-value is NA, as metafor");
+                near(ep.pval[0], 1.0, 0.0, "all effects equal, permutation test (" + (exq ? "exact" : "random") + "): intercept z = Inf in every permutation, p = 1");
+                check(Double.isNaN(ep.pval[1]), "all effects equal, permutation test (" + (exq ? "exact" : "random") + "): undefined slope statistic gives NA");
+                check(RegReport.permText(eg, ep, er).contains("p-val* = NA"), "all effects equal, permutation test: NA is printed");
+            }
             rs.adhocHakn = "se"; near(Reg.run(Meta.run(rs, ed), java.util.List.of("x"), java.util.Map.of("x", ex), java.util.List.of(), java.util.Map.of(), true).s2, 1.0, 0.0, "all effects equal with the ad hoc option se: scale factor floored at 1");
         }
         // ---- ad hoc Knapp-Hartung options in the meta-regression and the metafor tests: as metafor (only "se" = test "adhoc"), with a note in the output for the options without a metafor counterpart

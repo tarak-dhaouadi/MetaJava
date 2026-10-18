@@ -2,6 +2,7 @@
 
 ### Fixed - two remaining deviations from metafor (Knapp-Hartung)
 - **Common-effect analysis with Hartung-Knapp (Thompson (metafor)):** the fixed-effects meta-regression now applies the Knapp-Hartung test when HK is selected, as `rma(method = "FE", test = "knha")` does (before: Wald z), and the output carries metafor's warning "Knapp and Hartung method is not meant to be used in the context of FE models." (a `warning` line in the Details).
+- **Permutation test with undefined statistics:** as `permutest.rma.uni`, each statistic now removes its own undefined (NA) permutations (`na.rm = TRUE`) and an undefined observed statistic gives NA, instead of dropping a whole permutation when any statistic was undefined. With all effects equal the omnibus p-value is NA (before: 1.0), an infinite z counts as a hit when it equals the observed one (Inf >= Inf), and an undefined coefficient statistic gives NA.
 - **All effects equal:** when the Knapp-Hartung residual sum of squares is at machine epsilon the scale factor is 0, as in metafor (before: 0/(k-p) rounding noise); with the ad hoc option "se" it is then floored at 1. Applies to the meta-regression, its permutation test and Thompson (metafor); the influence diagnostics already did this.
 
 ### Added - factor chosen for the regression plot with categorical moderator adjustment

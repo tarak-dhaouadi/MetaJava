@@ -35,19 +35,20 @@ public final class Perm {
             try {
                 Rma m = Rma.fit(y, v, Xp, method, f.aw);   // GENQ / GENQM: the weights stay with the studies (metafor: permutest keeps the weights, permutes the moderators)
                 Reg.Wald W = Reg.wald(m, knha, adhoc, icpt);
-                boolean bad = Double.isNaN(W.QM); for (double zz : W.z) bad |= Double.isNaN(zz);
-                if (bad) return; zp[b] = W.z; qp[b] = W.QM;
+                zp[b] = W.z; qp[b] = W.QM;   // NaN statistics are kept: as in metafor, each statistic drops its own NA permutations (na.rm = TRUE), a fit that stops with an error is dropped as a whole
             } catch (RuntimeException e) { /* singular permuted fit: dropped, as metafor does */ }
         });
-        int ok = 0; int[] cnt = new int[p]; int cq = 0;
-        for (int b = 0; b < n; b++) {
-            if (zp[b] == null) continue; ok++;
-            for (int a = 0; a < p; a++) if (Math.abs(zp[b][a]) >= Math.abs(o.z[a]) - TOL) cnt[a]++;
-            if (qp[b] >= o.QM - TOL) cq++;
-        }
+        int ok = 0; for (int b = 0; b < n; b++) if (zp[b] != null) ok++;
         o.failed = n - ok; o.pval = new double[p];
-        for (int a = 0; a < p; a++) o.pval[a] = exact ? cnt[a] / (double) ok : Math.min(1, (cnt[a] + 1.0) / (ok + 1.0));
-        o.pQM = exact ? cq / (double) ok : Math.min(1, (cq + 1.0) / (ok + 1.0));
+        // metafor: mean(abs(zval.perm) >= abs(zval) - comptol, na.rm = TRUE); an undefined permuted statistic is left out, and an undefined observed statistic gives NA
+        for (int a = 0; a < p; a++) {
+            int cnt = 0, nv = 0;
+            for (int b = 0; b < n; b++) { if (zp[b] == null || Double.isNaN(zp[b][a])) continue; nv++; if (Math.abs(zp[b][a]) >= Math.abs(o.z[a]) - TOL) cnt++; }
+            o.pval[a] = Double.isNaN(o.z[a]) ? Double.NaN : exact ? cnt / (double) nv : Math.min(1, (cnt + 1.0) / (nv + 1.0));
+        }
+        int cq = 0, nq = 0;
+        for (int b = 0; b < n; b++) { if (zp[b] == null || Double.isNaN(qp[b])) continue; nq++; if (qp[b] >= o.QM - TOL) cq++; }
+        o.pQM = Double.isNaN(o.QM) ? Double.NaN : exact ? cq / (double) nq : Math.min(1, (cq + 1.0) / (nq + 1.0));
         if (!exact && k <= MAX_EXACT_K) o.note = "The exact test (all " + (long) fact + " permutations) is available for this k.";
         if (!exact && wantExact && k > MAX_EXACT_K) o.note = "Exact test requested but k = " + k + " > " + MAX_EXACT_K + " (k! permutations): random permutations were used.";
         return o;
