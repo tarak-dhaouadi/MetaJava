@@ -27,6 +27,11 @@ public final class RegPlots {
     public static final String[] SYMBOLS = {"Circle", "Triangle", "Square", "Star", "Diamond", "Open circle", "Open triangle", "Open square", "Open diamond"};
     static boolean isOpen(String sym) { return sym != null && sym.startsWith("Open "); }
     /** Outline of a study symbol centred at (x, y); rad = radius of the circle of the same visual weight. */
+    /** Factor by which {@link #symbolShape} reaches beyond its nominal radius (corners of the square, tips of the triangle, diamond and star): radius of the circle that encloses the drawn symbol. */
+    static double symbolExtent(String sym) {
+        String k = sym == null ? "circle" : sym.toLowerCase(Locale.ROOT).replace("open ", "");
+        switch (k) { case "triangle": return 1.3; case "square": return 0.89 * Math.sqrt(2); case "diamond": return 1.25; case "star": return 1.35; default: return 1; }
+    }
     static Shape symbolShape(String sym, double x, double y, double rad) {
         String k = sym == null ? "circle" : sym.toLowerCase(Locale.ROOT).replace("open ", "");
         switch (k) {
@@ -201,7 +206,7 @@ public final class RegPlots {
         Shape clip = a.c.g.getClip(); a.c.g.setClip(new Rectangle2D.Double(a.x0 - 14, a.y0 - 14, a.x1 - a.x0 + 28, a.y1 - a.y0 + 28));
         LabelPlacer lp = LabelPlacer.on(o.repelBubble && o.studyLabels, a.x0, a.y0, a.x1, a.y1);
         for (int i = 0; i < w.length; i++) { double rad = o.symSize * (4 + 9 * Math.sqrt(w[i] / wmax)); double xv = xOf(g0, i), yv = tr(g0.yv[i], log); ggPoint(a, o.symbol, xv, yv, rad, perStudy != null ? perStudy[i] : pts);
-            if (o.studyLabels) { if (lp != null) lp.add(r.studlab[g0.used[i]], a.X(xv), a.Y(yv), rad); else { a.c.g.setColor(new Color(40, 40, 40)); Plots.ptLabel(a.c, a.x0, a.x1, a.y0, r.studlab[g0.used[i]], a.X(xv), a.Y(yv), rad + 2, -2, false); } } }
+            if (o.studyLabels) { if (lp != null) lp.add(r.studlab[g0.used[i]], a.X(xv), a.Y(yv), rad * symbolExtent(o.symbol)); else { a.c.g.setColor(new Color(40, 40, 40)); Plots.ptLabel(a.c, a.x0, a.x1, a.y0, r.studlab[g0.used[i]], a.X(xv), a.Y(yv), rad + 2, -2, false); } } }
         a.c.g.setClip(clip);
         ggLine(a, cv, log, colour(o.colLine, LINE_DEFAULT), o.regLine);
         if (lp != null) lp.draw(a.c);

@@ -16,4 +16,6 @@ echo Built dist\metajava-%VERSION%.jar
 if "%1"=="--test" (
   javac -encoding UTF-8 -source 11 -target 11 -Xlint:-options -cp build\classes -d build\test-classes src\test\java\org\metajava\SelfTest.java || exit /b 1
   java -Djava.awt.headless=true -cp build\classes;build\test-classes org.metajava.SelfTest
+  javac -encoding UTF-8 -source 11 -target 11 -Xlint:-options -cp build\classes -d build\test-classes src\test\java\org\metajava\plot\LabelPlacerTest.java || exit /b 1
+  java -Djava.awt.headless=true -cp build\classes;build\test-classes org.metajava.plot.LabelPlacerTest
 )

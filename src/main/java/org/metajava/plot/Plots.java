@@ -853,6 +853,7 @@ public final class Plots {
         for (int i = 1; i <= 60; i++) { double se = maxse * i / 60.0, ex = pp.peese.b0 + pp.peese.b1 * se * se; double nx = a.X(ex), ny = a.Y(se); c.line(px, py, nx, ny); px = nx; py = ny; }
         g.setStroke(new BasicStroke(1f)); g.setClip(clip);
         LabelPlacer lp = LabelPlacer.on(o.repelPet && o.studyLabels, a);
+        if (lp != null) for (int q = 0; q < 2; q++) lp.point(a.X(q == 0 ? pp.pet.b0 : pp.peese.b0), a.Y(0), 4 * Math.sqrt(2));   // the PET and PEESE estimates (squares at SE = 0) are drawn after the labels: keep the labels off them
         for (int i = 0; i < pp.te.length; i++) { double xx = a.X(pp.te[i]), yy = a.Y(pp.se[i]); g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) lab(lp, c, a, pp.label[i], xx, yy, 4, -3, false, 3); }
         if (lp != null) lp.draw(c);
         for (int q = 0; q < 2; q++) { double ex = q == 0 ? pp.pet.b0 : pp.peese.b0; g.setColor(q == 0 ? petCol : peeseCol); g.fill(new Rectangle2D.Double(a.X(ex) - 4, a.Y(0) - 4, 8, 8)); }
@@ -899,7 +900,7 @@ public final class Plots {
         LabelPlacer lp = LabelPlacer.on(o.repelBubble && o.studyLabels, a);
         for (int i = 0; i < g0.x1.length; i++) { double yv = log ? Math.exp(g0.y1[i]) : g0.y1[i]; double rad = o.symSize * (4 + 12 * Math.sqrt(g0.size[i] / wmax)); double xx = a.X(g0.x1[i]), yy = a.Y(yv);
             RegPlots.drawSymbol(g, o.symbol, xx, yy, rad, new Color(150, 150, 150), 200, Color.BLACK, 1f);
-            if (o.studyLabels) lab(lp, c, a, r.studlab[g0.used[i]], xx, yy, rad + 2, -2, true, rad); }
+            if (o.studyLabels) lab(lp, c, a, r.studlab[g0.used[i]], xx, yy, rad + 2, -2, true, rad * RegPlots.symbolExtent(o.symbol)); }
         if (o.regLine) { Path2D q = new Path2D.Double(); for (int i = 0; i < cv[0].length; i++) { double yy = a.Y(log ? Math.exp(cv[1][i]) : cv[1][i]); if (i == 0) q.moveTo(a.X(cv[0][i]), yy); else q.lineTo(a.X(cv[0][i]), yy); } g.setColor(Color.BLACK); g.draw(q); }
         if (lp != null) lp.draw(c);
         RegPlots.drawLegend(c, (a.x0 + a.x1) / 2, a.y1 + 52, leg);
@@ -951,6 +952,7 @@ public final class Plots {
         if (o.apexLine) c.dashed(a.X(l.te[l.apex]), a.Y(0), a.X(l.te[l.apex]), a.y1);   // not part of metasens::doiplot: optional
         for (int j = 1; j < k; j++) c.line(a.X(l.te[j - 1]), a.Y(l.absZ[j - 1]), a.X(l.te[j]), a.Y(l.absZ[j]));
         LabelPlacer lp = LabelPlacer.on(o.repelDoi && o.studyLabels, a);
+        if (lp != null) lp.block(a.x0 + 2, a.y0 + 2, a.x0 + 14 + c.g.getFontMetrics(Canvas.font(11f)).stringWidth("LFK index: " + Fmt.num(l.lfk, 2)), a.y0 + 24);   // the LFK index text is drawn after the labels
         for (int j = 0; j < k; j++) { double xx = a.X(l.te[j]), yy = a.Y(l.absZ[j]); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); if (o.studyLabels) lab(lp, c, a, l.label[j], xx, yy, 5, -4, false, 3); }
         if (lp != null) lp.draw(c);
         c.text("LFK index: " + Fmt.num(l.lfk, 2), a.x0 + 8, a.y0 + 17, 11, 0, false);
@@ -977,6 +979,7 @@ public final class Plots {
         if (s.common) labbeLine(c, a, s, r.overall.teCommon, false, lim); if (s.random) labbeLine(c, a, s, r.overall.teRandom, true, lim);
         g.setClip(clip);
         LabelPlacer lp = LabelPlacer.on(o.repelLabbe && o.studyLabels, a);
+        if (lp != null) { double[] lg = labbeLegendBox(c, a, r, o, lim); lp.block(lg[0] - 2, lg[1] - 2, lg[0] + lg[2] + 2, lg[1] + lg[3] + 2); }   // the legend is drawn after the labels
         for (int i = 0; i < n; i++) { if (Double.isNaN(r.TE[i]) || Double.isNaN(w[i]) || ne[i] <= 0 || nc[i] <= 0) continue;
             double xx = a.X(ec[i] / nc[i]), yy = a.Y(ee[i] / ne[i]), dia = 4 * w[i], rad = dia / 2;   // metafor: cex = psize in [0.5, 3.5] -> diameter 2 to 14 px
             g.setColor(LabbePlot.pick(o.labbeCircle, LabbePlot.DEF_CIRCLE)); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia)); g.setColor(LabbePlot.pick(o.labbeSymbol, Color.BLACK)); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia));
@@ -987,6 +990,17 @@ public final class Plots {
     }
     /** Legend box of the Default L'Abbe plot: reference line, line(s) of the pooled effect (common / random: dash patterns as drawn) and the confidence / prediction areas when drawn. As in the ggplot2
      *  style it sits at the top left while the estimated-effect line lies below the no-effect line and at the lower right when it lies above it, where it never covers the studies. */
+    /** Rectangle {x, y, width, height} of the legend inside the panel of the L'Abbe plot (labels must stay off it). */
+    private static double[] labbeLegendBox(Canvas c, Axes a, MetaResult r, Opts o, double lim) {
+        MetaSpec s = r.spec; Graphics2D g = c.g; LabbePlot.Model mo = LabbePlot.model(r);
+        boolean line = LabbePlot.hasLine(s.sm) && !Double.isNaN(mo.te); Color pc = LabbePlot.chosen(o.labbePI), cc = LabbePlot.chosen(o.labbeCI);
+        List<String> labs = new ArrayList<>(); labs.add("Reference line (no effect)");
+        if (line) { if (s.common && !Double.isNaN(r.overall.teCommon)) labs.add(s.textCommon); if (s.random && !Double.isNaN(r.overall.teRandom)) labs.add(s.textRandom); if (cc != null && mo.hasCi()) labs.add(Report.pct(s.levelMa) + "% confidence interval"); if (pc != null && mo.hasPi()) labs.add(Report.pct(s.levelPredict) + "% prediction interval"); }
+        FontMetrics fm = g.getFontMetrics(Canvas.font(11f)); double tw = 0; for (String x : labs) tw = Math.max(tw, fm.stringWidth(x));
+        double sample = 36, rowH = 18, bw = 10 + sample + 10 + tw + 12, bh = 8 + rowH * labs.size();
+        boolean upper = line && LabbePlot.lineY(s.sm, mo.te, lim / 2) > lim / 2;
+        return new double[]{upper ? a.x1 - 10 - bw : a.x0 + 10, upper ? a.y1 - 10 - bh : a.y0 + 10, bw, bh};
+    }
     private static void labbeLegend(Canvas c, Axes a, MetaResult r, Opts o, double lim) {
         MetaSpec s = r.spec; Graphics2D g = c.g; LabbePlot.Model mo = LabbePlot.model(r);
         boolean line = LabbePlot.hasLine(s.sm) && !Double.isNaN(mo.te); Color pc = LabbePlot.chosen(o.labbePI), cc = LabbePlot.chosen(o.labbeCI);

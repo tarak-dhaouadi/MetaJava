@@ -68,6 +68,21 @@ public final class LabbePlot {
     // ------------------------------------------------------------------ ggplot2 style
     private static String pct(double level) { double v = level * 100; return Math.abs(v - Math.rint(v)) < 1e-9 ? String.valueOf((long) Math.rint(v)) : String.format(Locale.ROOT, "%.1f", v); }
 
+    /** Entries of the legend of the ggplot2-style L'Abbe plot: texts and kinds (0 solid line, 1 dashed line, 2 confidence area, 3 prediction area). */
+    static Object[] ggLegendItems(MetaSpec s, boolean line, boolean ci, boolean pi) {
+        List<String> labs = new ArrayList<>(); List<Integer> kinds = new ArrayList<>();
+        labs.add("Reference Line of No Effect"); kinds.add(0);
+        if (line) { labs.add("Line for the Estimated Effect"); kinds.add(1); }
+        if (ci) { labs.add(pct(s.levelMa) + "% Confidence Interval"); kinds.add(2); }
+        if (pi) { labs.add(pct(s.levelPredict) + "% Prediction Interval"); kinds.add(3); }
+        return new Object[]{labs, kinds};
+    }
+    /** Legend box {x, y, width, height}: top left, or lower right when the estimated-effect line lies above the no-effect line (where the studies are). */
+    static double[] ggLegendBox(Graphics2D g, List<String> labs, boolean upper, double x0, double y0, double x1, double y1) {
+        FontMetrics fm = g.getFontMetrics(Canvas.font(12.5f)); double tw = 0; for (String t : labs) tw = Math.max(tw, fm.stringWidth(t));
+        double sample = 40, rowH = 21, bw = 12 + sample + 12 + tw + 14, bh = 10 + rowH * labs.size() + 2;
+        return new double[]{upper ? x1 - 10 - bw : x0 + 10, upper ? y1 - 10 - bh : y0 + 10, bw, bh};
+    }
     static BufferedImage gg(MetaResult r, Plots.Opts o, double[] w, double lim, double[] ee, double[] ne, double[] ec, double[] nc) {
         MetaSpec s = r.spec; int n = r.TE.length; Canvas c = new Canvas(640, 580, o.scale); Graphics2D g = c.g;
         double L = 80, R = 22, T = 22, B = 66, x0 = L, x1 = c.w / c.scaleF() - R, y0 = T, y1 = c.h / c.scaleF() - B;
@@ -94,6 +109,7 @@ public final class LabbePlot {
         List<Integer> ord = new ArrayList<>(); for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && !Double.isNaN(w[i]) && ne[i] > 0 && nc[i] > 0) ord.add(i);
         ord.sort((p, q) -> Double.compare(w[q], w[p]));
         LabelPlacer lp = LabelPlacer.on(o.repelLabbe && o.studyLabels, a.x0, a.y0, a.x1, a.y1);
+        if (lp != null) { double[] lg = ggLegendBox(g, (List<String>) ggLegendItems(s, line, ci, pi)[0], line && lineY(s.sm, m.te, lim / 2) > lim / 2, x0, y0, x1, y1); lp.block(lg[0] - 2, lg[1] - 2, lg[0] + lg[2] + 2, lg[1] + lg[3] + 2); }   // the legend is drawn after the labels
         for (int i : ord) { double xx = a.X(ec[i] / nc[i]), yy = a.Y(ee[i] / ne[i]), dia = 4 * w[i], rad = dia / 2;
             g.setColor(circ); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia)); g.setColor(edge); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia));
             if (o.studyLabels) { if (lp != null) lp.add(r.studlab[i], xx, yy, rad); else { g.setColor(Color.BLACK); c.text(r.studlab[i], xx - rad - 3, yy + 3, 8, 2, false); } } }
@@ -105,15 +121,8 @@ public final class LabbePlot {
             c.line(xx, y1, xx, y1 + 5); c.text(lab, xx, y1 + 20, 12, 1, false); c.line(x0 - 5, yy, x0, yy); c.textRot(lab, x0 - 10, yy, 12); }
         c.text("Event rate (" + s.labelC + ")", (x0 + x1) / 2, y1 + 47, 13, 1, false); c.textRot("Event rate (" + s.labelE + ")", 18, (y0 + y1) / 2, 13);
         // legend: top left, or lower right when the estimated-effect line lies above the no-effect line (where the studies are)
-        List<String> labs = new ArrayList<>(); List<Integer> kinds = new ArrayList<>();   // 0 solid line, 1 dashed line, 2 confidence area, 3 prediction area
-        labs.add("Reference Line of No Effect"); kinds.add(0);
-        if (line) { labs.add("Line for the Estimated Effect"); kinds.add(1); }
-        if (ci) { labs.add(pct(s.levelMa) + "% Confidence Interval"); kinds.add(2); }
-        if (pi) { labs.add(pct(s.levelPredict) + "% Prediction Interval"); kinds.add(3); }
-        FontMetrics fm = g.getFontMetrics(Canvas.font(12.5f)); double tw = 0; for (String t : labs) tw = Math.max(tw, fm.stringWidth(t));
-        double sample = 40, rowH = 21, bw = 12 + sample + 12 + tw + 14, bh = 10 + rowH * labs.size() + 2;
-        boolean upper = line && lineY(s.sm, m.te, lim / 2) > lim / 2;
-        double bx = upper ? x1 - 10 - bw : x0 + 10, by = upper ? y1 - 10 - bh : y0 + 10;
+        Object[] items = ggLegendItems(s, line, ci, pi); List<String> labs = (List<String>) items[0]; List<Integer> kinds = (List<Integer>) items[1];
+        double sample = 40, rowH = 21; double[] box = ggLegendBox(g, labs, line && lineY(s.sm, m.te, lim / 2) > lim / 2, x0, y0, x1, y1); double bx = box[0], by = box[1], bw = box[2], bh = box[3];
         g.setColor(Color.WHITE); g.fill(new Rectangle2D.Double(bx, by, bw, bh)); g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); g.draw(new Rectangle2D.Double(bx, by, bw, bh));
         for (int i = 0; i < labs.size(); i++) { double cy = by + 6 + rowH * (i + 0.5), sx = bx + 12;
             switch (kinds.get(i)) {
