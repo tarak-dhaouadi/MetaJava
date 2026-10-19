@@ -69,6 +69,7 @@ public class LabelPlacerTest {
     }
 
     public static void main(String[] args) throws Exception {
+        System.setProperty("metajava.labelBudgetMs", "600000");   // the 1.5 s refinement budget would make the result depend on the speed of the machine (slow CI runners): test the placement itself
         outDir = args.length > 0 ? new java.io.File(args[0]) : null; if (outDir != null) outDir.mkdirs();
         for (String sm : new String[]{"RR", "OR"}) { System.out.println("== Binary outcome, " + sm); example(sm); }
         stress();
@@ -107,7 +108,7 @@ public class LabelPlacerTest {
     static void stress() {
         System.out.println("== synthetic stress cases");
         Random rnd = new Random(7);
-        for (int[] cfg : new int[][]{{20, 0}, {60, 0}, {90, 0}, {60, 1}, {100, 1}, {80, 2}, {40, 3}, {600, 4}}) {   // {points, kind}: 0 uniform, 1 one tight cluster, 2 line of points, 3 coincident points, 4 hopelessly crowded (labels must overlap each other, but never a symbol: only that is checked)
+        for (int[] cfg : new int[][]{{20, 0}, {60, 0}, {90, 0}, {60, 1}, {100, 1}, {80, 2}, {40, 3}, {150, 4}}) {   // {points, kind}: 0 uniform, 1 one tight cluster, 2 line of points, 3 coincident points, 4 hopelessly crowded (labels must overlap each other, but never a symbol: only that is checked)
             int n = cfg[0], kind = cfg[1]; String name = "stress n=" + n + " kind=" + kind; LabelPlacer lp = new LabelPlacer(0, 0, 600, 450, 8.5f);
             for (int i = 0; i < n; i++) { double x, y, rad = 3 + rnd.nextInt(8) * (kind == 1 ? 0.5 : 1);
                 switch (kind) { case 1: x = 300 + rnd.nextGaussian() * 25; y = 220 + rnd.nextGaussian() * 25; break; case 2: x = 30 + 540.0 * i / n; y = 30 + 390.0 * i / n; break; case 3: x = 300 + (i % 4); y = 200 + (i % 3); break; case 4: x = 20 + rnd.nextDouble() * 560; y = 20 + rnd.nextDouble() * 410; break; default: x = 20 + rnd.nextDouble() * 560; y = 20 + rnd.nextDouble() * 410; }

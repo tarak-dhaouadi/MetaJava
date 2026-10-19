@@ -23,7 +23,7 @@ final class LabelPlacer {
     static final double BOX_GAP = 2.0;      // minimum gap between two label boxes
     static final double LABEL_H = 15;       // box height at 8.5 pt
     private static final double MIN_LEADER = 3.5;   // a leader line is drawn when the box is farther than this from the edge of its symbol
-    private static final long BUDGET_MS = 1500;   // refinement (extra starts, passes, exchanges) stops after this long: only crowded plots with 100+ labels get near it
+    private static final long BUDGET_MS = Long.getLong("metajava.labelBudgetMs", 1500L);   // refinement (extra starts, passes, exchanges) and, with 100+ labels, the fallback grid scan stop after this long
     private static final double HARD = 1e6, K_SYMBOL = 1500, K_BOX = 1500, K_LEADER = 300, K_AMBIGUOUS = 40;
 
     private final double x0, y0, x1, y1; private final float font;
@@ -159,7 +159,7 @@ final class LabelPlacer {
         Cand best(int i, Cand keep) {
             Cand best = keep; double bc = keep == null ? Double.MAX_VALUE : total(i, keep, Double.MAX_VALUE);
             for (Cand k : rings(i)) { double c = total(i, k, bc); if (c < bc - 1e-9) { bc = c; best = k; } }
-            if (best == null || (bc >= HARD && !late())) for (Cand k : grid(i)) { double c = total(i, k, bc); if (c < bc - 1e-9) { bc = c; best = k; } }
+            if (best == null || (bc >= HARD && !(late() && n > 100))) for (Cand k : grid(i)) { double c = total(i, k, bc); if (c < bc - 1e-9) { bc = c; best = k; } }   // the clock never changes where labels may go (only for 100+ labels is the fallback scan dropped once late)
             if (best == null) {   // not a single place is free of symbols: put the label on the least-covered ring place (reported by Layout.forced)
                 Cand f = make(i, Math.max(x0 + w[i] / 2, Math.min(x1 - w[i] / 2, px[i] + rad[i] + w[i] / 2 + CLEAR)), Math.max(y0 + h[i] / 2, Math.min(y1 - h[i] / 2, py[i])), 1e9);
                 if (f == null) { f = new Cand(); f.cx = px[i] + rad[i] + w[i] / 2 + CLEAR; f.cy = py[i]; f.bx0 = f.cx - w[i] / 2; f.bx1 = f.cx + w[i] / 2; f.by0 = f.cy - h[i] / 2; f.by1 = f.cy + h[i] / 2; }
