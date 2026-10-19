@@ -46,7 +46,11 @@ public final class Perm {
         Perm o = new Perm(); o.k = k; o.p = p; o.coefNames = g.coefNames; o.knha = g.knha; o.seed = seed; o.dfQM = g.dfQM;
         o.z = g.zval.clone(); o.QM = g.QM;
         iter = Math.max(2, iter);   // metafor: 'iter' must be >= 2
-        final Plan pl = plan(g, iter, wantExact, exactBudgetSeconds, safetyFactor); o.plan = pl;   // the number of unique permutations is known before anything is generated or fitted
+        final java.util.function.Consumer<String> stat = Par.statusSink();
+        if (stat != null && wantExact) stat.accept("Exact permutation test: measuring the speed of this computer ...");
+        final Plan[] plBox = new Plan[1]; final int iterF = iter;
+        Par.withProgress(null, () -> plBox[0] = plan(g, iterF, wantExact, exactBudgetSeconds, safetyFactor));   // the timing fits are not part of the progress of the test itself
+        final Plan pl = plBox[0]; o.plan = pl;   // the number of unique permutations is known before anything is generated or fitted
         if (pl.exact && !pl.feasible) throw new InfeasibleExactTest(pl);
         final double[][] Xs = sortedRows(f.X); final int[] lab = groupLabels(Xs);
         boolean exact = pl.exact;
@@ -60,13 +64,17 @@ public final class Perm {
             // the rows of a group are identical, so any of them can stand for it
             int g0 = 0; for (int l : lab) g0 = Math.max(g0, l + 1);
             final double[][] rep = new double[g0][]; for (int i = 0; i < k; i++) rep[lab[i]] = Xs[i];
-            int[] cur = lab.clone(); long done = 0;
+            int[] cur = lab.clone(); long done = 0; final long tExact = System.nanoTime(); final java.util.concurrent.atomic.AtomicLong lastSt = new java.util.concurrent.atomic.AtomicLong();
+            if (stat != null) stat.accept(progressText(0, total, 0));
             while (done < total) {
                 Par.checkCancel();
                 int m = (int) Math.min(CHUNK, total - done); final int[][] batch = new int[m][]; final double[][] res = new double[m][];
                 for (int b = 0; b < m; b++) { batch[b] = cur.clone(); nextPermutation(cur); }
                 final long done0 = done; final java.util.function.DoubleConsumer outerSink = Par.progressSink();   // one overall progress fraction over all chunks
-                Par.withProgress(outerSink == null ? null : fr -> outerSink.accept(Math.min(1.0, (done0 + fr * res.length) / (double) total)), () -> Par.forRange(res.length, b -> res[b] = fitPermuted(f, y, v, rep, batch[b], method, knha, adhoc, icpt, null)));
+                final java.util.function.DoubleConsumer chunkSink = outerSink == null && stat == null ? null : fr -> {
+                    final long dn = done0 + (long) (fr * res.length); if (outerSink != null) outerSink.accept(Math.min(1.0, dn / (double) total));
+                    if (stat != null) { final long now = System.nanoTime(), last = lastSt.get(); if (now - last > 250_000_000L && lastSt.compareAndSet(last, now)) stat.accept(progressText(dn, total, (now - tExact) / 1e9)); } };
+                Par.withProgress(chunkSink, () -> Par.forRange(res.length, b -> res[b] = fitPermuted(f, y, v, rep, batch[b], method, knha, adhoc, icpt, null)));
                 for (int b = 0; b < m; b++) {
                     double[] st = res[b]; if (st == null) { o.failed++; continue; }
                     for (int a = 0; a < p; a++) if (!Double.isNaN(st[a])) { nv[a]++; if (Math.abs(st[a]) >= Math.abs(o.z[a]) - TOL) cnt[a]++; }
@@ -74,7 +82,7 @@ public final class Perm {
                 }
                 done += m;
             }
-            o.attempts = total;
+            o.attempts = total; if (stat != null) stat.accept(null);
         } else {
             // metafor: X <- as.data.frame(x$X)[do.call(order, as.data.frame(x$X)),]; rows X[sample(k),] are then used with yi, vi and the weights in their original order
             final long cap = maxDraws > 0 ? maxDraws : Long.MAX_VALUE;
@@ -113,6 +121,14 @@ public final class Perm {
         o.seconds = (System.nanoTime() - tRun) / 1e9;
         if (!exact && pl.unique.compareTo(java.math.BigInteger.valueOf(1_000_000)) <= 0) o.note = "The exact test (all " + String.format(java.util.Locale.ROOT, "%,d", pl.unique) + " unique permutations) is available for this model.";
         return o;
+    }
+
+    /** Status line of a running exact test: permutations done, percentage and, once the speed is known, the time still needed. */
+    static String progressText(long done, long total, double elapsedSec) {
+        double f = total > 0 ? done / (double) total : 0;
+        String s = String.format(java.util.Locale.ROOT, "Exact permutation test: %,d of %,d permutations (%.1f%%)", done, total, Math.min(100.0, 100 * f));
+        if (elapsedSec >= 3 && f >= 0.002 && f < 1) s += ", about " + Plan.dur(elapsedSec * (1 - f) / f) + " remaining";
+        return s;
     }
 
     /** Group number (0, 1, ... in the order of the sorted rows) of every row of the sorted model matrix; identical rows share a group. */

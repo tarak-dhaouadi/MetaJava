@@ -53,6 +53,11 @@ public final class Report {
         }
     }
 
+    /** Column header of the effect size in output tables: names the scale actually shown ("log OR" when results are not back-transformed). */
+    public static String effHeader(MetaSpec s) {
+        return !s.backtransf && java.util.Arrays.asList("OR", "RR", "HR", "IRR", "DOR", "ROM").contains(s.sm) ? "log " + smLabel(s) : smLabel(s);
+    }
+
     static double bt(MetaSpec s, double x, Pool p) { return Meta.back(s, x, p.nHarm); }
 
     /** n (proportions) or person-time (rates) of study i, needed to back-transform Freeman-Tukey values. */
@@ -74,7 +79,7 @@ public final class Report {
 
     public static String summary(MetaResult r) {
         MetaSpec s = r.spec; Pool p = r.overall; StringBuilder b = new StringBuilder();
-        int k = p.k; String lab = smLabel(s); int d = 4;
+        int k = p.k; String lab = effHeader(s); int d = 4;
         if (!s.title.isEmpty()) b.append("Title: ").append(s.title).append(NL).append(NL);
         b.append("Meta-Analysis Summary").append(NL).append(NL);
         // study table
@@ -129,7 +134,7 @@ public final class Report {
         MetaSpec s = r.spec; Pool p0 = r.overall;
         if (!s.random || s.isGlmm() || s.isLrp() || p0.k < 2 || r.commonFn == null && s.method.equals("MH")) return "";
         int d = 4; boolean test = s.hasNull(); int[] all = new int[r.TE.length]; for (int i = 0; i < all.length; i++) all[i] = i;
-        List<String> head = new ArrayList<>(List.of("Tau^2 estimator", smLabel(s), pct(s.levelMa) + "% CI")); if (test) head.add("p-value");
+        List<String> head = new ArrayList<>(List.of("Tau^2 estimator", effHeader(s), pct(s.levelMa) + "% CI")); if (test) head.add("p-value");
         head.add("I^2"); head.add("Het. p-value"); head.add("tau^2"); head.add(pct(s.levelPredict) + "% PI");
         List<String[]> rows = new ArrayList<>(); boolean any = false; Map<String, String> notes = new LinkedHashMap<>();
         // the fourteen refits are independent: run in parallel, each into its own slot; the rows and notes are then assembled in the order of TAU_SENS (identical output to a serial loop)
@@ -165,7 +170,7 @@ public final class Report {
 
     static String pooledTable(MetaResult r, Pool p, String suffix, boolean pi) {
         MetaSpec s = r.spec; int d = 4; List<String> head = new ArrayList<>(); List<String[]> rows = new ArrayList<>();
-        head.add(""); head.add(smLabel(s)); head.add(Fmt.num(s.levelMa * 100, 0) + "% CI");
+        head.add(""); head.add(effHeader(s)); head.add(Fmt.num(s.levelMa * 100, 0) + "% CI");
         boolean test = !Double.isNaN(s.nullValue());
         if (test) { head.add(p.testType.equals("t") && s.random && !s.common ? "t" : "z|t"); head.add("p-value"); }
         if (s.common) { List<String> row = new ArrayList<>(); row.add(s.textCommon + suffix); row.add(Fmt.num(bt(s, p.teCommon, p), d)); row.add(Fmt.ci(bt(s, p.loCommon, p), bt(s, p.upCommon, p), d));
@@ -231,7 +236,7 @@ public final class Report {
         MetaSpec s = r.spec; StringBuilder b = new StringBuilder(); int d = 4;
         String nm = s.subgroupName.isEmpty() ? "subgroup" : s.subgroupName;
         b.append("Results for subgroups (").append(s.common && s.random ? "common effect model | random effects model" : s.random ? "random effects model" : "common effect model").append("):").append(NL);
-        List<String> head = new ArrayList<>(List.of("", "k", smLabel(s), Fmt.num(s.levelMa * 100, 0) + "% CI"));
+        List<String> head = new ArrayList<>(List.of("", "k", effHeader(s), Fmt.num(s.levelMa * 100, 0) + "% CI"));
         if (s.random) { head.add("tau^2"); head.add("tau"); } head.add("Q"); head.add("I^2");
         boolean piCol = s.random; /* PI of each subgroup (random effects only) */ if (piCol) head.add(pct(s.levelPredict) + "% PI");
         List<String[]> rows = new ArrayList<>();
@@ -366,11 +371,11 @@ public final class Report {
         if (!l.note.isEmpty()) sb.append("Note: ").append(l.note).append(NL);
         sb.append(NL); int w = 5; for (String x : l.label) w = Math.max(w, x.length());
         StringBuilder tb = new StringBuilder(); List<String[]> lrows = new ArrayList<>();
-        tb.append(Fmt.padR("Study", w)).append("  ").append(Fmt.pad(ratio ? "log " + smLabel(r.spec) : smLabel(r.spec), 12)).append(Fmt.pad("SE", 10)).append(Fmt.pad("Z-score", 10)).append(Fmt.pad("|Z-score|", 11)).append(NL);
+        tb.append(Fmt.padR("Study", w)).append("  ").append(Fmt.pad(effHeader(r.spec), 12)).append(Fmt.pad("SE", 10)).append(Fmt.pad("Z-score", 10)).append(Fmt.pad("|Z-score|", 11)).append(NL);
         for (int j = 0; j < l.k; j++) { tb.append(Fmt.padR(l.label[j], w)).append("  ").append(Fmt.pad(Fmt.num(l.te[j], d), 12)).append(Fmt.pad(Fmt.num(l.se[j], d), 10)).append(Fmt.pad(Fmt.num(l.zscore[j], 3), 10)).append(Fmt.pad(Fmt.num(l.absZ[j], 3), 11)).append(j == l.apex ? "  <- apex" : "").append(NL);
             lrows.add(new String[]{l.label[j], Fmt.num(l.te[j], d), Fmt.num(l.se[j], d), Fmt.num(l.zscore[j], 3), Fmt.num(l.absZ[j], 3), j == l.apex ? "apex" : ""}); }
         sb.append(tb);
-        recordManual(tb.toString(), List.of("Study", ratio ? "log " + smLabel(r.spec) : smLabel(r.spec), "SE", "Z-score", "|Z-score|", ""), lrows, new boolean[]{false, true, true, true, true, false});
+        recordManual(tb.toString(), List.of("Study", effHeader(r.spec), "SE", "Z-score", "|Z-score|", ""), lrows, new boolean[]{false, true, true, true, true, false});
         return sb.toString();
     }
 
@@ -444,7 +449,7 @@ public final class Report {
     public static String looText(MetaResult r) {
         MetaSpec s = r.spec; StringBuilder b = new StringBuilder(); int d = 4;
         b.append("Leave-One-Out Meta-Analysis Summary").append(NL).append(NL);
-        List<String> head = new ArrayList<>(List.of("", s.random ? "" : "", smLabel(s), s.levelMa == 0.95 ? "95% CI" : Fmt.num(s.levelMa * 100, 0) + "% CI", "p-value"));
+        List<String> head = new ArrayList<>(List.of("", s.random ? "" : "", effHeader(s), s.levelMa == 0.95 ? "95% CI" : Fmt.num(s.levelMa * 100, 0) + "% CI", "p-value"));
         head.remove(1); if (!s.hasNull()) head.remove("p-value");   // no null hypothesis (single proportions / means / rates without a target): no test, no p-value
         if (s.random) { head.add("tau^2"); head.add("tau"); } head.add("I^2");
         if (s.prediction && s.random) head.add(pct(s.levelPredict) + "% PI");
@@ -476,7 +481,7 @@ public final class Report {
     public static String cumText(MetaResult r) {
         MetaSpec s = r.spec; StringBuilder b = new StringBuilder(); int d = 4;
         b.append("Cumulative Meta-Analysis Summary").append(NL).append(NL);
-        List<String> head = new ArrayList<>(List.of("", smLabel(s), Fmt.num(s.levelMa * 100, 0) + "% CI", "p-value"));
+        List<String> head = new ArrayList<>(List.of("", effHeader(s), Fmt.num(s.levelMa * 100, 0) + "% CI", "p-value"));
         if (!s.hasNull()) head.remove("p-value");
         if (s.random) { head.add("tau^2"); head.add("tau"); } head.add("I^2");
         if (s.prediction && s.random) head.add(pct(s.levelPredict) + "% PI");   // as in the leave-one-out table (and the cumulative forest plot, which draws the prediction rows)
@@ -521,7 +526,7 @@ public final class Report {
     public static String trimfillText(TrimFill tf, MetaResult r) {
         StringBuilder b = new StringBuilder(); MetaSpec s = r.spec; int d = 4;
         if (!s.title.isEmpty()) b.append("Review:     ").append(s.title).append(NL).append(NL);
-        List<String> head = new ArrayList<>(List.of("", smLabel(s), Fmt.num(s.levelMa * 100, 0) + "% CI")); List<String[]> rows = new ArrayList<>();
+        List<String> head = new ArrayList<>(List.of("", effHeader(s), Fmt.num(s.levelMa * 100, 0) + "% CI")); List<String[]> rows = new ArrayList<>();
         Pool p = tf.pool;
         rows.add(new String[]{"Number of studies combined: k = " + (tf.TE.length) + " (with " + tf.k0 + " added studies)", "", ""});
         b.append("Number of studies combined: k = ").append(tf.TE.length).append(" (with ").append(tf.k0).append(" added ").append(tf.k0 == 1 ? "study" : "studies").append(")").append(NL).append(NL);

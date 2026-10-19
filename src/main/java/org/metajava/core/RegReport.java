@@ -77,7 +77,7 @@ public final class RegReport {
         String[] nm = {"min", "2.5%", "25%", "50%", "75%", "97.5%", "max"}; double[] ps = {0, 0.025, 0.25, 0.5, 0.75, 0.975, 1};
         List<String> head = new ArrayList<>(); head.add("Over the subsets"); head.addAll(Arrays.asList(nm));
         List<String[]> rows = new ArrayList<>();
-        String[] e = new String[8], i = new String[8], t = new String[8], z = new String[8]; e[0] = Report.smLabel(s) + (s.backtransf && !s.isRatioSm() ? "" : ""); i[0] = "I^2 (%)"; t[0] = "tau^2"; z[0] = "Number of studies";
+        String[] e = new String[8], i = new String[8], t = new String[8], z = new String[8]; e[0] = Report.effHeader(s); i[0] = "I^2 (%)"; t[0] = "tau^2"; z[0] = "Number of studies";
         double[] sz = new double[g.nSub]; for (int q = 0; q < g.nSub; q++) sz[q] = g.size[q];
         for (int q = 0; q < 7; q++) { e[q + 1] = Fmt.num(bt(s, Gosh.quantile(g.est, ps[q]), nh), 4); i[q + 1] = Fmt.num(Gosh.quantile(g.i2, ps[q]), 1); t[q + 1] = Fmt.num(Gosh.quantile(g.tau2, ps[q]), 4); z[q + 1] = Fmt.num(Gosh.quantile(sz, ps[q]), 0); }
         rows.add(e); rows.add(i); rows.add(t); rows.add(z);
@@ -95,7 +95,7 @@ public final class RegReport {
             sr.add(new String[]{g.labels[j], Fmt.num(bt(s, g.estIn[j], nh), 4), Fmt.num(bt(s, g.estOut[j], nh), 4), Fmt.num(g.i2In[j], 1), Fmt.num(g.i2Out[j], 1), Fmt.num(g.i2In[j] - g.i2Out[j], 1)}); }
         b.append(Report.table(List.of("Study", "Estimate (in)", "Estimate (out)", "I^2 (in)", "I^2 (out)", "I^2 diff."), sr, new boolean[]{false, true, true, true, true, true})).append(NL);
         b.append("A study whose inclusion raises the mean I^2 by a large amount (and shifts the estimate) is a candidate source of heterogeneity; in the plot, separate clusters of subsets point to the same thing. These differences are descriptive and should be read together with the plot and with the outlier and influence diagnostics.").append(NL);
-        if (g.clusters != null) { double nhh = nh; b.append(NL).append(clusterText(g.clusters, g.labels, new java.util.function.DoubleUnaryOperator[]{x -> bt(s, x, nhh), null}, new String[]{Report.smLabel(s), "I^2 (%)"})); }
+        if (g.clusters != null) { double nhh = nh; b.append(NL).append(clusterText(g.clusters, g.labels, new java.util.function.DoubleUnaryOperator[]{x -> bt(s, x, nhh), null}, new String[]{Report.effHeader(s), "I^2 (%)"})); }
         return b.toString();
     }
 

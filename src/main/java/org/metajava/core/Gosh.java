@@ -52,6 +52,7 @@ public final class Gosh {
         g.est = new double[n]; g.i2 = new double[n]; g.tau2 = new double[n]; g.q = new double[n]; g.size = new int[n]; if (nStudy != null) g.nHarm = new double[n];
         final boolean qDef = false;   // metafor: I^2 of a random-effects fit is tau^2 / (tau^2 + vt), whatever the estimator (the Q-based I^2 is the fixed-effect definition)
         final String method = s.methodTau; final long[][] M = g.mask;
+        Par.nextPhase(0, 0.92);
         Par.forRange(n, b -> {
             long[] m = M[b]; int c = 0; for (long x : m) c += Long.bitCount(x);
             double[] yy = new double[c], vv = new double[c], ww = gwAll == null ? null : new double[c]; int t = 0; double hs = 0; int hc = 0;
@@ -70,6 +71,7 @@ public final class Gosh {
         // in / out means
         g.estIn = new double[k]; g.estOut = new double[k]; g.i2In = new double[k]; g.i2Out = new double[k]; g.nIn = new int[k];
         final Gosh G = g;
+        Par.nextPhase(0.92, 1);
         Par.forRange(k, j -> {   // one study per task; the subsets are visited in the same order as before, so the sums (and the results) are identical
             double sEi = 0, sEo = 0, sIi = 0, sIo = 0; int ni = 0, no = 0;
             for (int b = 0; b < n; b++) { if (Double.isNaN(G.est[b]) || Double.isNaN(G.i2[b])) continue;

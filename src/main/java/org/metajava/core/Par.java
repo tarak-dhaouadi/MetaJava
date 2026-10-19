@@ -69,6 +69,15 @@ public final class Par {
         try { r.run(); } finally { if (old == null) PROGRESS.remove(); else PROGRESS.set(old); }
     }
 
+    private static final ThreadLocal<java.util.function.Consumer<String>> STATUS = new ThreadLocal<>();   // status-line sink of the calling thread (null text = clear)
+    /** Runs r with a status-line sink attached to this thread: long computations describe what they are doing (e.g. "1,234 of 6,227,020 permutations"). */
+    public static void withStatus(java.util.function.Consumer<String> sink, Runnable r) {
+        java.util.function.Consumer<String> old = STATUS.get(); STATUS.set(sink);
+        try { r.run(); } finally { if (old == null) STATUS.remove(); else STATUS.set(old); }
+    }
+    /** The status-line sink attached to this thread (null when none). */
+    public static java.util.function.Consumer<String> statusSink() { return STATUS.get(); }
+
     /** The progress sink attached to this thread (null when none): lets a sequence of loops report one overall fraction instead of 0..1 per loop. */
     public static DoubleConsumer progressSink() { return IN_LOOP.get() == null ? PROGRESS.get() : null; }
 
@@ -82,11 +91,35 @@ public final class Par {
         return () -> { BooleanSupplier old = CANCEL.get(); CANCEL.set(tok); try { return c.call(); } finally { if (old == null) CANCEL.remove(); else CANCEL.set(old); } };
     }
 
+    private static final ThreadLocal<double[]> NEXT_PHASE = new ThreadLocal<>();
+    /** The next parallel loop started by this thread reports its progress into [from, to] of the overall fraction (several loops one after the other then make one steadily rising fraction). */
+    public static void nextPhase(double from, double to) { NEXT_PHASE.set(new double[]{from, to}); }
+    /** Runs r with the progress of the loops inside it mapped into [from, to] of the overall fraction; at the end the phase counts as complete. No effect without a progress sink. */
+    public static void phase(double from, double to, Runnable r) {
+        final DoubleConsumer outer = IN_LOOP.get() == null ? PROGRESS.get() : null;
+        if (outer == null) { r.run(); return; }
+        withProgress(fr -> outer.accept(from + (to - from) * Math.min(1.0, Math.max(0.0, fr))), r);
+        outer.accept(to);
+    }
+    /** Computes s without reporting progress of the loops inside it (small steps that should not make the fraction jump back). */
+    public static <T> T quiet(java.util.function.Supplier<T> s) {
+        DoubleConsumer old = PROGRESS.get(); PROGRESS.set(null);
+        try { return s.get(); } finally { if (old == null) PROGRESS.remove(); else PROGRESS.set(old); }
+    }
+
     /** Runs body(0..n-1); results must be written to per-index slots by the caller. Rethrows the first failure. */
     public static void forRange(int n, IntConsumer body0) {
+        final double[] ph = NEXT_PHASE.get(); if (ph != null) NEXT_PHASE.remove();
+        final DoubleConsumer pg0 = IN_LOOP.get() == null ? PROGRESS.get() : null;
+        final DoubleConsumer pg = pg0 == null || ph == null ? pg0 : fr -> pg0.accept(ph[0] + (ph[1] - ph[0]) * fr);
+        forRangeImpl(n, body0, pg);
+        if (pg != null && ph != null && n > 0) pg.accept(1.0);
+    }
+
+    private static void forRangeImpl(int n, IntConsumer body0, DoubleConsumer pgIn) {
         if (n <= 0) return;
         final BooleanSupplier tok = CANCEL.get();
-        final DoubleConsumer pg = IN_LOOP.get() == null ? PROGRESS.get() : null; final AtomicInteger cnt = new AtomicInteger(); final boolean outer = IN_LOOP.get() == null;
+        final DoubleConsumer pg = pgIn; final AtomicInteger cnt = new AtomicInteger(); final boolean outer = IN_LOOP.get() == null;
         final IntConsumer body = pg == null ? body0 : i -> { body0.accept(i); pg.accept(cnt.incrementAndGet() / (double) n); };
         if (n == 1 || threads <= 1) {
             if (outer) IN_LOOP.set(Boolean.TRUE);

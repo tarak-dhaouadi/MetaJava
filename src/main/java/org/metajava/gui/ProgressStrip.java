@@ -39,9 +39,11 @@ final class ProgressStrip extends JPanel {
     }
 
     /** UI thread: a run begins. */
-    void start() { running = true; pct = 0; percent.setText("0%"); if (!line.isVisible() && !showTimer.isRunning()) showTimer.restart(); bar.repaint(); }
+    void start() { running = true; pct = 0; text.setText(TEXT); percent.setText("0%"); if (!line.isVisible() && !showTimer.isRunning()) showTimer.restart(); bar.repaint(); }
     /** UI thread: progress in percent (0-100). */
     void setProgress(int p) { if (!running) return; pct = Math.max(0, Math.min(100, p)); percent.setText(pct + "%"); bar.repaint(); }
+    /** UI thread: detail shown after "Running analysis..." (what the long computation is doing); null clears it. */
+    void setDetail(String d) { if (!running) return; text.setText(d == null || d.isEmpty() ? TEXT : TEXT + "  " + d); }
     /** UI thread: the run is over (finished, failed or superseded by nothing). */
-    void stop() { running = false; showTimer.stop(); spin.stop(); boolean was = line.isVisible(); line.setVisible(false); bar.repaint(); if (was) { revalidate(); repaint(); } }
+    void stop() { running = false; text.setText(TEXT); showTimer.stop(); spin.stop(); boolean was = line.isVisible(); line.setVisible(false); bar.repaint(); if (was) { revalidate(); repaint(); } }
 }

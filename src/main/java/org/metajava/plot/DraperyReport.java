@@ -260,7 +260,7 @@ public final class DraperyReport {
 
     /** One Hartung-Knapp variant: SE on the analysis scale, reference distribution (d.f. NaN = standard normal), CI and two-sided p-value for the null. */
     private static final class HkVar { boolean degenerate;
-        String name, rule, check; double se, df, lo, up, p; boolean t, applied;
+        String name, rule, check; double te, se, df, lo, up, p; boolean t, applied;
         boolean same(HkVar o) { return Fmt.num(lo, 4).equals(Fmt.num(o.lo, 4)) && Fmt.num(up, 4).equals(Fmt.num(o.up, 4)) && Fmt.pval(p, 4).equals(Fmt.pval(o.p, 4)); }
     }
     private static final class Hk { double q, seClassic; boolean primary, kr; int primaryIdx = -1; List<HkVar> vars = new ArrayList<>(); HkVar conv() { return vars.get(0); }
@@ -279,18 +279,18 @@ public final class DraperyReport {
      * 0.05, whether its ad hoc rule was triggered and whether the 5% conclusion differs from the reported one.
      */
     private static String hkTable(Hk hk, Pool P, double pRep, double teRep, double seRep, double loRep, double upRep, boolean sigMain, String cl, java.util.function.DoubleUnaryOperator v) {
-        List<String> head = new ArrayList<>(List.of("Method", "Distribution", "SE", cl, "p-value", "Significant at 0.05", "Ad hoc rule triggered", "Conclusion vs reported")); List<String[]> rows = new ArrayList<>();
+        List<String> head = new ArrayList<>(List.of("Method", "Distribution", "SE", "Pooled effect", cl, "p-value", "Significant at 0.05", "Ad hoc rule triggered", "Conclusion vs reported")); List<String[]> rows = new ArrayList<>();
         if (!hk.primary) {
             boolean t = "t".equals(P.testType) && ok(P.dfRandom);
-            rows.add(new String[]{(hk.kr ? "Kenward-Roger, t" : "Classic Wald, z") + " [reported]", t ? "t (" + Fmt.num(P.dfRandom, Math.abs(P.dfRandom - Math.rint(P.dfRandom)) < 1e-9 ? 0 : 2) + " d.f.)" : "normal", n4(seRep), ci(v.applyAsDouble(loRep), v.applyAsDouble(upRep)),
+            rows.add(new String[]{(hk.kr ? "Kenward-Roger, t" : "Classic Wald, z") + " [reported]", t ? "t (" + Fmt.num(P.dfRandom, Math.abs(P.dfRandom - Math.rint(P.dfRandom)) < 1e-9 ? 0 : 2) + " d.f.)" : "normal", n4(seRep), n4(v.applyAsDouble(teRep)), ci(v.applyAsDouble(loRep), v.applyAsDouble(upRep)),
                 Fmt.pval(pRep, 4), ok(pRep) ? (pRep < ALPHA ? "Yes" : "No") : "NA", "-", "-"});
         }
         String[] lab = {"Conventional Hartung-Knapp", "Hartung-Knapp, ad hoc se", "Hartung-Knapp, ad hoc ci", "Hartung-Knapp, IQWiG 6"};
         for (int j = 0; j < hk.vars.size(); j++) { HkVar x = hk.vars.get(j); boolean rep = hk.primary && j == hk.primaryIdx;
             String dist = x.t ? "t (" + Fmt.num(x.df, 0) + " d.f.)" : "normal";
-            if (x.degenerate) rows.add(new String[]{lab[j] + (rep ? " [reported]" : ""), dist, n4(x.se), ci(v.applyAsDouble(x.lo), v.applyAsDouble(x.up)), ok(x.p) ? "0 (degenerate)" : "undefined (0/0)", "NA", j == 0 ? "-" : x.applied ? "Yes" : "No", rep ? "-" : hk.reportedDegenerate() ? "Unavailable" : "NA"});
-            else rows.add(new String[]{lab[j] + (rep ? " [reported]" : ""), dist, n4(x.se), ci(v.applyAsDouble(x.lo), v.applyAsDouble(x.up)), Fmt.pval(x.p, 4), x.p < ALPHA ? "Yes" : "No", j == 0 ? "-" : x.applied ? "Yes" : "No", rep ? "-" : hk.reportedDegenerate() ? "Unavailable" : (x.p < ALPHA) == sigMain ? "unchanged" : "changed"}); }
-        boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false; right[1] = false; right[6] = false; right[7] = false;
+            if (x.degenerate) rows.add(new String[]{lab[j] + (rep ? " [reported]" : ""), dist, n4(x.se), n4(v.applyAsDouble(x.te)), ci(v.applyAsDouble(x.lo), v.applyAsDouble(x.up)), ok(x.p) ? "0 (degenerate)" : "undefined (0/0)", "NA", j == 0 ? "-" : x.applied ? "Yes" : "No", rep ? "-" : hk.reportedDegenerate() ? "Unavailable" : "NA"});
+            else rows.add(new String[]{lab[j] + (rep ? " [reported]" : ""), dist, n4(x.se), n4(v.applyAsDouble(x.te)), ci(v.applyAsDouble(x.lo), v.applyAsDouble(x.up)), Fmt.pval(x.p, 4), x.p < ALPHA ? "Yes" : "No", j == 0 ? "-" : x.applied ? "Yes" : "No", rep ? "-" : hk.reportedDegenerate() ? "Unavailable" : (x.p < ALPHA) == sigMain ? "unchanged" : "changed"}); }
+        boolean[] right = new boolean[head.size()]; Arrays.fill(right, true); right[0] = false; right[1] = false; right[7] = false; right[8] = false;
         return Report.table(head, rows, right);
     }
 
@@ -339,7 +339,7 @@ public final class DraperyReport {
             if (j == 2 && trig[2]) { se = seCl; t = false; }
             if (j == 3 && trig[3]) se = seCl;
             HkVar x = new HkVar(); x.name = names[j]; x.rule = rules[j]; x.se = se; x.t = t; x.applied = trig[j]; x.check = checks[j] + (j == 0 ? "" : trig[j] ? ": correction applied" : ": correction not triggered, result identical to the conventional adjustment"); x.df = t ? df : Double.NaN; double c = t ? tc : zc;
-            x.lo = mu - c * se; x.up = mu + c * se;
+            x.te = mu; x.lo = mu - c * se; x.up = mu + c * se;
             if (se == 0) { x.degenerate = true; x.p = mu == nullW ? Double.NaN : 0.0; }   // as ci() of meta: statistic +-Inf gives p = 0, 0/0 gives NA
             else x.p = t ? Dist.ptTwoSided((mu - nullW) / se, df) : Dist.pnormTwoSided((mu - nullW) / se);
             h.vars.add(x);

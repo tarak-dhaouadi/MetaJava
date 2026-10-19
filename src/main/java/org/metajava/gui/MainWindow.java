@@ -94,7 +94,7 @@ public class MainWindow extends JFrame {
     // other analyses
     JCheckBox sgChk = Ui.check("Subgroup analysis (uses the subgroup column)", false), sgPred = Ui.check("Subgroup prediction interval", false), sgTestEffect = Ui.check("Test for effect in subgroup", false), sgDetails = Ui.check("Details of meta-analysis methods", false), regChk = Ui.check("Meta-regression", false), bubbleChk = Ui.check("Bubble plot", true), regLine = Ui.check("Regression line", true), regCI = Ui.check("Confidence interval", false), regPI = Ui.check("Prediction interval", false), regLog = Ui.check("Log scale for ratio measures (straight regression line)", false), adjChk = Ui.check("Regression plot with categorical moderator adjustment", false), regIntercept = Ui.check("Intercept", true),
         looChk = Ui.check("Leave-one-out analysis", false), looForest = Ui.check("Forest plot", true), cumChk = Ui.check("Cumulative meta-analysis", false), cumForest = Ui.check("Forest plot", true),
-        funnelChk = Ui.check("Funnel plot", false), funnelPrecChk = Ui.check("Funnel plot of precision", false), contourChk = Ui.check("Contour-enhanced", false), labChk = Ui.check("Study labels", true), biasChk = Ui.check("Test for funnel plot asymmetry", false), biasPlotChk = Ui.check("Plot", true),
+        funnelChk = Ui.check("Funnel plot", false), funnelPrecChk = Ui.check("Funnel plot of precision", false), funnelBackChk = Ui.check("Back-transform effect-size for funnel plot", false), contourChk = Ui.check("Contour-enhanced", false), labChk = Ui.check("Study labels", true), biasChk = Ui.check("Test for funnel plot asymmetry", false), biasPlotChk = Ui.check("Plot", true),
         tfChk = Ui.check("Trim and fill", false), tfPrecChk = Ui.check("Trim and fill funnel plot of precision", false), infChk = Ui.check("Outlier & influence diagnostics (metafor)", false), baujatChk = Ui.check("Baujat plot", false), radialChk = Ui.check("Radial (Galbraith) plot", false),
         drapChk = Ui.check("Drapery plot", false), drapPredChk = Ui.check("Prediction region", true), drapReportChk = Ui.check("Drapery plot analysis and interpretation (statistical report + narrative)", true), doiChk = Ui.check("Doi plot and LFK index", false), doiApexChk = Ui.check("Mark the apex (dashed line)", false), labbeChk = Ui.check("L\u2019Abb\u00E9 plot (binary outcomes)", false);
     JCheckBox petChk = Ui.check("PET-PEESE (small-study effects)", false), petPlotChk = Ui.check("PET-PEESE plot", false), selChk = Ui.check("Selection model (3-parameter)", false), failChk = Ui.check("Fail-safe N", false);
@@ -219,11 +219,12 @@ public class MainWindow extends JFrame {
         Ui.Section cu = new Ui.Section("8. Cumulative meta-analysis", false); cu.row(null, cumChk); cu.row(null, cumForest); p.add(cu); p.add(Box.createVerticalStrut(8));
 funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill funnel plot. Default = meta style; MetaWin style = power-enhanced (sunset) funnel with contour bands, always contour-enhanced; STATA style = Stata look (pale-blue frame, grey pseudo 95% limits or contour bands, framed legend). Imputed studies of the trim-and-fill plot are orange in the MetaWin and STATA styles");
         funnelThemeBox.addActionListener(e -> contourChk.setEnabled(!org.metajava.plot.FunnelThemes.METAWIN.equals(funnelThemeBox.getSelectedItem())));   // MetaWin style is always contour-enhanced
-        Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, funnelPrecChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row("Funnel plot themes", funnelThemeBox); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
+        Ui.Section pb = new Ui.Section("9. Publication bias", false); pb.row(null, funnelChk); pb.row(null, funnelPrecChk); pb.row(null, funnelBackChk); pb.row(null, contourChk); pb.row(null, labChk); pb.row("Funnel plot themes", funnelThemeBox); pb.row(null, biasChk); pb.row("Test method", biasMethod); pb.row(null, biasPlotChk);
         pb.row(null, tfChk); pb.row(null, tfPrecChk); pb.row("Trim-fill side", tfSide); pb.row("Trim-fill estimator", tfEst); pb.row("Trim-fill model", tfModel); pb.row(null, drapChk); pb.row("Drapery target effect-size (power computation only)", drapTargetF); pb.row("Drapery type", drapTypeBox); pb.row("Drapery layout", drapLayoutBox); pb.row("Drapery study colour", drapStudyColBox); pb.row("Drapery study labels", drapLabelsBox); pb.row("Drapery study label angle", drapAngleSp); pb.row(null, drapPredChk); pb.row("Drapery prediction colour", drapPredColBox);
         pb.row("Drapery model", drapModelBox); pb.row("Drapery random-effects colour", drapRandomColBox); pb.row("Drapery common-effect colour", drapCommonColBox); pb.row(null, drapReportChk);
         drapChk.setToolTipText("Drapery plot (meta::drapery): p-value functions (confidence curves) of the individual studies and of the pooled estimate, with the prediction region. Drawn after trim-and-fill. Relative effects (OR, RR, HR, ...) are always back-transformed (log-scaled x-axis)");
         drapLabelsBox.setSelectedItem(org.metajava.plot.Drapery.LAB_ID);   // default as in the meta examples: study numbers
+        funnelBackChk.setToolTipText("Show the x-axis of all funnel plots (funnel, funnel of precision, trim-and-fill and trim-and-fill of precision) on the back-transformed scale: odds / risk / hazard ratios instead of their logarithms, proportions instead of logit / log / arcsine / Freeman-Tukey values, correlations instead of Fisher\u2019s z, rates instead of their transformed values. Points, funnel limits and contour bands are unchanged; only the axis labels are back-transformed.");
         tfPrecChk.setToolTipText("Trim-and-fill funnel plot with precision (1/SE) on the vertical axis; the imputed studies are shown as open circles. It uses the trim-and-fill settings below and the options of the funnel plot (study labels, funnel theme, contour-enhanced).");
         drapReportChk.setToolTipText("Adds the section \"Drapery Plot Analysis and Interpretation\" below the plot: a statistical report (model, pooled effect, individual studies, prediction region) and a narrative generated from the fitted model and the plotted curves. It follows the model(s) displayed in the plot and never infers publication bias");
         drapTypeBox.setToolTipText("z-value: scaled curves (test statistic, default); p-value: p-value functions");
@@ -549,6 +550,8 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
         if (lastPct.getAndUpdate(o -> Math.max(o, p)) >= p) return;
         SwingUtilities.invokeLater(() -> { if (gen == generation) { busy.setIndeterminate(false); busy.setValue(p); strip.setProgress(p); } });
     }
+    /** Any thread: status text after "Running analysis..." (e.g. permutations done); null clears it. */
+    void statusTo(int gen, String msg) { SwingUtilities.invokeLater(() -> { if (gen == generation) strip.setDetail(msg); }); }
     /** UI thread: the run is over. */
     void runFinished() { busy.setIndeterminate(false); busy.setVisible(false); strip.stop(); }
 
@@ -576,73 +579,94 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
     }
 
     /** Overall progress (0..1 of the part after the main fit) from the finished sections and the partial progress of the running ones. */
-    private static double progressOf(int done, java.util.concurrent.atomic.AtomicIntegerArray fracs, int total) {
-        double part = 0; for (int i = 0; i < fracs.length(); i++) part += fracs.get(i) / 1000.0;
+    private static double progressOf(int done, java.util.concurrent.atomic.AtomicIntegerArray fracs, int[] wt, int total) {   // done / total: weights of the finished sections / of all sections
+        double part = 0; for (int i = 0; i < fracs.length(); i++) part += wt[i] * fracs.get(i) / 1000.0;
         return 0.05 + 0.95 * (done + part) / total;
     }
+
+    private static void addSec(List<Object[]> secs, List<String> names, String name, Object[] sec) { secs.add(sec); names.add(name); }
+    /** Weight of a section in the overall bar (relative expected time): an exact permutation test and GOSH dominate, the other sections are short. */
+    /** Status line of the running section (null-safe: nothing happens when the section is not connected to the status line). */
+    private static void say(String msg) { java.util.function.Consumer<String> st = Par.statusSink(); if (st != null) st.accept(msg); }
+    private static int weightOf(String name, Object[] sec, Snap n) {
+        if (sec.length > 4) return (Integer) sec[4];
+        if (name.startsWith("GOSH")) return n.goshCl ? 6 : 4;
+        return (boolean) sec[1] ? 2 : 1;
+    }
+    /** Share of a GOSH section spent on the subsets themselves (the rest is cluster detection, whose cost hardly depends on the number of subsets: about 3.5 s against 4 microseconds per subset). */
+    static double goshRunShare(int subsets) { double a = 4e-6 * Math.max(1, subsets); return Math.min(0.9, Math.max(0.05, a / (a + 3.5))); }
 
     private void checkCurrent(int gen) { if (gen != generation) throw new java.util.concurrent.CancellationException("superseded"); }
 
     /** Runs on a background thread. Light sections go to the shared pool at once; heavy ones run in turn here, using the pool for their inner loops. */
     void analyse(Snap n, int gen, boolean auto, int scrollPos) {
         try {
-            final MetaSpec s = n.s; final MetaResult r = Meta.run(s, n.d); checkCurrent(gen); progressTo(gen, 0.05);
+            final MetaSpec s = n.s; statusTo(gen, "Fitting the main model ..."); final MetaResult r = Meta.run(s, n.d); checkCurrent(gen); progressTo(gen, 0.05); statusTo(gen, null);
             final List<Out> outs = new ArrayList<>(); final java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
-            final List<Object[]> secs = new ArrayList<>();   // {body, heavy?}
+            final List<Object[]> secs = new ArrayList<>(); final List<String> names = new ArrayList<>();   // {body, heavy?, rank, reports progress, weight} and the name of every section
             final Plots.Opts o = n.o;
-            secs.add(new Object[]{(Runnable) () -> { addText("Meta-Analysis", Report.summary(r));
+            addSec(secs, names, "Meta-analysis", new Object[]{(Runnable) () -> { addText("Meta-Analysis", Report.summary(r));
                 if (n.forest) addPlot("Meta-Analysis Forest Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.forest(r, q); }); }, false});
-            if (n.sg) secs.add(new Object[]{(Runnable) () -> { MetaSpec s2 = n.sSub; MetaResult rs = Meta.run(s2, n.dSub);
+            if (n.sg) addSec(secs, names, "Subgroup analysis", new Object[]{(Runnable) () -> { MetaSpec s2 = n.sSub; MetaResult rs = Meta.run(s2, n.dSub);
                 addText("Subgroup Analysis: " + s2.subgroupName, "Subgroup Analysis Summary\n\n" + Report.subgroupText(rs) + Report.details(rs));
                 if (n.forest) addPlot("Subgroup Analysis Forest Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; q.testEffectSubgroup = n.sgTestEffect; q.analysisDetails = n.sgDetails; return Plots.forest(rs, q); });
                 if (n.orchard) addPlot("Orchard Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.orchard(rs, q); });
                 if (n.cater) addPlot("Caterpillar Plot: " + s2.subgroupName, sc -> { Plots.Opts q = copy(o); q.scale = sc; return ExtraPlots.caterpillar(rs, q); }); }, true, 4});
-            if (n.reg) secs.add(new Object[]{(Runnable) () -> regression(r, n), false});
-            if (n.loo) secs.add(new Object[]{(Runnable) () -> { Meta.leaveOneOut(r); addText("Leave-One-Out Analysis", Report.looText(r));
+            if (n.reg) addSec(secs, names, "Meta-regression", new Object[]{(Runnable) () -> regression(r, n), false, n.perm && n.permExact ? 0 : 9, true, n.perm && n.permExact ? 40 : 1});   // {body, heavy, rank, reports progress, weight of the section in the bar}: an exact permutation test dominates the run
+            if (n.loo) addSec(secs, names, "Leave-one-out analysis", new Object[]{(Runnable) () -> { Meta.leaveOneOut(r); addText("Leave-One-Out Analysis", Report.looText(r));
                 if (n.looForest) addPlot("Leave-One-Out Analysis Forest Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.forestSeries(r, r.loo, r.looLabels, q, "loo"); }); }, true, 1});
-            if (n.cum) secs.add(new Object[]{(Runnable) () -> { Meta.cumulative(r, null); addText("Cumulative Meta-Analysis", Report.cumText(r));
+            if (n.cum) addSec(secs, names, "Cumulative meta-analysis", new Object[]{(Runnable) () -> { Meta.cumulative(r, null); addText("Cumulative Meta-Analysis", Report.cumText(r));
                 if (n.cumForest) addPlot("Cumulative Meta-Analysis Forest Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.forestSeries(r, r.cum, r.cumLabels, q, "cum"); }); }, true, 2});
-            if (n.funnel) secs.add(new Object[]{(Runnable) () -> addPlot("Funnel Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.contour = n.contour; q.studyLabels = n.labels; return Plots.funnel(r, q, null); }), false});
-            if (n.funnelPrec) secs.add(new Object[]{(Runnable) () -> addPlot("Funnel Plot of Precision", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.contour = n.contour; q.studyLabels = n.labels; q.precision = true; return Plots.funnel(r, q, null); }), false});
-            if (n.bias) secs.add(new Object[]{(Runnable) () -> { Bias.Result b = Bias.run(r, n.biasMethod.equals("Default") ? null : n.biasMethod, false); addText("Test for Funnel Plot Asymmetry", Report.biasText(b, r));
+            if (n.funnel) addSec(secs, names, "Funnel plot", new Object[]{(Runnable) () -> addPlot("Funnel Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.contour = n.contour; q.studyLabels = n.labels; return Plots.funnel(r, q, null); }), false});
+            if (n.funnelPrec) addSec(secs, names, "Funnel plot of precision", new Object[]{(Runnable) () -> addPlot("Funnel Plot of Precision", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.contour = n.contour; q.studyLabels = n.labels; q.precision = true; return Plots.funnel(r, q, null); }), false});
+            if (n.bias) addSec(secs, names, "Funnel plot asymmetry test", new Object[]{(Runnable) () -> { Bias.Result b = Bias.run(r, n.biasMethod.equals("Default") ? null : n.biasMethod, false); addText("Test for Funnel Plot Asymmetry", Report.biasText(b, r));
                 if (n.biasPlot && b.error == null && b.plotX != null) addPlot("Plot (Test for Funnel Plot Asymmetry)", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.biasPlot(b, r, q); }); }, false});
-            if (n.tf || n.tfPrec) secs.add(new Object[]{(Runnable) () -> { TrimFill tf = TrimFill.run(r, n.tfSide.equals("Auto") ? null : n.tfSide.equals("Left"), n.tfModel.startsWith("Common") || !s.random, n.tfEst, s.common, s.random);
+            if (n.tf || n.tfPrec) addSec(secs, names, "Trim and fill", new Object[]{(Runnable) () -> { TrimFill tf = TrimFill.run(r, n.tfSide.equals("Auto") ? null : n.tfSide.equals("Left"), n.tfModel.startsWith("Common") || !s.random, n.tfEst, s.common, s.random);
                 if (tf == null) addText("Trim and Fill", "Too few studies for trim-and-fill."); else { addText("Trim and Fill", Report.trimfillText(tf, r));
                     if (n.tf) addPlot("Trim-and-Fill Funnel Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.funnel(r, q, tf); });
                     if (n.tfPrec) addPlot("Trim-and-Fill Funnel Plot of Precision", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.precision = true; return Plots.funnel(r, q, tf); }); } }, false});
-            if (n.drap) secs.add(new Object[]{(Runnable) () -> { addPlot("Drapery Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return org.metajava.plot.Drapery.plot(r, q); });
+            if (n.drap) addSec(secs, names, "Drapery plot", new Object[]{(Runnable) () -> { addPlot("Drapery Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return org.metajava.plot.Drapery.plot(r, q); });
                 if (n.drapReport) { org.metajava.plot.DraperyReport.Result dr = org.metajava.plot.DraperyReport.build(r, copy(o)); if (dr.available) addDrapery(dr); } }, false, 6});
-            if (n.doi) secs.add(new Object[]{(Runnable) () -> { Lfk l = Lfk.compute(r.TE, r.seTE, r.studlab); addText("Doi Plot and LFK Index", Report.lfkText(l, r));
+            if (n.doi) addSec(secs, names, "Doi plot", new Object[]{(Runnable) () -> { Lfk l = Lfk.compute(r.TE, r.seTE, r.studlab); addText("Doi Plot and LFK Index", Report.lfkText(l, r));
                 if (l.lfk == l.lfk) addPlot("Doi Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; q.apexLine = n.doiApex; return Plots.doi(l, r, q); }); }, false});
-            if (n.pet) secs.add(new Object[]{(Runnable) () -> { PubBias.PetPeese pp = PubBias.petPeese(r); addText("PET-PEESE", BiasReport.petPeeseText(pp, r));
+            if (n.pet) addSec(secs, names, "PET-PEESE", new Object[]{(Runnable) () -> { PubBias.PetPeese pp = PubBias.petPeese(r); addText("PET-PEESE", BiasReport.petPeeseText(pp, r));
                 if (n.petPlot && pp.error == null) addPlot("PET-PEESE Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = n.labels; return Plots.petPeese(pp, r, q); }); }, false});
-            if (n.sel) secs.add(new Object[]{(Runnable) () -> addText("Selection Model", BiasReport.selectionText(PubBias.selection(r, n.selDir), r)), false, 5});
-            if (n.fail) secs.add(new Object[]{(Runnable) () -> addText("Fail-Safe N", BiasReport.failSafeText(PubBias.failSafe(r), r)), false});
-            if (n.inf) secs.add(new Object[]{(Runnable) () -> influence(r, s, n), true, 3});
-            if (n.baujat) secs.add(new Object[]{(Runnable) () -> addPlot("Baujat Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.baujat(r, q); }), false});
-            if (n.radial) secs.add(new Object[]{(Runnable) () -> addPlot("Radial Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = q.radialLabels; return Plots.radial(r, q); }), false});
-            if (n.labbe) secs.add(new Object[]{(Runnable) () -> { if (!s.type.equals("bin")) { addText("L\u2019Abb\u00E9 Plot", "The L\u2019Abb\u00E9 plot requires binary outcome data (analysis type: metabin)."); return; }
+            if (n.sel) addSec(secs, names, "Selection model", new Object[]{(Runnable) () -> addText("Selection Model", BiasReport.selectionText(PubBias.selection(r, n.selDir), r)), false, 5});
+            if (n.fail) addSec(secs, names, "Fail-safe N", new Object[]{(Runnable) () -> addText("Fail-Safe N", BiasReport.failSafeText(PubBias.failSafe(r), r)), false});
+            if (n.inf) addSec(secs, names, "Influence diagnostics", new Object[]{(Runnable) () -> influence(r, s, n), true, 3});
+            if (n.baujat) addSec(secs, names, "Baujat plot", new Object[]{(Runnable) () -> addPlot("Baujat Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; return Plots.baujat(r, q); }), false});
+            if (n.radial) addSec(secs, names, "Radial plot", new Object[]{(Runnable) () -> addPlot("Radial Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = q.radialLabels; return Plots.radial(r, q); }), false});
+            if (n.labbe) addSec(secs, names, "L\u2019Abb\u00E9 plot", new Object[]{(Runnable) () -> { if (!s.type.equals("bin")) { addText("L\u2019Abb\u00E9 Plot", "The L\u2019Abb\u00E9 plot requires binary outcome data (analysis type: metabin)."); return; }
                 if (!java.util.Arrays.asList("RR", "OR", "RD", "ASD").contains(s.sm)) addText("L\u2019Abb\u00E9 Plot", "Note: the line of the pooled effect is only drawn for RR, OR, RD and ASD;\nthe study event rates are shown without it.");
                 addPlot("L\u2019Abb\u00E9 Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.studyLabels = q.labbeLabels; return Plots.labbe(r, q); }); }, false});
-            if (n.gosh) secs.add(new Object[]{(Runnable) () -> { Gosh gs = Gosh.run(r, n.goshSub, n.goshSeed); final GoshCluster gc = n.goshCl ? gs.detectClusters() : null; addText("GOSH Analysis", RegReport.goshText(gs, r));
+            if (n.gosh) addSec(secs, names, "GOSH analysis", new Object[]{(Runnable) () -> { final double wRun = n.goshCl ? goshRunShare(n.goshSub) : 1.0; final Gosh[] gb = new Gosh[1]; say("GOSH analysis: fitting the subsets of studies ..."); Par.phase(0, wRun, () -> gb[0] = Gosh.run(r, n.goshSub, n.goshSeed)); final Gosh gs = gb[0]; final GoshCluster[] gcb = new GoshCluster[1]; if (n.goshCl) { say("GOSH analysis: detecting clusters of subsets ..."); Par.phase(wRun, 1, () -> gcb[0] = gs.detectClusters()); } final GoshCluster gc = gcb[0]; addText("GOSH Analysis", RegReport.goshText(gs, r));
                 addPlot("GOSH Plot", sc -> { Plots.Opts q = copy(o); q.scale = sc; q.goshPalette = n.goshPal; return ExtraPlots.gosh(gs, r, q, n.goshHl, gc, n.goshTrimOrd); }); }, true, 0});
-            if (n.gosh && n.goshReg) secs.add(new Object[]{(Runnable) () -> goshRegression(r, n), true, 0});   // independent of the ordinary GOSH: runs at the same time, its output stays right below the ordinary GOSH
-            final int total = secs.size();
+            if (n.gosh && n.goshReg) addSec(secs, names, "GOSH meta-regression", new Object[]{(Runnable) () -> goshRegression(r, n), true, 0});   // independent of the ordinary GOSH: runs at the same time, its output stays right below the ordinary GOSH
+            final java.util.concurrent.ConcurrentSkipListSet<Integer> running = new java.util.concurrent.ConcurrentSkipListSet<>();   // sections that report progress and are running now
+            final java.util.concurrent.atomic.AtomicReferenceArray<String> detail = new java.util.concurrent.atomic.AtomicReferenceArray<>(secs.size());   // what a running section says it is doing
+            final Runnable refreshStatus = () -> {   // status line under the bar: the running sections (two at most), with their own detail when they give one
+                StringBuilder sb = new StringBuilder(); int c = 0, more = 0;
+                for (int sl : running) { String d = detail.get(sl); if (c < 2) { if (c++ > 0) sb.append("  |  "); sb.append(d != null ? d : names.get(sl)); } else more++; }
+                if (more > 0) sb.append("  |  +").append(more).append(" more"); statusTo(gen, c == 0 ? null : sb.toString()); };
+            final int total = secs.size(); final int[] wt = new int[total]; int wsum = 0;
+            for (int si = 0; si < total; si++) { wt[si] = weightOf(names.get(si), secs.get(si), n); wsum += wt[si]; }
+            final int totalW = wsum;
             final List<Object[]> order = new ArrayList<>(); final List<Runnable> tasks = new ArrayList<>();
             final java.util.concurrent.atomic.AtomicIntegerArray fracs = new java.util.concurrent.atomic.AtomicIntegerArray(total);   // progress (0..1000) of each running section
             for (int si = 0; si < total; si++) {
                 Object[] sc = secs.get(si); final int slot = si;
                 final Out out = new Out(); outs.add(out); final Runnable body = (Runnable) sc[0]; final boolean isHeavy = (boolean) sc[1];
+                final boolean tracks = isHeavy || (sc.length > 3 && (boolean) sc[3]);
                 final Runnable task = () -> {
                     if (gen != generation) return;
-                    sink.set(out.items); Report.startCapture();
-                    try { body.run();
+                    sink.set(out.items); Report.startCapture(); if (tracks) { running.add(slot); refreshStatus.run(); }
+                    try { Par.phase(0, 0.9, body);   // the computation is 90 % of the section, the rendering of its plots the rest
                         // the plots of this section are rendered here (not on the UI thread), in parallel when the section has several
-                        final List<Item> its = out.items; Par.forRange(its.size(), j -> { Item it = its.get(j); if (it.render != null) it.img = it.render.apply(1.0); }); }
+                        final List<Item> its = out.items; if (tracks && !its.isEmpty()) { detail.set(slot, names.get(slot) + ": drawing the plots ..."); refreshStatus.run(); } Par.nextPhase(0.9, 1); Par.forRange(its.size(), j -> { Item it = its.get(j); if (it.render != null) it.img = it.render.apply(1.0); }); }
                     catch (Exception ex) { out.error = ex; }
-                    finally { Report.stopCapture(); sink.remove(); fracs.set(slot, 0); done.incrementAndGet(); progressTo(gen, progressOf(done.get(), fracs, total)); }
+                    finally { Report.stopCapture(); sink.remove(); fracs.set(slot, 0); running.remove(slot); detail.set(slot, null); done.addAndGet(wt[slot]); progressTo(gen, progressOf(done.get(), fracs, wt, totalW)); }
                 };
-                final Runnable timed = !isHeavy ? task : () -> Par.withProgress(fr -> { fracs.set(slot, (int) (1000 * Math.min(1.0, Math.max(0.0, fr)))); progressTo(gen, progressOf(done.get(), fracs, total)); }, task);
+                final Runnable timed = !tracks ? task : () -> Par.withStatus(msg -> { detail.set(slot, msg); refreshStatus.run(); }, () -> Par.withProgress(fr -> { fracs.accumulateAndGet(slot, (int) (1000 * Math.min(1.0, Math.max(0.0, fr))), Math::max); progressTo(gen, progressOf(done.get(), fracs, wt, totalW)); }, task));
                 order.add(new Object[]{timed, sc.length > 2 ? (Integer) sc[2] : (isHeavy ? 4 : 9), isHeavy});
             }
             // All sections run at the same time in the shared pool (the heaviest are started first); a section that is waiting for its own parallel loop leaves the idle threads to the others.
@@ -694,7 +718,7 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
         o.nullColour = (String) nullColBox.getSelectedItem(); o.nullStyle = (String) nullStyleBox.getSelectedItem(); o.pooledColour = (String) pooledColBox.getSelectedItem(); o.pooledStyle = (String) pooledStyleBox.getSelectedItem();
         o.radialTheme = (String) radialThemeBox.getSelectedItem(); o.radialLabels = radialLabChk.isSelected(); o.radialSymbol = (String) radialSymbolBox.getSelectedItem(); o.radialBack = (String) radialBackBox.getSelectedItem(); o.radialCircle = (String) radialCircleBox.getSelectedItem();
         o.radialReg = (String) radialRegBox.getSelectedItem(); o.radialRef = (String) radialRefBox.getSelectedItem(); o.radialCI = (String) radialCiBox.getSelectedItem(); o.radialCILine = (String) radialCiLineBox.getSelectedItem(); o.labbeLabels = labbeLabChk.isSelected();
-        o.baujatTheme = (String) baujatThemeBox.getSelectedItem(); o.baujatSymbol = (String) baujatSymbolBox.getSelectedItem(); o.baujatBack = (String) baujatBackBox.getSelectedItem(); o.labbeTheme = (String) labbeThemeBox.getSelectedItem(); o.labbeSymbol = (String) labbeSymbolBox.getSelectedItem(); o.labbeBack = (String) labbeBackBox.getSelectedItem(); o.labbeCircle = (String) labbeCircleBox.getSelectedItem(); o.labbeRef = (String) labbeRefBox.getSelectedItem(); o.labbeEst = (String) labbeEstBox.getSelectedItem(); o.labbeCI = (String) labbeCiBox.getSelectedItem(); o.labbePI = (String) labbePiBox.getSelectedItem(); o.funnelTheme = (String) funnelThemeBox.getSelectedItem(); o.xLeft = xLeft.getText(); o.xRight = xRight.getText(); o.xMin = axisText(xMinF, "X-axis minimum"); o.xMax = axisText(xMaxF, "X-axis maximum"); o.xTick = axisText(xTickF, "X-axis tick interval"); if (!o.xMin.isEmpty() && !o.xMax.isEmpty() && Double.parseDouble(o.xMin.replace(',', '.')) >= Double.parseDouble(o.xMax.replace(',', '.'))) throw new IllegalArgumentException("X-axis minimum must be lower than X-axis maximum."); o.digits = (Integer) digitsSp.getValue(); o.spacing = (Double) spacingSp.getValue(); o.studyLabels = labChk.isSelected(); o.regLine = regLine.isSelected();
+        o.baujatTheme = (String) baujatThemeBox.getSelectedItem(); o.baujatSymbol = (String) baujatSymbolBox.getSelectedItem(); o.baujatBack = (String) baujatBackBox.getSelectedItem(); o.labbeTheme = (String) labbeThemeBox.getSelectedItem(); o.labbeSymbol = (String) labbeSymbolBox.getSelectedItem(); o.labbeBack = (String) labbeBackBox.getSelectedItem(); o.labbeCircle = (String) labbeCircleBox.getSelectedItem(); o.labbeRef = (String) labbeRefBox.getSelectedItem(); o.labbeEst = (String) labbeEstBox.getSelectedItem(); o.labbeCI = (String) labbeCiBox.getSelectedItem(); o.labbePI = (String) labbePiBox.getSelectedItem(); o.funnelTheme = (String) funnelThemeBox.getSelectedItem(); o.funnelBack = funnelBackChk.isSelected(); o.xLeft = xLeft.getText(); o.xRight = xRight.getText(); o.xMin = axisText(xMinF, "X-axis minimum"); o.xMax = axisText(xMaxF, "X-axis maximum"); o.xTick = axisText(xTickF, "X-axis tick interval"); if (!o.xMin.isEmpty() && !o.xMax.isEmpty() && Double.parseDouble(o.xMin.replace(',', '.')) >= Double.parseDouble(o.xMax.replace(',', '.'))) throw new IllegalArgumentException("X-axis minimum must be lower than X-axis maximum."); o.digits = (Integer) digitsSp.getValue(); o.spacing = (Double) spacingSp.getValue(); o.studyLabels = labChk.isSelected(); o.regLine = regLine.isSelected();
         o.confInt = regCI.isSelected(); o.bubbleStyle = (String) regStyleBox.getSelectedItem(); o.colPoints = (String) regColPoints.getSelectedItem(); o.colLine = (String) regColLine.getSelectedItem(); o.colBand = (String) regColBand.getSelectedItem(); o.colBandLine = (String) regColBandLine.getSelectedItem(); o.predInt = regPI.isSelected(); o.logAxis = regLog.isSelected() && regLog.isEnabled(); o.colPred = (String) regColPred.getSelectedItem(); o.colPredLine = (String) regColPredLine.getSelectedItem(); o.symbol = (String) regSymbolBox.getSelectedItem(); o.symSize = ((Number) regSymSize.getValue()).doubleValue(); return o; }
     static Plots.Opts copy(Plots.Opts a) { Plots.Opts o = new Plots.Opts(); for (java.lang.reflect.Field f : Plots.Opts.class.getFields()) try { f.set(o, f.get(a)); } catch (Exception e) { } return o; }
 
@@ -703,9 +727,10 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
         Map<String, double[]> nd = new HashMap<>(); for (String c : nums) nd.put(c, n.tbl.num(c)); Map<String, String[]> fd = new HashMap<>(); for (String f : facs) fd.put(f, n.tbl.strings(f));
         Reg g = Reg.run(r, nums, nd, facs, fd, n.regIntercept, n.refs); List<String> terms = new ArrayList<>(nums); terms.addAll(facs);
         addText("Meta-Regression - Model 1: ~ " + String.join(" + ", terms), Report.regText(g, r, 1, ""));
-        if (n.perm) { try { Perm t = Perm.run(g, n.permIter, n.permExact, n.permSeed, 0, n.permBudget); addText("Permutation Test (permutest) - Model 1", RegReport.permText(g, t, r)); }
+        final double wPerm = n.perm && n.cmp ? (n.permExact ? 0.95 : 0.6) : 1.0;   // share of the section taken by the permutation test, the rest is the model comparison
+        if (n.perm) { try { final Perm[] tb = new Perm[1]; Par.phase(0, wPerm, () -> tb[0] = Perm.run(g, n.permIter, n.permExact, n.permSeed, 0, n.permBudget)); Perm t = tb[0]; addText("Permutation Test (permutest) - Model 1", RegReport.permText(g, t, r)); }
             catch (IllegalArgumentException ex) { addText("Permutation Test (permutest) - Model 1", ex.getMessage()); } }
-        if (n.cmp) { try { ModelCompare mc = ModelCompare.run(r, nums, nd, facs, fd, n.regIntercept); addText("Model Comparison", RegReport.compareText(mc, r)); }
+        if (n.cmp) { try { say("Meta-regression: comparing the models ..."); final ModelCompare[] mcb = new ModelCompare[1]; Par.phase(n.perm ? wPerm : 0, 1, () -> mcb[0] = ModelCompare.run(r, nums, nd, facs, fd, n.regIntercept)); ModelCompare mc = mcb[0]; addText("Model Comparison", RegReport.compareText(mc, r)); }
             catch (IllegalArgumentException ex) { addText("Model Comparison", ex.getMessage()); } }
         if (n.bubble && g.x1 != null) addPlot("Bubble Plot", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.studyLabels = n.labels; q.regLine = n.regLine; return Plots.bubble(g, q, r); });
         if (n.adj) addPlot("Regression Plot (adjusted for all moderators)", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.studyLabels = n.labels; q.regLine = n.regLine; return RegPlots.adjusted(g, nums, facs, n.adjFactor, q, r); });
@@ -718,10 +743,11 @@ funnelThemeBox.setToolTipText("Look of the funnel plot and of the trim-and-fill 
         if (!n.reg || (nums.isEmpty() && facs.isEmpty())) { addText(title, "GOSH for a meta-regression model needs the model of the Meta-regression section: turn on the meta-regression there and select at least one covariate or factor."); return; }
         Map<String, double[]> nd = new HashMap<>(); for (String c : nums) nd.put(c, n.tbl.num(c)); Map<String, String[]> fd = new HashMap<>(); for (String f : facs) fd.put(f, n.tbl.strings(f));
         List<String> terms = new ArrayList<>(nums); terms.addAll(facs);
-        final GoshReg gr;
-        try { Reg.Design D = Reg.design(r, nums, nd, facs, fd, n.regIntercept, null, n.refs); gr = GoshReg.run(r, D, n.regIntercept, n.goshSub, n.goshSeed); }
+        final GoshReg[] grb = new GoshReg[1]; final double wRun = n.goshCl ? goshRunShare(n.goshSub) : 1.0;
+        try { Reg.Design D = Reg.design(r, nums, nd, facs, fd, n.regIntercept, null, n.refs); say("GOSH meta-regression: fitting the subsets of studies ..."); Par.phase(0, wRun, () -> grb[0] = GoshReg.run(r, D, n.regIntercept, n.goshSub, n.goshSeed)); }
         catch (IllegalArgumentException ex) { addText(title + ": ~ " + String.join(" + ", terms), "GOSH for meta-regression: " + ex.getMessage()); return; }
-        if (n.goshCl) gr.detectClusters();
+        final GoshReg gr = grb[0];
+        if (n.goshCl) { say("GOSH meta-regression: detecting clusters of subsets ..."); Par.phase(wRun, 1, () -> gr.detectClusters()); }
         addText(title + ": ~ " + String.join(" + ", terms), RegReport.goshRegText(gr, r));
         addPlot("GOSH Meta-Regression: Coefficients versus Residual Heterogeneity", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.goshPalette = n.goshPal; return ExtraPlots.goshRegCoef(gr, q, n.goshTrim, n.goshHl); });
         addPlot("GOSH Meta-Regression: Scatterplot Matrix", sc -> { Plots.Opts q = copy(n.o); q.scale = sc; q.goshPalette = n.goshPal; return ExtraPlots.goshRegMatrix(gr, q, n.goshTrim, n.goshHl); });

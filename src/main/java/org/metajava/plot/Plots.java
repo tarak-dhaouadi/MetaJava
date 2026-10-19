@@ -25,6 +25,7 @@ public final class Plots {
         public String radialTheme = RadialPlot.DEFAULT, radialSymbol = RadialPlot.AUTO, radialBack = RadialPlot.AUTO, radialCircle = RadialPlot.AUTO, radialReg = RadialPlot.AUTO, radialRef = RadialPlot.AUTO, radialCI = RadialPlot.AUTO, radialCILine = RadialPlot.AUTO; public boolean radialLabels = true, labbeLabels = true; public boolean precision = false;   // funnel plot of precision (y = 1 / SE)   // Radial plot: theme, colours, study labels; L'Abbe plot: study labels
         /** Drapery plot (meta::drapery): test statistic or p-value, layout and colour of the study lines, study labels and their angle, prediction region, model(s) shown and their colours. */
         public String drapTarget = "", drapType = Drapery.ZVALUE, drapLayout = Drapery.GRAYSCALE, drapStudyColour = Drapery.STUDY_DEFAULT, drapLabels = Drapery.LAB_ID, drapPredColour = Drapery.PRED_DEFAULT, drapModel = Drapery.MODEL_AUTO, drapRandomColour = Drapery.RANDOM_DEFAULT, drapCommonColour = Drapery.COMMON_DEFAULT; public int drapAngle = 0; public boolean drapPrediction = true;
+        public boolean funnelBack = false;   // funnel plots: x-axis on the back-transformed scale (all transformed effect sizes)
         public String funnelTheme = FunnelThemes.DEFAULT;   // funnel plot and trim-and-fill funnel plot: Default, MetaWin style, STATA style
         public String squareColour = ForestTheme.AUTO, diamondFill = ForestTheme.AUTO, diamondBorder = ForestTheme.AUTO, nullColour = ForestTheme.AUTO, nullStyle = ForestTheme.AUTO, pooledColour = ForestTheme.AUTO, pooledStyle = ForestTheme.AUTO; }
 
@@ -552,7 +553,7 @@ public final class Plots {
     }
 
     // ---------------- funnel & friends ----------------
-    static class Axes { Canvas c; double x0, x1, y0, y1, xl, xh, yl, yh; boolean yRev;
+    static class Axes { Canvas c; double x0, x1, y0, y1, xl, xh, yl, yh; boolean yRev; java.util.function.DoubleUnaryOperator bk;
         double X(double v) { return x0 + (v - xl) / (xh - xl) * (x1 - x0); }
         double Y(double v) { return yRev ? y0 + (v - yl) / (yh - yl) * (y1 - y0) : y1 - (v - yl) / (yh - yl) * (y1 - y0); } }
 
@@ -562,17 +563,110 @@ public final class Plots {
     /** dense: denser tick labels on a log x-axis (funnel plots). */
     static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom, boolean dense) { return axes(c, xl, xh, yl, yh, yRev, xlab, ylab, logX, title, bottom, dense, false); }
     /** logY: yl and yh are natural logarithms and the y-axis is labelled with their exponentials (ratio measures on a log scale). */
-    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom, boolean dense, boolean logY) {
-        Axes a = new Axes(); a.c = c; a.x0 = 70; a.x1 = c.w / c.scaleF() - 30; a.y0 = 40; a.y1 = c.h / c.scaleF() - bottom; a.xl = xl; a.xh = xh; a.yl = yl; a.yh = yh; a.yRev = yRev;
+    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom, boolean dense, boolean logY) { return axes(c, xl, xh, yl, yh, yRev, xlab, ylab, logX, title, bottom, dense, logY, null); }
+    /** bk: monotone back-transformation of the (transformed) x values (logit, arcsine, Freeman-Tukey, Fisher z ...): ticks are placed at round values of the back-transformed scale. */
+    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom, boolean dense, boolean logY, java.util.function.DoubleUnaryOperator bk) { return axes(c, xl, xh, yl, yh, yRev, xlab, ylab, logX, title, bottom, dense, logY, bk, false); }
+    /** cover: x-axis widened so that its end ticks lie at or beyond the study values (Doi, PET-PEESE and funnel plots), see {@link #coverAxis}. */
+    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom, boolean dense, boolean logY, java.util.function.DoubleUnaryOperator bk, boolean cover) { return axes(c, xl, xh, yl, yh, yRev, xlab, ylab, logX, title, bottom, dense, logY, bk, cover, Double.NaN, Double.NaN); }
+    /** dl, dh: smallest and largest plotted study value (NaN = the axis ends): a saturated end tick (0 or 1) is never placed to the right of the smallest / left of the largest study. */
+    static Axes axes(Canvas c, double xl, double xh, double yl, double yh, boolean yRev, String xlab, String ylab, boolean logX, String title, double bottom, boolean dense, boolean logY, java.util.function.DoubleUnaryOperator bk, boolean cover, double dl, double dh) {
+        Axes a = new Axes(); a.bk = bk; XT cv = null; if (cover) { cv = coverAxis(xl, xh, dl, dh, logX, bk, c.w / c.scaleF() - 100); if (cv.t.size() >= 2) { xl = cv.xl; xh = cv.xh; } else cv = null; } a.c = c; a.x0 = 70; a.x1 = c.w / c.scaleF() - 30; a.y0 = 40; a.y1 = c.h / c.scaleF() - bottom; a.xl = xl; a.xh = xh; a.yl = yl; a.yh = yh; a.yRev = yRev;
         Graphics2D g = c.g; g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
-        double[] xt = logX ? logTicks(Math.exp(xl), Math.exp(xh)) : Canvas.pretty(xl, xh, 6), yt = logY ? logTicks(Math.exp(yl), Math.exp(yh)) : Canvas.pretty(yl, yh, 6);
-        if (logX && dense) { double[] dt = logTicksDense(Math.exp(xl), Math.exp(xh)); if (dt.length > 0) xt = dt; }
-        if (logX) { int inside = 0; for (double t : xt) { double v = Math.log(t); if (v >= xl && v <= xh) inside++; } if (inside < 2) xt = Canvas.pretty(Math.exp(xl), Math.exp(xh), 5); }   // narrow range: the 1-2-5 log ticks leave fewer than two labels
+        if (cv != null) { for (double[] q : cv.t) { double xx = a.X(q[0]); c.line(xx, a.y1, xx, a.y1 + 5); c.text(Canvas.tick(q[1]), xx, a.y1 + 18, 10, 1, false); } }
+        double[] xt = cv != null ? new double[0] : logX ? logTicks(Math.exp(xl), Math.exp(xh)) : Canvas.pretty(xl, xh, 6), yt = logY ? logTicks(Math.exp(yl), Math.exp(yh)) : Canvas.pretty(yl, yh, 6);
+        if (cv == null && logX && dense) { double[] dt = logTicksDense(Math.exp(xl), Math.exp(xh)); if (dt.length > 0) xt = dt; }
+        if (cv == null && logX) { int inside = 0; for (double t : xt) { double v = Math.log(t); if (v >= xl && v <= xh) inside++; } if (inside < 2) xt = Canvas.pretty(Math.exp(xl), Math.exp(xh), 5); }   // narrow range: the 1-2-5 log ticks leave fewer than two labels
+        if (cv == null && logX) { int inside = 0; for (double t : xt) { double v = Math.log(t); if (v >= xl && v <= xh) inside++; } if (inside < 4) { double[] pt = Canvas.pretty(Math.exp(xl), Math.exp(xh), 6); List<Double> ok = new ArrayList<>(); for (double q : pt) if (q > 0 && Math.log(q) >= xl - 1e-9 && Math.log(q) <= xh + 1e-9) ok.add(q); if (ok.size() >= 3) xt = ok.stream().mapToDouble(Double::doubleValue).toArray(); } }   // few round log ticks: evenly spaced round values of the ratio scale instead
+        if (cv == null && bk != null && !logX) {   // ticks at round values of the back-transformed scale, positioned by inverting bk
+            List<double[]> bt = bkTicks(xl, xh, bk, a.x1 - a.x0);
+            if (bt.size() >= 2) { for (double[] q : bt) { double xx = a.X(q[0]); c.line(xx, a.y1, xx, a.y1 + 5); c.text(Canvas.tick(q[1]), xx, a.y1 + 18, 10, 1, false); } xt = new double[0]; }
+        }
         for (double t : xt) { double v = logX ? Math.log(t) : t; if (v < xl || v > xh) continue; double xx = a.X(v); c.line(xx, a.y1, xx, a.y1 + 5); c.text(Canvas.tick(t), xx, a.y1 + 18, 10, 1, false); }
         for (double t : yt) { double v = logY ? Math.log(t) : t; if (v < yl - 1e-9 || v > yh + 1e-9) continue; double yy = a.Y(v); c.line(a.x0 - 5, yy, a.x0, yy); c.textRot(Canvas.tick(t), a.x0 - 10, yy, 10); }
         c.text(xlab, (a.x0 + a.x1) / 2, a.y1 + 40, 11, 1, false); c.textRot(ylab, 16, (a.y0 + a.y1) / 2, 11);
         if (title != null && !title.isEmpty()) c.text(title, (a.x0 + a.x1) / 2, 24, 13, 1, true);
         return a; }
+
+    /** Back-transformation of the x-axis for measures whose back-transformed scale is not a plain exponential (proportions, rates, Fisher's z): null when results are not back-transformed or the measure needs none. */
+    static java.util.function.DoubleUnaryOperator backAxis(MetaSpec s, MetaResult r) {
+        if (!s.backtransf || !java.util.Arrays.asList("PLOGIT", "PLN", "PAS", "PFT", "PRAW", "ZCOR", "IRLN", "IRS", "IRFT", "IR").contains(s.sm)) return null;
+        final double n = r.overall != null ? r.overall.nHarm : Double.NaN; return x -> Meta.back(s, x, n);
+    }
+
+    /** Result of {@link #coverAxis}: axis range widened so that the first and last tick lie at or beyond the study values, and the ticks {position on the plotted scale, label number}. */
+    static final class XT { double xl, xh; List<double[]> t = new ArrayList<>(); }
+    private static double floorSig(double x, int d) { if (x == 0) return 0; double sc = Math.pow(10, Math.floor(Math.log10(Math.abs(x))) - d + 1); return Math.floor(x / sc + 1e-9) * sc; }
+    private static double ceilSig(double x, int d) { if (x == 0) return 0; double sc = Math.pow(10, Math.floor(Math.log10(Math.abs(x))) - d + 1); return Math.ceil(x / sc - 1e-9) * sc; }
+    private static double invert(java.util.function.DoubleUnaryOperator f, double v, double lo, double hi) {
+        double fl = f.applyAsDouble(lo), fh = f.applyAsDouble(hi); if (Double.isNaN(fl) || Double.isNaN(fh) || v <= fl || v >= fh) return Double.NaN;
+        for (int it = 0; it < 80; it++) { double m = (lo + hi) / 2; if (f.applyAsDouble(m) < v) lo = m; else hi = m; } return (lo + hi) / 2;
+    }
+    /** x-axis ticks of the funnel-type plots (Doi, PET-PEESE, funnels) that cover the whole range of the studies: the first tick is at or below the smallest and the last at or above the largest
+     *  value (the axis is widened to the end ticks, which are round numbers of the displayed scale, e.g. 0.6 and 4 on an odds-ratio axis, 0.02 and 0.98 on a proportion axis). Between them round
+     *  values are added by decreasing roundness (1, 5, 2, 2.5, 3 ...) while labels stay at least 40 px apart. bk: back-transformation of the plotted values (null = displayed as plotted);
+     *  logX: the plotted values are logarithms of the displayed ratio. Without a usable bk the ticks are the uniform round values of {@link Canvas#pretty}. */
+    static XT coverAxis(double xl, double xh, boolean logX, java.util.function.DoubleUnaryOperator bk, double widthPx) { return coverAxis(xl, xh, Double.NaN, Double.NaN, logX, bk, widthPx); }
+    /** dl, dh: smallest / largest plotted study value (NaN = axis ends, the tick then sits at the axis end). When the back-transformation saturates (0 or 1) at an axis end, that end tick (exactly 0 or 1) is placed at the edge of the saturated
+     *  part or at the extreme study, whichever lies further out, so it never falls inside the studies. */
+    static XT coverAxis(double xl, double xh, double dl, double dh, boolean logX, java.util.function.DoubleUnaryOperator bk, double widthPx) {
+        XT r = new XT(); r.xl = xl; r.xh = xh; if (!(xh > xl)) return r;
+        if (logX) bk = Math::exp;
+        if (bk == null) { double[] p = Canvas.pretty(xl, xh, 6); if (p.length >= 2) { r.xl = Math.min(xl, p[0]); r.xh = Math.max(xh, p[p.length - 1]); for (double q : p) r.t.add(new double[]{q, q}); } return r; }
+        final java.util.function.DoubleUnaryOperator f = bk; double w = xh - xl, elo = xl - 2 * w, ehi = xh + 2 * w;
+        double b1 = f.applyAsDouble(xl), b2 = f.applyAsDouble(xh); if (Double.isNaN(b1) || Double.isNaN(b2) || !(b2 > b1) || !(f.applyAsDouble(ehi) > f.applyAsDouble(elo))) return r;
+        double vlo = Double.NaN, vhi = Double.NaN, plo = xl, phi = xh; boolean satLo = false, satHi = false;
+        // saturating back-transformations (PRAW, PAS, PFT, PLN, IR ... clamp at 0 and/or 1): when the axis end lies in the flat part, floor/ceil of the end value (0 or 1) cannot be inverted,
+        // so the end tick is placed at the edge of the flat part instead, i.e. at exactly 0 (or 1), the first (last) position where the back-transformed value is 0 (1)
+        { double fe0 = f.applyAsDouble(elo), fe1 = f.applyAsDouble(ehi), tol = 1e-12 * Math.max(1, Math.abs(b2 - b1));
+          if (!Double.isNaN(fe0) && b1 - fe0 <= tol) { double u = xl, v = xh; for (int it = 0; it < 100; it++) { double m = (u + v) / 2; if (f.applyAsDouble(m) <= b1 + tol) u = m; else v = m; } vlo = b1; plo = Math.max(xl, Math.min(u, Double.isNaN(dl) ? xl : dl)); satLo = true; }
+          if (!Double.isNaN(fe1) && fe1 - b2 <= tol) { double u = xl, v = xh; for (int it = 0; it < 100; it++) { double m = (u + v) / 2; if (f.applyAsDouble(m) >= b2 - tol) v = m; else u = m; } vhi = b2; phi = Math.min(xh, Math.max(v, Double.isNaN(dh) ? xh : dh)); satHi = true; } }
+        for (int d = 1; d <= 3 && Double.isNaN(vlo); d++) { double v = floorSig(b1, d), pos = invert(f, v, elo, ehi); if (!Double.isNaN(pos) && (d == 3 ? xl - pos <= 0.3 * w : xl - pos <= 0.10 * w)) { vlo = v; plo = Math.min(pos, xl); } }
+        for (int d = 1; d <= 3 && Double.isNaN(vhi); d++) { double v = ceilSig(b2, d), pos = invert(f, v, elo, ehi); if (!Double.isNaN(pos) && (d == 3 ? pos - xh <= 0.3 * w : pos - xh <= 0.10 * w)) { vhi = v; phi = Math.max(pos, xh); } }
+        r.xl = satLo ? xl : Math.min(xl, plo); r.xh = satHi ? xh : Math.max(xh, phi); double lo = Double.isNaN(vlo) ? b1 : Math.min(vlo, b1), hi = Double.isNaN(vhi) ? b2 : Math.max(vhi, b2), span = hi - lo, wid = r.xh - r.xl;
+        List<double[]> cand = new ArrayList<>(); double[] ms = {1, 5, 2, 2.5, 3, 4, 6, 7, 8, 9, 1.5}; int[] rk = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+        int kmax = (int) Math.ceil(Math.log10(Math.max(Math.abs(lo), Math.abs(hi)) + 1e-300)) + 1, kmin = (int) Math.floor(Math.log10(span)) - 1;
+        if (lo <= 0 && hi >= 0) cand.add(new double[]{0, 0});
+        for (int k = kmin; k <= kmax; k++) for (int j = 0; j < ms.length; j++) for (int sg = -1; sg <= 1; sg += 2) { double v = sg * ms[j] * Math.pow(10, k); if (v >= lo - 1e-9 * span && v <= hi + 1e-9 * span) cand.add(new double[]{v, rk[j]}); }
+        cand.sort((u, v) -> Double.compare(u[1], v[1]));
+        List<double[]> chosen = new ArrayList<>(); List<Double> px = new ArrayList<>();
+        for (double fv : new double[]{vlo, vhi}) if (!Double.isNaN(fv)) { double pos = satLo && fv == vlo ? plo : satHi && fv == vhi ? phi : fv == b1 ? xl : fv == b2 ? xh : invert(f, fv, elo, ehi); if (!Double.isNaN(pos)) { chosen.add(new double[]{pos, fv}); px.add((pos - r.xl) / wid * widthPx); } }
+        for (double[] cd : cand) { double pos = invert(f, cd[0], r.xl - 1e-9 * wid - 1e-12, r.xh + 1e-9 * wid + 1e-12); if (Double.isNaN(pos)) continue; double x = (pos - r.xl) / wid * widthPx; boolean ok = true; for (double o : px) if (Math.abs(o - x) < 40) { ok = false; break; }
+            if (ok) { chosen.add(new double[]{pos, cd[0]}); px.add(x); } }
+        chosen.sort((u, v) -> Double.compare(u[0], v[0])); r.t = chosen; return r;
+    }
+
+    /** Ticks {position on the transformed scale, label on the back-transformed scale} at round back-transformed values: finer until the first and last tick lie close to the axis ends
+     *  (the study limits are covered), labels closer than 34 px dropped. Empty when bk is not usable on [xl, xh]. */
+    static List<double[]> bkTicks(double xl, double xh, java.util.function.DoubleUnaryOperator bk, double widthPx) {
+        List<double[]> out = new ArrayList<>(); double b1 = bk.applyAsDouble(xl), b2 = bk.applyAsDouble(xh), lo = Math.min(b1, b2), hi = Math.max(b1, b2);
+        if (Double.isNaN(lo) || Double.isNaN(hi) || hi - lo <= 1e-12) return out;
+        for (int nt : new int[]{6, 9, 13, 18}) { out.clear(); double last = -1e9;
+            for (double q : Canvas.pretty(lo, hi, nt)) { if (q < lo - 1e-9 * (hi - lo) || q > hi + 1e-9 * (hi - lo)) continue;
+                double u = xl, w = xh; for (int it = 0; it < 80; it++) { double m = (u + w) / 2; if ((bk.applyAsDouble(m) < q) == (b1 < b2)) u = m; else w = m; }
+                double pos = (u + w) / 2, px = (pos - xl) / (xh - xl) * widthPx; if (px - last < 34) continue; last = px; out.add(new double[]{pos, q}); }
+            if (out.size() >= 2 && (out.get(0)[0] - xl) < 0.1 * (xh - xl) && (xh - out.get(out.size() - 1)[0]) < 0.1 * (xh - xl)) break; }
+        return out;
+    }
+
+    /** x-axis of the funnel plots. log: ratio measures on a log axis labelled with the ratio (existing behaviour when results are back-transformed, or when the funnel option is on);
+     *  bk: back-transformation of the other transformed measures (logit, log, arcsine, Freeman-Tukey, Fisher z, rate transformations), only when "Back-transform effect-size for funnel plot" is on. */
+    static final class FunnelAxis { boolean log; java.util.function.DoubleUnaryOperator bk; String xlab; }
+    static FunnelAxis funnelAxis(MetaSpec s, MetaResult r, Opts o) {
+        FunnelAxis f = new FunnelAxis(); boolean ratioExp = java.util.Arrays.asList("OR", "RR", "HR", "IRR", "DOR", "ROM", "MLN").contains(s.sm);
+        f.log = ratioExp && (o.funnelBack || s.backtransf);
+        if (!f.log && o.funnelBack && java.util.Arrays.asList("PLOGIT", "PLN", "PAS", "PFT", "ZCOR", "IRLN", "IRS", "IRFT").contains(s.sm)) {
+            final MetaSpec sb = s.clone(); sb.backtransf = true; final double n = r.overall != null ? r.overall.nHarm : Double.NaN; f.bk = x -> Meta.back(sb, x, n); }
+        if (f.log || f.bk != null) f.xlab = xlabBack(s); else { MetaSpec off = s.clone(); off.backtransf = false; f.xlab = xlabFor(off); }   // transformed scale drawn: name it (Fisher\u2019s z, Log Odds Ratio, ...) whatever the main option says
+        return f;
+    }
+
+    /** Study label next to a point, kept inside the plot panel: drawn to the right of the point (or to the left when preferLeft) and flipped to the other side when it would cross the panel edge; never above the top edge. */
+    static void ptLabel(Canvas c, Axes a, String text, double xx, double yy, double off, double dy, boolean preferLeft) { ptLabel(c, a.x0, a.x1, a.y0, text, xx, yy, off, dy, preferLeft); }
+    static void ptLabel(Canvas c, double x0, double x1, double y0, String text, double xx, double yy, double off, double dy, boolean preferLeft) {
+        if (text == null) return; double w = c.g.getFontMetrics(Canvas.font(8f)).stringWidth(text); boolean left = preferLeft;
+        if (!left && xx + off + w > x1 - 2) left = true; else if (left && xx - off - w < x0 + 2 && xx + off + w <= x1 - 2) left = false;
+        double y = Math.max(yy + dy, y0 + 10); c.text(text, left ? xx - off : xx + off, y, 8, left ? 2 : 0, false);
+    }
 
     /** Funnel-type plots: single-proportion measures are labelled with the transformation used; other measures as in xlabFor. */
     static String funnelXlab(MetaSpec s) { switch (s.sm) { case "PLOGIT": return "Logit Transformed Proportion"; case "PLN": return "Log Transformed Proportion"; case "PAS": return "Arcsine Transformed Proportion"; case "PFT": return "Freeman-Tukey Double Arcsine Transformed Proportion"; case "PRAW": return "Proportion"; default: return xlabFor(s); } }
@@ -610,7 +704,7 @@ public final class Plots {
     public static BufferedImage funnel(MetaResult r, Opts o, TrimFill tf) {
         if (FunnelThemes.METAWIN.equals(o.funnelTheme)) return FunnelThemes.metawin(r, o, tf);
         if (FunnelThemes.STATA.equals(o.funnelTheme)) return FunnelThemes.stata(r, o, tf);
-        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); final int extraH = contourOn(o, s) ? 56 : 0; Canvas c = new Canvas(620, 520 + extraH, o.scale);   // contour-enhanced: room below the x-axis title for the legend
+        MetaSpec s = r.spec; final FunnelAxis fa = funnelAxis(s, r, o); boolean log = fa.log; final int extraH = contourOn(o, s) ? 56 : 0; Canvas c = new Canvas(620, 520 + extraH, o.scale);   // contour-enhanced: room below the x-axis title for the legend
         double[] te = tf != null ? tf.TE : r.TE, se = tf != null ? tf.seTE : r.seTE; String[] lab = tf != null ? tf.studlab : r.studlab; boolean[] fl = tf != null ? tf.filled : null;
         double center = tf != null ? (s.random ? tf.pool.teRandom : tf.pool.teCommon) : (s.random ? r.overall.teRandom : r.overall.teCommon);
         double maxse = 0, mn = 1e300, mx = -1e300; for (int i = 0; i < te.length; i++) if (!Double.isNaN(te[i])) { maxse = Math.max(maxse, se[i]); mn = Math.min(mn, te[i]); mx = Math.max(mx, te[i]); }
@@ -618,8 +712,8 @@ public final class Plots {
         double xl = center - half, xh = center + half;
         if (contourOn(o, s) && !Double.isNaN(s.nullValue())) { double ref = s.nullValue(); double pad = 0.05 * z * maxse; xl = Math.min(xl, ref - z * maxse - pad); xh = Math.max(xh, ref + z * maxse + pad); }   // the contour bands are centred on the null value: it must be inside the axis range (as in meta / STATA), e.g. hazard ratios far from 1
         { double[] cl = clampRaw(s, xl, xh); xl = cl[0]; xh = cl[1]; }
-        if (o.precision) return funnelPrecision(c, s, log, te, se, lab, fl, center, xl, xh, z, o);
-        Axes a = axes(c, xl, xh, 0, maxse * 1.05, true, funnelXlab(s), "Standard Error", log, "", 60 + extraH, true);
+        if (o.precision) return funnelPrecision(c, s, fa, te, se, lab, fl, center, xl, xh, z, o);
+        Axes a = axes(c, xl, xh, 0, maxse * 1.05, true, fa.xlab, "Standard Error", log, "", 60 + extraH, true, false, fa.bk, true);
         Graphics2D g = c.g; double ymax = maxse * 1.05;
         if (contourOn(o, s)) { // contour-enhanced
             double[][] bands = {{1.96, 2.576, 0.0}, {1.645, 1.96, 0.0}};
@@ -637,7 +731,7 @@ public final class Plots {
         for (int i = 0; i < te.length; i++) { if (Double.isNaN(te[i])) continue; double xx = a.X(te[i]), yy = a.Y(se[i]);
             boolean f = fl != null && fl[i]; if (f) { g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); }
             else { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); }
-            if (o.studyLabels) { g.setColor(Color.BLACK); c.text(lab[i], xx + 4, yy - 3, 8, 0, false); } }
+            if (o.studyLabels) { g.setColor(Color.BLACK); ptLabel(c, a, lab[i], xx, yy, 4, -3, false); } }
         if (contourOn(o, s)) contourLegend(c, a);
         return c.img;
     }
@@ -655,9 +749,9 @@ public final class Plots {
     }
 
     /** Default (meta style) funnel plot of precision: precision 1 / SE on the vertical axis (largest at the top), pseudo confidence limits and contour bands are the curves x = centre +/- z / precision. */
-    private static BufferedImage funnelPrecision(Canvas c, MetaSpec s, boolean log, double[] te, double[] se, String[] lab, boolean[] fl, double center, double xl, double xh, double z, Opts o) {
+    private static BufferedImage funnelPrecision(Canvas c, MetaSpec s, FunnelAxis fa, double[] te, double[] se, String[] lab, boolean[] fl, double center, double xl, double xh, double z, Opts o) {
         double pmax = 0; for (int i = 0; i < te.length; i++) if (!Double.isNaN(te[i]) && se[i] > 0) pmax = Math.max(pmax, 1 / se[i]); if (pmax <= 0) pmax = 1;
-        Axes a = axes(c, xl, xh, 0, pmax * 1.05, false, funnelXlab(s), "Precision (1/SE)", log, "", 60 + (contourOn(o, s) ? 56 : 0), true); Graphics2D g = c.g; double ymax = pmax * 1.05, half = xh - xl;
+        Axes a = axes(c, xl, xh, 0, pmax * 1.05, false, fa.xlab, "Precision (1/SE)", fa.log, "", 60 + (contourOn(o, s) ? 56 : 0), true, false, fa.bk, true); Graphics2D g = c.g; double ymax = pmax * 1.05, half = xh - xl;
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
         if (contourOn(o, s)) { double ref = s.nullValue(); if (Double.isNaN(ref)) ref = 0;
             double[] zz = {Dist.qnorm(0.995), Dist.qnorm(0.975), Dist.qnorm(0.95)}; Color[] fills = {new Color(235, 235, 235), new Color(215, 215, 215), new Color(195, 195, 195)};
@@ -669,7 +763,7 @@ public final class Plots {
         for (int i = 0; i < te.length; i++) { if (Double.isNaN(te[i]) || !(se[i] > 0)) continue; double xx = a.X(te[i]), yy = a.Y(1 / se[i]);
             boolean f = fl != null && fl[i]; if (f) { g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); }
             else { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); }
-            if (o.studyLabels) { g.setColor(Color.BLACK); c.text(lab[i], xx + 4, yy - 3, 8, 0, false); } }
+            if (o.studyLabels) { g.setColor(Color.BLACK); ptLabel(c, a, lab[i], xx, yy, 4, -3, false); } }
         if (contourOn(o, s)) contourLegend(c, a);
         return c.img;
     }
@@ -682,7 +776,7 @@ public final class Plots {
         if (b.methodBias.equals("Begg")) { xl = Arrays.stream(b.plotX).min().getAsDouble() - 0.5; xh = Arrays.stream(b.plotX).max().getAsDouble() + 0.5; yl = 0; yh = Arrays.stream(b.plotY).max().getAsDouble() * 1.05; }
         Axes a = axes(c, xl, xh, yl, yh, false, b.plotXlab, b.plotYlab, false, "");
         Graphics2D g = c.g;
-        for (int i = 0; i < b.plotX.length; i++) { double xx = a.X(b.plotX[i]), yy = a.Y(b.plotY[i]); g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels && !b.methodBias.equals("Begg")) c.text(r.studlab[i < r.studlab.length ? i : 0], xx + 4, yy - 3, 8, 0, false); }
+        for (int i = 0; i < b.plotX.length; i++) { double xx = a.X(b.plotX[i]), yy = a.Y(b.plotY[i]); g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels && !b.methodBias.equals("Begg")) ptLabel(c, a, r.studlab[i < r.studlab.length ? i : 0], xx, yy, 4, -3, false); }
         if (!b.methodBias.equals("Begg")) { Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0)); g.setColor(Color.BLACK);
             c.line(a.X(xl), a.Y(b.intercept + b.bias * 0 + (b.bias == 0 ? 0 : 0)), a.X(xl), a.Y(b.intercept)); // placeholder
             double slopeEff = b.intercept, interceptBias = b.bias; // regression: y = bias + effect * x
@@ -692,14 +786,15 @@ public final class Plots {
 
     /** Funnel plot with the PET line (effect = b0 + b1 * SE) and the PEESE curve (effect = b0 + b1 * SE^2); both start at their intercept = the corrected effect. */
     public static BufferedImage petPeese(PubBias.PetPeese pp, MetaResult r, Opts o) {
-        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); Canvas c = new Canvas(620, 520, o.scale);
+        MetaSpec s = r.spec; final java.util.function.DoubleUnaryOperator bk = backAxis(s, r); boolean log = s.backtransf && s.isRatioSm() && bk == null; Canvas c = new Canvas(620, 520, o.scale);
         if (pp.error != null) { c.text(pp.error, 310, 260, 12, 1, false); return c.img; }
         double center = s.random ? r.overall.teRandom : r.overall.teCommon, maxse = pp.maxSe * 1.05, mn = center, mx = center;
         for (double t : pp.te) { mn = Math.min(mn, t); mx = Math.max(mx, t); }
         double[] ends = {pp.pet.b0, pp.peese.b0, pp.pet.b0 + pp.pet.b1 * maxse, pp.peese.b0 + pp.peese.b1 * maxse * maxse};
         for (double e : ends) { mn = Math.min(mn, e); mx = Math.max(mx, e); }
         double pad = (mx - mn) * 0.06 + 1e-9; double xl = mn - pad, xh = mx + pad; { double[] cl = clampRaw(s, xl, xh); xl = cl[0]; xh = cl[1]; }
-        Axes a = axes(c, xl, xh, 0, maxse, true, funnelXlab(s), "Standard Error", log, ""); Graphics2D g = c.g;
+        double dmn = Double.POSITIVE_INFINITY, dmx = Double.NEGATIVE_INFINITY; for (double t : pp.te) { dmn = Math.min(dmn, t); dmx = Math.max(dmx, t); }
+        Axes a = axes(c, xl, xh, 0, maxse, true, xlabFor(s), "Standard Error", log, "", 60, false, false, bk, true, dmn, dmx); Graphics2D g = c.g;
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
         g.setColor(Color.GRAY); c.dashed(a.X(center), a.Y(0), a.X(center), a.Y(maxse));
         Color petCol = new Color(0x1F4E8C), peeseCol = new Color(0xD9822B); g.setStroke(new BasicStroke(1.8f));
@@ -707,7 +802,7 @@ public final class Plots {
         g.setColor(peeseCol); double px = a.X(pp.peese.b0), py = a.Y(0);
         for (int i = 1; i <= 60; i++) { double se = maxse * i / 60.0, ex = pp.peese.b0 + pp.peese.b1 * se * se; double nx = a.X(ex), ny = a.Y(se); c.line(px, py, nx, ny); px = nx; py = ny; }
         g.setStroke(new BasicStroke(1f)); g.setClip(clip);
-        for (int i = 0; i < pp.te.length; i++) { double xx = a.X(pp.te[i]), yy = a.Y(pp.se[i]); g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) c.text(pp.label[i], xx + 4, yy - 3, 8, 0, false); }
+        for (int i = 0; i < pp.te.length; i++) { double xx = a.X(pp.te[i]), yy = a.Y(pp.se[i]); g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) ptLabel(c, a, pp.label[i], xx, yy, 4, -3, false); }
         for (int q = 0; q < 2; q++) { double ex = q == 0 ? pp.pet.b0 : pp.peese.b0; g.setColor(q == 0 ? petCol : peeseCol); g.fill(new Rectangle2D.Double(a.X(ex) - 4, a.Y(0) - 4, 8, 8)); }
         double lx = a.x0 + 4; g.setStroke(new BasicStroke(1.8f));
         g.setColor(petCol); c.line(lx, 22, lx + 22, 22); g.setColor(Color.BLACK); c.text("PET", lx + 26, 26, 10, 0, false);
@@ -751,7 +846,7 @@ public final class Plots {
         g.setClip(clip0);
         for (int i = 0; i < g0.x1.length; i++) { double yv = log ? Math.exp(g0.y1[i]) : g0.y1[i]; double rad = o.symSize * (4 + 12 * Math.sqrt(g0.size[i] / wmax)); double xx = a.X(g0.x1[i]), yy = a.Y(yv);
             RegPlots.drawSymbol(g, o.symbol, xx, yy, rad, new Color(150, 150, 150), 200, Color.BLACK, 1f);
-            if (o.studyLabels) c.text(r.studlab[g0.used[i]], xx - rad - 2, yy - 2, 8, 2, false); }
+            if (o.studyLabels) ptLabel(c, a, r.studlab[g0.used[i]], xx, yy, rad + 2, -2, true); }
         if (o.regLine) { Path2D q = new Path2D.Double(); for (int i = 0; i < cv[0].length; i++) { double yy = a.Y(log ? Math.exp(cv[1][i]) : cv[1][i]); if (i == 0) q.moveTo(a.X(cv[0][i]), yy); else q.lineTo(a.X(cv[0][i]), yy); } g.setColor(Color.BLACK); g.draw(q); }
         RegPlots.drawLegend(c, (a.x0 + a.x1) / 2, a.y1 + 52, leg);
         return c.img;
@@ -785,7 +880,7 @@ public final class Plots {
         c.g.setColor(BaujatPlot.backColour(o, false)); c.g.fill(new Rectangle2D.Double(70, 40, c.w / c.scaleF() - 100, c.h / c.scaleF() - 100));   // panel background (the frame is drawn on top)
         Axes a = axes(c, 0, xm * 1.08, 0, ym * 1.08, false, "Contribution to overall heterogeneity", "Influence on overall result", false, "");
         Color sym = BaujatPlot.symbolColour(o, false);
-        for (int i = 0; i < pts.size(); i++) { double xx = a.X(pts.get(i)[0]), yy = a.Y(pts.get(i)[1]); c.g.setColor(sym); c.g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) { c.g.setColor(Color.BLACK); c.text(labs.get(i), xx + 4, yy - 3, 8, 0, false); } }
+        for (int i = 0; i < pts.size(); i++) { double xx = a.X(pts.get(i)[0]), yy = a.Y(pts.get(i)[1]); c.g.setColor(sym); c.g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) { c.g.setColor(Color.BLACK); ptLabel(c, a, labs.get(i), xx, yy, 4, -3, false); } }
         c.g.setColor(Color.BLACK); return c.img;
     }
 
@@ -794,14 +889,14 @@ public final class Plots {
 
     /** Doi plot (Furuya-Kanamori et al. 2018): |Z-score| (reversed axis) against the effect size, studies joined in order of effect; optional dashed line through the apex (Opts.apexLine, off as in metasens::doiplot). */
     public static BufferedImage doi(Lfk l, MetaResult r, Opts o) {
-        MetaSpec s = r.spec; boolean log = s.backtransf && s.isRatioSm(); Canvas c = new Canvas(620, 520, o.scale); int k = l.k;
+        MetaSpec s = r.spec; final java.util.function.DoubleUnaryOperator bk = backAxis(s, r); boolean log = s.backtransf && s.isRatioSm() && bk == null; Canvas c = new Canvas(620, 520, o.scale); int k = l.k;
         if (l.lfk != l.lfk) { c.text("Doi plot not available (needs at least two studies with different effects)", 310, 260, 12, 1, false); return c.img; }
         double mn = l.te[0], mx = l.te[k - 1], pad = (mx - mn) > 0 ? (mx - mn) * 0.06 : 0.5, yh = 0; for (double z : l.absZ) yh = Math.max(yh, z); yh = Math.max(yh * 1.08, 0.5);
-        Axes a = axes(c, mn - pad, mx + pad, 0, yh, true, xlabFor(s), "|Z-score|", log, ""); Graphics2D g = c.g;
+        Axes a = axes(c, mn - pad, mx + pad, 0, yh, true, xlabFor(s), "|Z-score|", log, "", 60, false, false, bk, true, mn, mx); Graphics2D g = c.g;
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
         if (o.apexLine) c.dashed(a.X(l.te[l.apex]), a.Y(0), a.X(l.te[l.apex]), a.y1);   // not part of metasens::doiplot: optional
         for (int j = 1; j < k; j++) c.line(a.X(l.te[j - 1]), a.Y(l.absZ[j - 1]), a.X(l.te[j]), a.Y(l.absZ[j]));
-        for (int j = 0; j < k; j++) { double xx = a.X(l.te[j]), yy = a.Y(l.absZ[j]); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); if (o.studyLabels) c.text(l.label[j], xx + 5, yy - 4, 8, 0, false); }
+        for (int j = 0; j < k; j++) { double xx = a.X(l.te[j]), yy = a.Y(l.absZ[j]); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); if (o.studyLabels) ptLabel(c, a, l.label[j], xx, yy, 5, -4, false); }
         c.text("LFK index: " + Fmt.num(l.lfk, 2), a.x0 + 8, a.y0 + 17, 11, 0, false);
         return c.img;
     }
@@ -828,7 +923,7 @@ public final class Plots {
         for (int i = 0; i < n; i++) { if (Double.isNaN(r.TE[i]) || Double.isNaN(w[i]) || ne[i] <= 0 || nc[i] <= 0) continue;
             double xx = a.X(ec[i] / nc[i]), yy = a.Y(ee[i] / ne[i]), dia = 4 * w[i], rad = dia / 2;   // metafor: cex = psize in [0.5, 3.5] -> diameter 2 to 14 px
             g.setColor(LabbePlot.pick(o.labbeCircle, LabbePlot.DEF_CIRCLE)); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia)); g.setColor(LabbePlot.pick(o.labbeSymbol, Color.BLACK)); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia));
-            if (o.studyLabels) { g.setColor(Color.BLACK); c.text(r.studlab[i], xx - rad - 3, yy + 3, 8, 2, false); } }
+            if (o.studyLabels) { g.setColor(Color.BLACK); ptLabel(c, a, r.studlab[i], xx, yy, rad + 3, 3, true); } }
         labbeLegend(c, a, r, o, lim);
         g.setColor(Color.BLACK); return c.img;
     }

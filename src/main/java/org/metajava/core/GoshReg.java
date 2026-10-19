@@ -88,6 +88,7 @@ public final class GoshReg {
         g.status = new byte[n]; g.size = new int[n]; g.coef = new double[p][n]; g.i2 = new double[n]; g.tau2 = new double[n]; g.qe = new double[n];
         final boolean qDef = false;   // metafor: I^2 = tau^2 / (tau^2 + vt) for every random-effects estimator
         final String method = s.methodTau; final long[][] M = g.mask; final GoshReg G = g;
+        Par.nextPhase(0, 0.92);
         Par.forRange(n, b -> {
             long[] m = M[b]; int c = 0; for (long x : m) c += Long.bitCount(x); G.size[b] = c;
             for (int a = 0; a < p; a++) G.coef[a][b] = Double.NaN; G.i2[b] = G.tau2[b] = G.qe[b] = Double.NaN;
@@ -111,6 +112,7 @@ public final class GoshReg {
         // in / out means
         g.i2In = new double[k]; g.i2Out = new double[k]; g.coefIn = new double[p][k]; g.coefOut = new double[p][k]; g.nIn = new int[k];
         g.tau2In = new double[k]; g.tau2Out = new double[k];
+        Par.nextPhase(0.92, 1);
         Par.forRange(k, j -> {   // one study per task: the subsets are visited in the same order as before, so the sums are identical
             double sIi = 0, sIo = 0, sTi = 0, sTo = 0; int ni = 0, no = 0; double[] sCi = new double[p], sCo = new double[p];
             for (int b = 0; b < n; b++) { if (G.status[b] != OK) continue;

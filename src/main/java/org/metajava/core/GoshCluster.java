@@ -106,6 +106,7 @@ public final class GoshCluster {
         final double[][][] init = new double[gMax * nStart][][]; final Mix[] fits = new Mix[gMax * nStart];
         for (int g = 1; g <= gMax; g++) for (int start = 0; start < nStart; start++) init[(g - 1) * nStart + start] = Mix.start(F, g, rng);
         final double[][] Ff = F;
+        Par.nextPhase(0, 0.9);   // the EM fits are almost all of the time; the steps after them are short
         Par.forRange(fits.length, q -> fits[q] = Mix.fit(Ff, q / nStart + 1, init[q]));
         for (int g = 1; g <= gMax; g++) {
             Mix mx = null; for (int start = 0; start < nStart; start++) { Mix t = fits[(g - 1) * nStart + start]; if (t != null && (mx == null || t.ll > mx.ll)) mx = t; }
@@ -119,6 +120,7 @@ public final class GoshCluster {
         if (best == null) { r.G = 1; r.fillSummary(X, masks, k, sizes, ok); r.note = "The mixture model could not be fitted; no clusters reported."; return r; }
         // assign every valid subset
         final int[] lab = new int[r.nUsed]; int[] cnt = new int[best.G]; final Mix bestF = best;
+        Par.nextPhase(0.9, 0.95);
         Par.forRange(r.nUsed, i -> lab[i] = bestF.assign(Z[i]));   // every subset is independent (up to 500 000 of them)
         for (int i = 0; i < r.nUsed; i++) cnt[lab[i]]++;
         // clusters smaller than 1% of the subsets (or 10 subsets) are merged into the nearest larger cluster
@@ -128,7 +130,8 @@ public final class GoshCluster {
                 // renumber
                 int[] map = new int[best.G]; int c = 0; for (int g = 0; g < best.G; g++) map[g] = cnt[g] > 0 ? c++ : -1; for (int i = 0; i < r.nUsed; i++) lab[i] = map[lab[i]];
                 int[] nc = new int[c]; for (int g = 0; g < best.G; g++) if (map[g] >= 0) nc[map[g]] = cnt[g]; cnt = nc; best = best.drop(map, c); } }
-        return finish(r, X, masks, k, sizes, seed, hetCol, minSil, minShare, hetFree, hetMinSil, hetMinShare, ok, act, Z, lab, cnt, best.G);
+        final int[] labF = lab, cntF = cnt; final int bestG = best.G; final GoshCluster rF = r;
+        return Par.quiet(() -> finish(rF, X, masks, k, sizes, seed, hetCol, minSil, minShare, hetFree, hetMinSil, hetMinShare, ok, act, Z, labF, cntF, bestG));   // gating steps: short, no progress of their own
     }
 
     /** Gating phase (separation check, ordering, summaries) on the partition proposed by ICL; r is modified and returned. */
