@@ -78,7 +78,8 @@ public final class FunnelThemes {
     static Color alpha(Color c, double a) { return new Color(c.getRed(), c.getGreen(), c.getBlue(), (int) Math.round(255 * a)); }
 
     /** Study labels next to the points (to the left of a point that is close to the right edge of the plot area). */
-    static void labels(Canvas c, D d, java.util.function.DoubleUnaryOperator X, java.util.function.DoubleUnaryOperator Y, double xmax, Color col) {
+    static void labels(Canvas c, D d, java.util.function.DoubleUnaryOperator X, java.util.function.DoubleUnaryOperator Y, double xmax, Color col, boolean repel, double x0, double y0, double y1) {
+        if (repel) { LabelPlacer lp = new LabelPlacer(x0, y0, xmax, y1, 8.5f); for (int i = 0; i < d.te.length; i++) if (d.ok(i)) lp.add(d.lab[i], X.applyAsDouble(d.te[i]), Y.applyAsDouble(d.yv(i)), 3.8); lp.draw(c); return; }
         FontMetrics fm = c.g.getFontMetrics(Canvas.font(9f)); c.g.setColor(col);
         for (int i = 0; i < d.te.length; i++) { if (!d.ok(i) || d.lab[i] == null) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.yv(i)), w = fm.stringWidth(d.lab[i]);
             if (xx + 6 + w > xmax) c.text(d.lab[i], xx - 6, yy - 4, 9f, 2, false); else c.text(d.lab[i], xx + 6, yy - 4, 9f, 0, false); }
@@ -116,7 +117,7 @@ public final class FunnelThemes {
         for (int i = 0; i < d.te.length; i++) { if (!d.ok(i)) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.yv(i));
             g.setColor(d.filled(i) ? ORANGE : NAVY); g.fill(new Ellipse2D.Double(xx - 3.8, yy - 3.8, 7.6, 7.6));
         }
-        g.setClip(clip0); if (o.studyLabels) labels(c, d, X, Y, x1, new Color(40, 40, 40));
+        g.setClip(clip0); if (o.studyLabels) labels(c, d, X, Y, x1, new Color(40, 40, 40), o.repelFunnel, x0, y0, y1);
         // axes (left and bottom line, outward ticks)
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1.2f)); c.line(x0, y0, x0, y1); c.line(x0, y1, x1, y1);
         for (double t : yt) { if (t < 0 || t > yh + 1e-9) continue; double yy = Y.applyAsDouble(t); c.line(x0 - 5, yy, x0, yy); c.textRot(stataNum(t), x0 - 12, yy, 13f); }
@@ -176,7 +177,7 @@ public final class FunnelThemes {
         for (int i = 0; i < d.te.length; i++) { if (!d.ok(i)) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.yv(i));
             g.setColor(d.filled(i) ? TABORANGE : TABBLUE); g.fill(new Ellipse2D.Double(xx - 3.8, yy - 3.8, 7.6, 7.6));
         }
-        g.setClip(clip0); if (o.studyLabels) labels(c, d, X, Y, x1, new Color(30, 30, 30));
+        g.setClip(clip0); if (o.studyLabels) labels(c, d, X, Y, x1, new Color(30, 30, 30), o.repelFunnel, x0, y0, y1);
         // legend of a trim-and-fill plot
         if (d.tf) { double bx = x1 - 132, by = y0 + 8; g.setColor(new Color(255, 255, 255, 215)); g.fill(new Rectangle2D.Double(bx, by, 124, 40)); g.setColor(new Color(150, 150, 150)); g.draw(new Rectangle2D.Double(bx, by, 124, 40));
             g.setColor(TABBLUE); g.fill(new Ellipse2D.Double(bx + 8, by + 8, 7.6, 7.6)); g.setColor(TABORANGE); g.fill(new Ellipse2D.Double(bx + 8, by + 25, 7.6, 7.6));

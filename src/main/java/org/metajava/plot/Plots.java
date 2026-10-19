@@ -25,6 +25,7 @@ public final class Plots {
         public String radialTheme = RadialPlot.DEFAULT, radialSymbol = RadialPlot.AUTO, radialBack = RadialPlot.AUTO, radialCircle = RadialPlot.AUTO, radialReg = RadialPlot.AUTO, radialRef = RadialPlot.AUTO, radialCI = RadialPlot.AUTO, radialCILine = RadialPlot.AUTO; public boolean radialLabels = true, labbeLabels = true; public boolean precision = false;   // funnel plot of precision (y = 1 / SE)   // Radial plot: theme, colours, study labels; L'Abbe plot: study labels
         /** Drapery plot (meta::drapery): test statistic or p-value, layout and colour of the study lines, study labels and their angle, prediction region, model(s) shown and their colours. */
         public String drapTarget = "", drapType = Drapery.ZVALUE, drapLayout = Drapery.GRAYSCALE, drapStudyColour = Drapery.STUDY_DEFAULT, drapLabels = Drapery.LAB_ID, drapPredColour = Drapery.PRED_DEFAULT, drapModel = Drapery.MODEL_AUTO, drapRandomColour = Drapery.RANDOM_DEFAULT, drapCommonColour = Drapery.COMMON_DEFAULT; public int drapAngle = 0; public boolean drapPrediction = true;
+        public boolean repelBubble = false, repelFunnel = false, repelDoi = false, repelPet = false, repelRadial = false, repelLabbe = false, repelBias = false, biasCI = false, biasPI = false;   // "Avoid label overlap" (LabelPlacer, the Baujat ggplot2-style placement) per plot; asymmetry-test plot: confidence / prediction band of the regression
         public boolean funnelBack = false;   // funnel plots: x-axis on the back-transformed scale (all transformed effect sizes)
         public String funnelTheme = FunnelThemes.DEFAULT;   // funnel plot and trim-and-fill funnel plot: Default, MetaWin style, STATA style
         public String squareColour = ForestTheme.AUTO, diamondFill = ForestTheme.AUTO, diamondBorder = ForestTheme.AUTO, nullColour = ForestTheme.AUTO, nullStyle = ForestTheme.AUTO, pooledColour = ForestTheme.AUTO, pooledStyle = ForestTheme.AUTO; }
@@ -245,13 +246,16 @@ public final class Plots {
     static boolean boldRow(ForestTheme T, Row w) { return w.type == 0 ? false : w.type == 2 ? T.kind != 3 : T.boldPool; }
 
     /** Forest plot renderer. The look follows the theme in Opts (Default = meta::forest, RevMan 5, BMJ, STATA), then the individual colour / line-style overrides. */
-    static BufferedImage drawForest(List<Row> rows, MetaResult r, Opts o, boolean log, String smL0, boolean showWeight, boolean loo) {
+    static BufferedImage drawForest(List<Row> rows, MetaResult r, Opts o, boolean log, String smL0, boolean showWeight, boolean loo) { return drawForest(rows, r, o, log, smL0, showWeight, loo, null); }
+    /** serTitle: heading of the plot column of a leave-one-out / cumulative forest plot (\"Leave-One-Out Meta-Analysis\", \"Cumulative Meta-Analysis\"), as meta::forest; null for ordinary forest plots. */
+    static BufferedImage drawForest(List<Row> rows, MetaResult r, Opts o, boolean log, String smL0, boolean showWeight, boolean loo, String serTitle) {
         MetaSpec s = r.spec; final String smL = logRatio(s) ? "log" + smL0 : smL0; /* results not back-transformed: effect column headed logOR, logHR, ... */ final ForestTheme T = ForestTheme.of(o); final int K = T.kind; final float FS = 12f; int rowH = (int) Math.round(T.rowBase * o.spacing), M = 14, nrow = rows.size();
         final String measure = forestMeasure(s), lvl = Fmt.num(s.levelMa * 100, 0) + "% CI", mt = methodTag(s), mdl = s.random ? "Random" : "Fixed";
         // ---- left-hand data columns (events, totals, means ...). BMJ merges events and total into "e / n"; STATA shows no data columns.
         String[] lh0 = loo ? (s.hasNull() ? new String[]{"P-value", "Tau²", "Tau", "I²"} : new String[]{"Tau²", "Tau", "I²"}) : leftHead(s);
+        final boolean moveR = loo && (K == 0 || K == 2) && !T.noDataCols;   // Default (meta) and BMJ: P-value, tau^2, tau and I^2 right of the plot, after the effect and its CI (as meta::forest); RevMan 5 keeps them on the left
         final boolean merge = K == 2 && !loo && (s.type.equals("bin") || s.type.equals("inc") || s.type.equals("prop") || s.type.equals("rate")), noData = T.noDataCols;
-        final String[] lh = noData ? new String[0] : merge ? (s.type.equals("bin") || s.type.equals("inc") ? new String[]{ s.labelE == null ? "" : s.labelE, s.labelC == null ? "" : s.labelC } : new String[]{ "" }) : lh0;
+        final String[] lh = noData || moveR ? new String[0] : merge ? (s.type.equals("bin") || s.type.equals("inc") ? new String[]{ s.labelE == null ? "" : s.labelE, s.labelC == null ? "" : s.labelC } : new String[]{ "" }) : lh0;
         final int nl = lh.length;
         final java.util.function.Function<Row, String[]> LC = w -> { if (noData) return new String[0]; if (!merge) return w.lcols; String[] a = w.lcols, m = new String[a.length / 2];
             for (int k = 0; k < m.length; k++) m[k] = a[2 * k].isEmpty() && a[2 * k + 1].isEmpty() ? "" : a[2 * k] + " / " + a[2 * k + 1]; return m; };
@@ -279,9 +283,12 @@ public final class Plots {
             case 3: post.add(new Col(measure1, measure2, CB, 0, 0)); if (showWeight) post.add(new Col("%", "Weight", w -> w.wtxt.isEmpty() || (w.type != 0 && w.type != 1) ? "" : Fmt.num(100 * w.w, 2), 0, 0)); gap = new int[]{30, 34}; break;
             default: post.add(new Col("", smL, w -> w.type == 3 ? "" : w.rcol1, 2, 2)); post.add(new Col("", lvl, w -> w.rcol2, 2, 2)); if (showWeight) post.add(new Col("", "Weight", w -> w.wtxt, 2, 2)); gap = new int[]{22, 12, 10};
         }
+        if (moveR) { int n0 = post.size(); for (int j = 0; j < lh0.length; j++) { final int jj = j; post.add(new Col("", lh0[j], w -> jj < w.lcols.length ? w.lcols[jj] : "", 2, 2)); }
+            int[] g3 = Arrays.copyOf(gap, post.size()); for (int j = n0; j < g3.length; j++) g3[j] = 14; gap = g3; }
+        final String serT = !loo ? null : serTitle != null ? serTitle : "Leave-One-Out Meta-Analysis";
         for (Col c : pre) { c.w = Math.max(fh.stringWidth(c.h1), fh.stringWidth(c.h2)); for (Row w : rows) if (w.type == 0 || w.type == 1 || w.type == 3) c.w = Math.max(c.w, FR.apply(w).stringWidth(c.val.apply(w))); c.xl = cur; cur += c.w + 14; }
         for (Col c : post) { c.w = Math.max(fh.stringWidth(c.h1), fh.stringWidth(c.h2)); for (Row w : rows) if (w.type == 0 || w.type == 1 || w.type == 3) c.w = Math.max(c.w, FR.apply(w).stringWidth(c.val.apply(w))); }
-        int plotW = T.plotW, px0 = cur, px1 = px0 + plotW; { int pc = px1; for (int i = 0; i < post.size(); i++) { post.get(i).xl = pc + gap[i]; pc = post.get(i).xl + post.get(i).w; } }
+        int plotW = serT == null ? T.plotW : Math.max(T.plotW, (K == 0 || K == 3 ? fb.stringWidth(serT) : fb.stringWidth(serT.substring(serT.indexOf(' ') + 1))) + 10), px0 = cur, px1 = px0 + plotW; { int pc = px1; for (int i = 0; i < post.size(); i++) { post.get(i).xl = pc + gap[i]; pc = post.get(i).xl + post.get(i).w; } }
         int W = (post.isEmpty() ? px1 : post.get(post.size() - 1).xl + post.get(post.size() - 1).w) + M;
         // ---- axis range
         // For measures with a back-transformation (proportions, correlations, ...) the axis is drawn on the back-transformed (original) scale, as meta::forest does.
@@ -401,7 +408,10 @@ public final class Plots {
         for (Col col : pre) { c.text(col.h1, col.ax(col.hAlign), hy - gh, FS, col.hAlign, hb); c.text(col.h2, col.ax(col.hAlign), hy, FS, col.hAlign, hb); }
         for (Col col : post) { c.text(col.h1, col.ax(col.hAlign), hy - gh, FS, col.hAlign, hb); c.text(col.h2, col.ax(col.hAlign), hy, FS, col.hAlign, hb); }
         double pcx = (px0 + px1) / 2.0;
-        if (K == 0) c.text(loo ? smL : measure, pcx, hy, FS, 1, true);
+        if (serT != null) {   // leave-one-out / cumulative: the heading of meta::forest instead of the effect measure (which heads its own column)
+            if (K == 1 || K == 2) { int sp = serT.indexOf(' '); c.text(serT.substring(0, sp), pcx, hy - gh, FS, 1, true); c.text(serT.substring(sp + 1), pcx, hy, FS, 1, true); }
+            else c.text(serT, pcx, hy, FS, 1, true); }
+        else if (K == 0) c.text(measure, pcx, hy, FS, 1, true);
         else if (K == 1) { c.text(measure, pcx, hy - gh, FS, 1, true); c.text(mt + ", " + mdl + ", " + lvl, pcx, hy, FS, 1, true); }
         else if (K == 2) { c.text(measure + ", " + mt + ",", pcx, hy - gh, FS, 1, true); c.text(mdl.toLowerCase(Locale.ROOT) + " (" + lvl + ")", pcx, hy, FS, 1, true); }
         if (T.headRule != null) { g.setColor(T.headRule); g.setStroke(new BasicStroke(K == 1 ? 1f : 1.2f)); c.line(M, ruleY, Wc - M, ruleY); }
@@ -546,10 +556,10 @@ public final class Plots {
             w.sEst = w.rcol1; w.sLo = Fmt.num(Meta.back(s, w.lo, w.n), dg); w.sUp = Fmt.num(Meta.back(s, w.up, w.n), dg);
             w.lcols = s.hasNull() ? new String[]{ Report.pooledP(p, s.random, true), Fmt.num(p.tau2, 4), Fmt.num(p.tau, 4), Fmt.num(100 * p.I2, 1) + "%" } : new String[]{ Fmt.num(p.tau2, 4), Fmt.num(p.tau, 4), Fmt.num(100 * p.I2, 1) + "%" }; rows.add(w);
             if (s.prediction && s.random && !Double.isNaN(p.loPred)) rows.add(piRow(s, p, dg)); }
-        Pool p = r.overall; Row w = themed(ForestTheme.of(o).kind, poolRow(r, s, p, s.random ? s.textRandom : s.textCommon, !s.random, dg, 100, null), p, s, o, false, false, false); w.lcols = s.hasNull() ? new String[]{ "", "", "", "" } : new String[]{ "", "", "" }; rows.add(w);
+        Pool p = r.overall; Row w = themed(ForestTheme.of(o).kind, poolRow(r, s, p, s.random ? s.textRandom : s.textCommon, !s.random, dg, 100, null), p, s, o, false, false, false); w.lcols = s.hasNull() ? new String[]{ Report.pooledP(p, s.random, true), Fmt.num(p.tau2, 4), Fmt.num(p.tau, 4), Fmt.num(100 * p.I2, 1) + "%" } : new String[]{ Fmt.num(p.tau2, 4), Fmt.num(p.tau, 4), Fmt.num(100 * p.I2, 1) + "%" }; rows.add(w);   // pooled result of all studies: its P-value, tau^2, tau and I^2 as in meta::forest
         if (s.prediction && s.random) rows.add(piRow(s, p, dg));
         if (!Report.degenerateNote(s, labels, pools, r.overall).isEmpty()) { Row t = new Row(); t.type = 5; t.text = s.hasNull() ? "Degenerate (SE = 0: Hartung-Knapp with q = 0): zero-width interval, p-value not interpretable" : "Degenerate (SE = 0: Hartung-Knapp with q = 0): zero-width interval"; rows.add(t); }
-        MetaSpec s2 = s; BufferedImage im = drawForest(rows, r, o, log, Report.smLabel(s), false, true); return im;
+        MetaSpec s2 = s; BufferedImage im = drawForest(rows, r, o, log, Report.smLabel(s), false, true, "cum".equals(kind) ? "Cumulative Meta-Analysis" : "Leave-One-Out Meta-Analysis"); return im;
     }
 
     // ---------------- funnel & friends ----------------
@@ -661,6 +671,8 @@ public final class Plots {
     }
 
     /** Study label next to a point, kept inside the plot panel: drawn to the right of the point (or to the left when preferLeft) and flipped to the other side when it would cross the panel edge; never above the top edge. */
+    /** Study label next to a point, or (placer != null) handed to the label-placement algorithm that draws all the labels at the end of the plot. */
+    static void lab(LabelPlacer lp, Canvas c, Axes a, String text, double xx, double yy, double off, double dy, boolean preferLeft, double rad) { if (lp != null) lp.add(text, xx, yy, rad); else ptLabel(c, a, text, xx, yy, off, dy, preferLeft); }
     static void ptLabel(Canvas c, Axes a, String text, double xx, double yy, double off, double dy, boolean preferLeft) { ptLabel(c, a.x0, a.x1, a.y0, text, xx, yy, off, dy, preferLeft); }
     static void ptLabel(Canvas c, double x0, double x1, double y0, String text, double xx, double yy, double off, double dy, boolean preferLeft) {
         if (text == null) return; double w = c.g.getFontMetrics(Canvas.font(8f)).stringWidth(text); boolean left = preferLeft;
@@ -728,10 +740,12 @@ public final class Plots {
         g.setColor(Color.BLACK); c.dashed(a.X(center), a.y0, a.X(center), a.y1);
         Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
         c.dashed(a.X(center), a.Y(0), a.X(center - z * ymax), a.Y(ymax)); c.dashed(a.X(center), a.Y(0), a.X(center + z * ymax), a.Y(ymax)); g.setClip(clip);
+        LabelPlacer lp = LabelPlacer.on(o.repelFunnel && o.studyLabels, a);
         for (int i = 0; i < te.length; i++) { if (Double.isNaN(te[i])) continue; double xx = a.X(te[i]), yy = a.Y(se[i]);
             boolean f = fl != null && fl[i]; if (f) { g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); }
             else { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); }
-            if (o.studyLabels) { g.setColor(Color.BLACK); ptLabel(c, a, lab[i], xx, yy, 4, -3, false); } }
+            if (o.studyLabels) { g.setColor(Color.BLACK); lab(lp, c, a, lab[i], xx, yy, 4, -3, false, 3); } }
+        if (lp != null) lp.draw(c);
         if (contourOn(o, s)) contourLegend(c, a);
         return c.img;
     }
@@ -760,28 +774,64 @@ public final class Plots {
         g.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{5, 4}, 0));
         g.draw(FunnelThemes.curve(a::X, a::Y, center, -z, 0, ymax, half, true)); g.draw(FunnelThemes.curve(a::X, a::Y, center, z, 0, ymax, half, true)); g.setStroke(new BasicStroke(1f)); g.setClip(clip);
         if (contourOn(o, s)) { g.setColor(Color.BLACK); g.draw(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0)); }
+        LabelPlacer lp = LabelPlacer.on(o.repelFunnel && o.studyLabels, a);
         for (int i = 0; i < te.length; i++) { if (Double.isNaN(te[i]) || !(se[i] > 0)) continue; double xx = a.X(te[i]), yy = a.Y(1 / se[i]);
             boolean f = fl != null && fl[i]; if (f) { g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); g.setColor(Color.BLACK); g.draw(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); }
             else { g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); }
-            if (o.studyLabels) { g.setColor(Color.BLACK); ptLabel(c, a, lab[i], xx, yy, 4, -3, false); } }
+            if (o.studyLabels) { g.setColor(Color.BLACK); lab(lp, c, a, lab[i], xx, yy, 4, -3, false, 3); } }
+        if (lp != null) lp.draw(c);
         if (contourOn(o, s)) contourLegend(c, a);
         return c.img;
     }
 
     /** Regression plot belonging to the asymmetry test (Egger radial form). */
     public static BufferedImage biasPlot(Bias.Result b, MetaResult r, Opts o) {
-        Canvas c = new Canvas(600, 480, o.scale); if (b.plotX == null) { c.text("No plot available for this method", 300, 240, 12, 1, false); return c.img; }
+        final boolean fitOk = b.plotX != null && b.fitVb != null && !b.methodBias.equals("Begg") && b.fitCrit == b.fitCrit;
+        final boolean ci = o.biasCI && fitOk, pi = o.biasPI && fitOk; final int extra = ci || pi ? 30 : 0;
+        Canvas c = new Canvas(600, 480 + extra, o.scale); if (b.plotX == null) { c.text("No plot available for this method", 300, 240, 12, 1, false); return c.img; }
         double xl = 0, xh = Arrays.stream(b.plotX).max().getAsDouble() * 1.05, yl = Math.min(0, Arrays.stream(b.plotY).min().getAsDouble()) - 0.5, yh = Math.max(0, Arrays.stream(b.plotY).max().getAsDouble()) + 0.5;
         if (!b.methodBias.equals("Begg")) yl = Math.min(yl, b.bias - 0.5);
         if (b.methodBias.equals("Begg")) { xl = Arrays.stream(b.plotX).min().getAsDouble() - 0.5; xh = Arrays.stream(b.plotX).max().getAsDouble() + 0.5; yl = 0; yh = Arrays.stream(b.plotY).max().getAsDouble() * 1.05; }
-        Axes a = axes(c, xl, xh, yl, yh, false, b.plotXlab, b.plotYlab, false, "");
+        // confidence / prediction band of the regression y = bias + effect * x: {x, fit, ciLo, ciUp, piLo, piUp}
+        final int NG = 120; double[][] bd = null;
+        if (ci || pi) {
+            bd = new double[6][NG + 1];
+            for (int q = 0; q <= NG; q++) { double x = xl + (xh - xl) * q / NG, fit = b.bias + b.intercept * x, v = Math.max(0, x * x * b.fitVb[0] + 2 * x * b.fitVb[1] + b.fitVb[2]);
+                double res = Double.isNaN(b.piSigma2) ? 1 + b.piTau2 * x * x : b.piSigma2, hc = b.fitCrit * Math.sqrt(v), hp = b.fitCrit * Math.sqrt(v + res);
+                bd[0][q] = x; bd[1][q] = fit; bd[2][q] = fit - hc; bd[3][q] = fit + hc; bd[4][q] = fit - hp; bd[5][q] = fit + hp; }
+            for (int q = 0; q <= NG; q++) { int lo = pi ? 4 : 2, up = pi ? 5 : 3; yl = Math.min(yl, bd[lo][q] - 0.2); yh = Math.max(yh, bd[up][q] + 0.2); }
+        }
+        Axes a = axes(c, xl, xh, yl, yh, false, b.plotXlab, b.plotYlab, false, "", 60 + extra);
         Graphics2D g = c.g;
-        for (int i = 0; i < b.plotX.length; i++) { double xx = a.X(b.plotX[i]), yy = a.Y(b.plotY[i]); g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels && !b.methodBias.equals("Begg")) ptLabel(c, a, r.studlab[i < r.studlab.length ? i : 0], xx, yy, 4, -3, false); }
+        if (bd != null) {
+            Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0));
+            if (pi) biasBand(a, bd, 4, 5, new Color(240, 240, 240), new Color(70, 70, 70), RegPlots.DOTTED);   // prediction: lighter area, dotted lines (drawn underneath)
+            if (ci) biasBand(a, bd, 2, 3, new Color(215, 215, 215), new Color(70, 70, 70), new BasicStroke(1.2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{5f, 4f}, 0));   // confidence: light grey area, dashed lines
+            g.setStroke(new BasicStroke(1f)); g.setClip(clip);
+        }
+        LabelPlacer lp = LabelPlacer.on(o.repelBias && o.studyLabels && !b.methodBias.equals("Begg"), a);
+        for (int i = 0; i < b.plotX.length; i++) { double xx = a.X(b.plotX[i]), yy = a.Y(b.plotY[i]); g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels && !b.methodBias.equals("Begg")) lab(lp, c, a, r.studlab[i < r.studlab.length ? i : 0], xx, yy, 4, -3, false, 3); }
         if (!b.methodBias.equals("Begg")) { Shape clip = g.getClip(); g.setClip(new Rectangle2D.Double(a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0)); g.setColor(Color.BLACK);
-            c.line(a.X(xl), a.Y(b.intercept + b.bias * 0 + (b.bias == 0 ? 0 : 0)), a.X(xl), a.Y(b.intercept)); // placeholder
             double slopeEff = b.intercept, interceptBias = b.bias; // regression: y = bias + effect * x
             c.line(a.X(xl), a.Y(interceptBias + slopeEff * xl), a.X(xh), a.Y(interceptBias + slopeEff * xh)); g.setClip(clip); }
+        if (lp != null) lp.draw(c);
+        if (bd != null) {   // legend below the x-axis title
+            List<Object[]> it = new ArrayList<>(); if (ci) it.add(new Object[]{false, "95% confidence interval"}); if (pi) it.add(new Object[]{true, "95% prediction interval"});
+            FontMetrics fm = g.getFontMetrics(Canvas.font(10f)); double tot = 0; for (Object[] e : it) tot += 44 + fm.stringWidth((String) e[1]) + 18; double lx = (a.x0 + a.x1) / 2 - tot / 2 + 4, ly = a.y1 + 56;
+            for (Object[] e : it) { boolean p = (Boolean) e[0]; Rectangle2D.Double sw = new Rectangle2D.Double(lx, ly - 5, 26, 10);
+                g.setColor(p ? new Color(240, 240, 240) : new Color(215, 215, 215)); g.fill(sw); g.setColor(new Color(70, 70, 70)); g.setStroke(p ? RegPlots.DOTTED : new BasicStroke(1.2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{4f, 3f}, 0));
+                c.line(lx, ly - 5, lx + 26, ly - 5); c.line(lx, ly + 5, lx + 26, ly + 5); g.setStroke(new BasicStroke(1f)); g.setColor(Color.BLACK); c.text((String) e[1], lx + 32, ly + 4, 10f, 0, false); lx += 44 + fm.stringWidth((String) e[1]) + 18; }
+        }
         return c.img;
+    }
+
+    /** Band between two rows of {@code bd} (lower, upper) of the asymmetry-test plot: filled area and the two bounding lines. */
+    private static void biasBand(Axes a, double[][] bd, int lo, int up, Color fill, Color edge, Stroke st) {
+        Graphics2D g = a.c.g; int n = bd[0].length; Path2D p = new Path2D.Double();
+        for (int i = 0; i < n; i++) { double x = a.X(bd[0][i]), y = a.Y(bd[up][i]); if (i == 0) p.moveTo(x, y); else p.lineTo(x, y); }
+        for (int i = n - 1; i >= 0; i--) p.lineTo(a.X(bd[0][i]), a.Y(bd[lo][i])); p.closePath();
+        g.setColor(fill); g.fill(p); g.setColor(edge); g.setStroke(st);
+        for (int row : new int[]{lo, up}) { Path2D q = new Path2D.Double(); for (int i = 0; i < n; i++) { double x = a.X(bd[0][i]), y = a.Y(bd[row][i]); if (i == 0) q.moveTo(x, y); else q.lineTo(x, y); } g.draw(q); }
     }
 
     /** Funnel plot with the PET line (effect = b0 + b1 * SE) and the PEESE curve (effect = b0 + b1 * SE^2); both start at their intercept = the corrected effect. */
@@ -802,7 +852,9 @@ public final class Plots {
         g.setColor(peeseCol); double px = a.X(pp.peese.b0), py = a.Y(0);
         for (int i = 1; i <= 60; i++) { double se = maxse * i / 60.0, ex = pp.peese.b0 + pp.peese.b1 * se * se; double nx = a.X(ex), ny = a.Y(se); c.line(px, py, nx, ny); px = nx; py = ny; }
         g.setStroke(new BasicStroke(1f)); g.setClip(clip);
-        for (int i = 0; i < pp.te.length; i++) { double xx = a.X(pp.te[i]), yy = a.Y(pp.se[i]); g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) ptLabel(c, a, pp.label[i], xx, yy, 4, -3, false); }
+        LabelPlacer lp = LabelPlacer.on(o.repelPet && o.studyLabels, a);
+        for (int i = 0; i < pp.te.length; i++) { double xx = a.X(pp.te[i]), yy = a.Y(pp.se[i]); g.setColor(Color.BLACK); g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) lab(lp, c, a, pp.label[i], xx, yy, 4, -3, false, 3); }
+        if (lp != null) lp.draw(c);
         for (int q = 0; q < 2; q++) { double ex = q == 0 ? pp.pet.b0 : pp.peese.b0; g.setColor(q == 0 ? petCol : peeseCol); g.fill(new Rectangle2D.Double(a.X(ex) - 4, a.Y(0) - 4, 8, 8)); }
         double lx = a.x0 + 4; g.setStroke(new BasicStroke(1.8f));
         g.setColor(petCol); c.line(lx, 22, lx + 22, 22); g.setColor(Color.BLACK); c.text("PET", lx + 26, 26, 10, 0, false);
@@ -844,10 +896,12 @@ public final class Plots {
             for (int row = 2; row <= 3; row++) { Path2D q = new Path2D.Double(); for (int i = 0; i < n; i++) { double yy = a.Y(log ? Math.exp(cv[row][i]) : cv[row][i]); if (i == 0) q.moveTo(a.X(cv[0][i]), yy); else q.lineTo(a.X(cv[0][i]), yy); } g.draw(q); }
             g.setStroke(new BasicStroke(1f)); }
         g.setClip(clip0);
+        LabelPlacer lp = LabelPlacer.on(o.repelBubble && o.studyLabels, a);
         for (int i = 0; i < g0.x1.length; i++) { double yv = log ? Math.exp(g0.y1[i]) : g0.y1[i]; double rad = o.symSize * (4 + 12 * Math.sqrt(g0.size[i] / wmax)); double xx = a.X(g0.x1[i]), yy = a.Y(yv);
             RegPlots.drawSymbol(g, o.symbol, xx, yy, rad, new Color(150, 150, 150), 200, Color.BLACK, 1f);
-            if (o.studyLabels) ptLabel(c, a, r.studlab[g0.used[i]], xx, yy, rad + 2, -2, true); }
+            if (o.studyLabels) lab(lp, c, a, r.studlab[g0.used[i]], xx, yy, rad + 2, -2, true, rad); }
         if (o.regLine) { Path2D q = new Path2D.Double(); for (int i = 0; i < cv[0].length; i++) { double yy = a.Y(log ? Math.exp(cv[1][i]) : cv[1][i]); if (i == 0) q.moveTo(a.X(cv[0][i]), yy); else q.lineTo(a.X(cv[0][i]), yy); } g.setColor(Color.BLACK); g.draw(q); }
+        if (lp != null) lp.draw(c);
         RegPlots.drawLegend(c, (a.x0 + a.x1) / 2, a.y1 + 52, leg);
         return c.img;
     }
@@ -896,7 +950,9 @@ public final class Plots {
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f));
         if (o.apexLine) c.dashed(a.X(l.te[l.apex]), a.Y(0), a.X(l.te[l.apex]), a.y1);   // not part of metasens::doiplot: optional
         for (int j = 1; j < k; j++) c.line(a.X(l.te[j - 1]), a.Y(l.absZ[j - 1]), a.X(l.te[j]), a.Y(l.absZ[j]));
-        for (int j = 0; j < k; j++) { double xx = a.X(l.te[j]), yy = a.Y(l.absZ[j]); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); if (o.studyLabels) ptLabel(c, a, l.label[j], xx, yy, 5, -4, false); }
+        LabelPlacer lp = LabelPlacer.on(o.repelDoi && o.studyLabels, a);
+        for (int j = 0; j < k; j++) { double xx = a.X(l.te[j]), yy = a.Y(l.absZ[j]); g.fill(new Ellipse2D.Double(xx - 3, yy - 3, 6, 6)); if (o.studyLabels) lab(lp, c, a, l.label[j], xx, yy, 5, -4, false, 3); }
+        if (lp != null) lp.draw(c);
         c.text("LFK index: " + Fmt.num(l.lfk, 2), a.x0 + 8, a.y0 + 17, 11, 0, false);
         return c.img;
     }
@@ -920,10 +976,12 @@ public final class Plots {
         g.setColor(LabbePlot.pick(o.labbeEst, Color.BLACK));
         if (s.common) labbeLine(c, a, s, r.overall.teCommon, false, lim); if (s.random) labbeLine(c, a, s, r.overall.teRandom, true, lim);
         g.setClip(clip);
+        LabelPlacer lp = LabelPlacer.on(o.repelLabbe && o.studyLabels, a);
         for (int i = 0; i < n; i++) { if (Double.isNaN(r.TE[i]) || Double.isNaN(w[i]) || ne[i] <= 0 || nc[i] <= 0) continue;
             double xx = a.X(ec[i] / nc[i]), yy = a.Y(ee[i] / ne[i]), dia = 4 * w[i], rad = dia / 2;   // metafor: cex = psize in [0.5, 3.5] -> diameter 2 to 14 px
             g.setColor(LabbePlot.pick(o.labbeCircle, LabbePlot.DEF_CIRCLE)); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia)); g.setColor(LabbePlot.pick(o.labbeSymbol, Color.BLACK)); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia));
-            if (o.studyLabels) { g.setColor(Color.BLACK); ptLabel(c, a, r.studlab[i], xx, yy, rad + 3, 3, true); } }
+            if (o.studyLabels) { g.setColor(Color.BLACK); lab(lp, c, a, r.studlab[i], xx, yy, rad + 3, 3, true, rad); } }
+        if (lp != null) lp.draw(c);
         labbeLegend(c, a, r, o, lim);
         g.setColor(Color.BLACK); return c.img;
     }

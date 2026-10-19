@@ -1,5 +1,14 @@
 # Changelog
 
+### Fixed - leave-one-out and cumulative forest plots (Default and BMJ styles; plot heading in all styles)
+- Default (meta) and BMJ styles: the P-value, tau^2, tau and I^2 columns now stand to the right of the plot, after the effect and its confidence interval, as in meta::forest (they were on the left). RevMan 5 and STATA keep their layout.
+- The pooled row (random- or common-effect model) of both plots now shows its P-value, tau^2, tau and I^2, as in meta::forest.
+- The column heading above the plot is now "Leave-One-Out Meta-Analysis" / "Cumulative Meta-Analysis" (two lines in RevMan 5 and BMJ) instead of the effect measure, which already heads its own column; the STATA style now shows it too.
+
+### Added - "Avoid label overlap" (label placement of the ggplot2-style Baujat plot) and interval bands for the asymmetry-test plot
+- New check boxes apply the Baujat label-placement algorithm (boxed labels repelling each other and every study symbol, leader lines) to: the bubble plot and the regression plot with categorical moderator adjustment, all funnel plots and funnel themes (one box right of "Study labels"), the Doi plot, the PET-PEESE plot, the radial plot (all themes), the L'Abbe plot (both themes) and the plot of the test for funnel plot asymmetry. The algorithm is shared (`LabelPlacer`); the Baujat plot uses the same code.
+- Plot of the test for funnel plot asymmetry: 95% confidence interval of the regression line (light grey area, dashed lines) and 95% prediction interval for a new study (lighter grey area, dotted lines), from the fitted model of the test (multiplicative, additive or fixed-effect variance).
+
 ### Fixed - end ticks of the Doi and PET-PEESE x-axes (and funnel plots) for PRAW, PAS and PFT
 - For PRAW, PAS and PFT the back-transformation saturates at 0 and 1, so the tick search could not place a tick at exactly 0 or 1 when an axis end lay in the saturated part: the left end of the Doi plot and the right end of the PET-PEESE plot had no end tick, and the first/last tick could lie inside the range of the studies. The end tick is now placed at exactly 0 (or 1), level with the smallest (largest) study when that study has a saturated value (e.g. 0 or 100 events), or at the edge of the saturated part otherwise, so the axis always covers the minimum and maximum of the study values. Funnel plots place the 0 / 1 tick at the axis end. Nothing else changes.
 

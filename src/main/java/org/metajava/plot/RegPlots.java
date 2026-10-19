@@ -199,10 +199,12 @@ public final class RegPlots {
         ggBand(a, cv, log, colour(o.colBand, BAND_DEFAULT), colour(o.colBandLine, BANDLINE_DEFAULT), o.confInt, colour(o.colPred, PRED_DEFAULT), colour(o.colPredLine, PREDLINE_DEFAULT), o.predInt);
         double wmax = Arrays.stream(g0.size != null ? g0.size : weights(g0)).max().getAsDouble(); double[] w = g0.size != null ? g0.size : weights(g0);
         Shape clip = a.c.g.getClip(); a.c.g.setClip(new Rectangle2D.Double(a.x0 - 14, a.y0 - 14, a.x1 - a.x0 + 28, a.y1 - a.y0 + 28));
+        LabelPlacer lp = LabelPlacer.on(o.repelBubble && o.studyLabels, a.x0, a.y0, a.x1, a.y1);
         for (int i = 0; i < w.length; i++) { double rad = o.symSize * (4 + 9 * Math.sqrt(w[i] / wmax)); double xv = xOf(g0, i), yv = tr(g0.yv[i], log); ggPoint(a, o.symbol, xv, yv, rad, perStudy != null ? perStudy[i] : pts);
-            if (o.studyLabels) { a.c.g.setColor(new Color(40, 40, 40)); Plots.ptLabel(a.c, a.x0, a.x1, a.y0, r.studlab[g0.used[i]], a.X(xv), a.Y(yv), rad + 2, -2, false); } }
+            if (o.studyLabels) { if (lp != null) lp.add(r.studlab[g0.used[i]], a.X(xv), a.Y(yv), rad); else { a.c.g.setColor(new Color(40, 40, 40)); Plots.ptLabel(a.c, a.x0, a.x1, a.y0, r.studlab[g0.used[i]], a.X(xv), a.Y(yv), rad + 2, -2, false); } } }
         a.c.g.setClip(clip);
         ggLine(a, cv, log, colour(o.colLine, LINE_DEFAULT), o.regLine);
+        if (lp != null) lp.draw(a.c);
     }
     private static double[] weights(Reg g) { double[] w = new double[g.k]; for (int j = 0; j < g.k; j++) w[j] = g.fit.wTilde[j]; return w; }
     private static double xOf(Reg g, int i) { return g.x1 != null ? g.x1[i] : g.plotX[i]; }

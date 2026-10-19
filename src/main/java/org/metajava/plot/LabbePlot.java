@@ -93,9 +93,11 @@ public final class LabbePlot {
         // studies: larger circles first so that small ones stay visible
         List<Integer> ord = new ArrayList<>(); for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && !Double.isNaN(w[i]) && ne[i] > 0 && nc[i] > 0) ord.add(i);
         ord.sort((p, q) -> Double.compare(w[q], w[p]));
+        LabelPlacer lp = LabelPlacer.on(o.repelLabbe && o.studyLabels, a.x0, a.y0, a.x1, a.y1);
         for (int i : ord) { double xx = a.X(ec[i] / nc[i]), yy = a.Y(ee[i] / ne[i]), dia = 4 * w[i], rad = dia / 2;
             g.setColor(circ); g.fill(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia)); g.setColor(edge); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(xx - rad, yy - rad, dia, dia));
-            if (o.studyLabels) { g.setColor(Color.BLACK); c.text(r.studlab[i], xx - rad - 3, yy + 3, 8, 2, false); } }
+            if (o.studyLabels) { if (lp != null) lp.add(r.studlab[i], xx, yy, rad); else { g.setColor(Color.BLACK); c.text(r.studlab[i], xx - rad - 3, yy + 3, 8, 2, false); } } }
+        if (lp != null) lp.draw(c);
         // open axes (left and bottom), ticks, tick labels and titles
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); c.line(x0, y0, x0, y1); c.line(x0, y1, x1, y1);
         int dec = 1; for (double t : ticks) { String q = Canvas.tick(t); int d = q.indexOf('.'); if (d >= 0) dec = Math.max(dec, q.length() - d - 1); }

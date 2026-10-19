@@ -73,38 +73,8 @@ public final class BaujatPlot {
         return c.img;
     }
 
-    /** Boxed labels with leader lines; positions found by a simple repulsion procedure (labels repel each other and the points, a weak spring keeps each near its point). */
+    /** Boxed labels with leader lines (geom_label_repel-like): see {@link LabelPlacer}, which every plot offering "Avoid label overlap" shares. */
     private static void labels(Canvas c, List<String> labs, double[] px, double[] py, double[] rad, double x0, double y0, double x1, double y1) {
-        Graphics2D g = c.g; int n = labs.size(); FontMetrics fm = g.getFontMetrics(Canvas.font(8.5f));
-        double[] w = new double[n], h = new double[n], cx = new double[n], cy = new double[n];
-        for (int i = 0; i < n; i++) { w[i] = fm.stringWidth(labs.get(i)) + 10; h[i] = 15; double ang = -((i * 0.618034) % 1.0) * Math.PI / 2, dist = 16 + 12 * (i % 7); cx[i] = px[i] + Math.cos(ang) * (rad[i] + w[i] / 2 + dist); cy[i] = py[i] + Math.sin(ang) * (rad[i] + dist);   // start in the free upper-right quadrant
-        }
-        for (int it = 0; it < 1500; it++) {
-            double step = 1.0 - it / 1700.0; double[] fx = new double[n], fy = new double[n];
-            for (int i = 0; i < n; i++) {
-                for (int j = 0; j < n; j++) if (j != i) {
-                    double ox = (w[i] + w[j]) / 2 + 3 - Math.abs(cx[i] - cx[j]), oy = (h[i] + h[j]) / 2 + 3 - Math.abs(cy[i] - cy[j]);
-                    if (ox > 0 && oy > 0) { if (ox < oy) fx[i] += Math.signum(cx[i] - cx[j] + 1e-6 * (i - j)) * ox * 0.7; else fy[i] += Math.signum(cy[i] - cy[j] + 1e-6 * (i - j)) * oy * 0.7; }
-                }
-                for (int j = 0; j < n; j++) {   // points: keep the box off every circle
-                    double nx = Math.max(cx[i] - w[i] / 2, Math.min(px[j], cx[i] + w[i] / 2)), ny = Math.max(cy[i] - h[i] / 2, Math.min(py[j], cy[i] + h[i] / 2)), dx = nx - px[j], dy = ny - py[j], d = Math.hypot(dx, dy), need = rad[j] + 3;
-                    if (d < need) { if (d < 1e-6) { dx = cx[i] - px[j]; dy = cy[i] - py[j]; d = Math.hypot(dx, dy) + 1e-6; } fx[i] += dx / d * (need - d) * 0.6; fy[i] += dy / d * (need - d) * 0.6; }
-                }
-                fx[i] += (px[i] - cx[i]) * 0.004; fy[i] += (py[i] - cy[i]) * 0.004;
-            }
-            for (int i = 0; i < n; i++) { cx[i] += fx[i] * step; cy[i] += fy[i] * step; cx[i] = Math.max(x0 + w[i] / 2 + 1, Math.min(x1 - w[i] / 2 - 1, cx[i])); cy[i] = Math.max(y0 + h[i] / 2 + 1, Math.min(y1 - h[i] / 2 - 1, cy[i])); }
-        }
-        g.setStroke(new BasicStroke(1.3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        for (int i = 0; i < n; i++) {   // leader line: from the circle to the border of the box
-            double dx = cx[i] - px[i], dy = cy[i] - py[i]; if (Math.abs(dx) < w[i] / 2 && Math.abs(dy) < h[i] / 2) continue;
-            double tx = dx == 0 ? 1e9 : (w[i] / 2) / Math.abs(dx), ty = dy == 0 ? 1e9 : (h[i] / 2) / Math.abs(dy), t = Math.min(tx, ty), ex = cx[i] - dx * t, ey = cy[i] - dy * t, d = Math.hypot(dx, dy);
-            g.setColor(new Color(40, 40, 40, 200)); c.line(px[i] + dx / d * Math.min(rad[i], d), py[i] + dy / d * Math.min(rad[i], d), ex, ey);
-        }
-        for (int i = 0; i < n; i++) {
-            RoundRectangle2D.Double b = new RoundRectangle2D.Double(cx[i] - w[i] / 2, cy[i] - h[i] / 2, w[i], h[i], 5, 5);
-            g.setColor(Color.WHITE); g.fill(b); g.setColor(new Color(50, 50, 50)); g.setStroke(new BasicStroke(0.8f)); g.draw(b);
-            g.setColor(new Color(60, 60, 60)); c.text(labs.get(i), cx[i], cy[i] + 3.2, 8.5f, 1, false);
-        }
-        g.setStroke(new BasicStroke(1f));
+        LabelPlacer lp = new LabelPlacer(x0, y0, x1, y1, 8.5f); for (int i = 0; i < labs.size(); i++) lp.add(labs.get(i), px[i], py[i], rad[i]); lp.draw(c);
     }
 }

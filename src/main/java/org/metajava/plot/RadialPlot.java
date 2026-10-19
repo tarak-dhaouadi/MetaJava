@@ -87,7 +87,8 @@ public final class RadialPlot {
     }
 
     /** Study labels: right of the point, else left, above or below; the first position that stays inside the bounds and clear of other labels and points. */
-    private static void labels(Canvas c, List<String> labs, double[] px, double[] py, double r, Rectangle2D bounds, Color col, float size) {
+    private static void labels(Canvas c, List<String> labs, double[] px, double[] py, double r, Rectangle2D bounds, Color col, float size, boolean repel) {
+        if (repel) { LabelPlacer lp = new LabelPlacer(bounds.getMinX(), bounds.getMinY(), bounds.getMaxX(), bounds.getMaxY(), 8.5f); for (int i = 0; i < labs.size(); i++) lp.add(labs.get(i), px[i], py[i], r); lp.draw(c); return; }
         FontMetrics f = fm(size); List<Rectangle2D> used = new ArrayList<>(); Graphics2D g = c.g; g.setColor(col); g.setFont(Canvas.font(size));
         for (int i = 0; i < labs.size(); i++) { double w = f.stringWidth(labs.get(i)), h = size + 1, best[] = null;
             double[][] cand = {{px[i] + r + 3, py[i] - 3}, {px[i] - r - 3 - w, py[i] - 3}, {px[i] - w / 2, py[i] - r - 5}, {px[i] - w / 2, py[i] + r + h}, {px[i] + r + 3, py[i] + h}, {px[i] - r - 3 - w, py[i] + h}};
@@ -154,7 +155,7 @@ public final class RadialPlot {
         double rad = k == 0 ? 3 : 3.8; double[] px = new double[pts.size()], py = new double[pts.size()];
         for (int i = 0; i < pts.size(); i++) { px[i] = a.X(pts.get(i)[0]); py[i] = a.Y(pts.get(i)[1]);
             g.setColor(L.fill); g.fill(new Ellipse2D.Double(px[i] - rad, py[i] - rad, 2 * rad, 2 * rad)); g.setColor(L.edge); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(px[i] - rad, py[i] - rad, 2 * rad, 2 * rad)); }
-        if (o.radialLabels) labels(c, labs, px, py, rad, panel, k == 3 ? NAVY : k == 0 ? Color.BLACK : TEXT, k == 0 ? 8f : 10f);
+        if (o.radialLabels) labels(c, labs, px, py, rad, panel, k == 3 ? NAVY : k == 0 ? Color.BLACK : TEXT, k == 0 ? 8f : 10f, o.repelRadial);
         // ---- axes
         if (def) { g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); g.draw(panel);
             for (double t : xt) { if (t < xl - 1e-9 || t > xh + 1e-9) continue; double xx = a.X(t); c.line(xx, y1, xx, y1 + 5); c.text(Canvas.tick(t), xx, y1 + 18, 10, 1, false); }
@@ -201,7 +202,7 @@ public final class RadialPlot {
         double rad = 4.2; double[] px = new double[pts.size()], py = new double[pts.size()];
         for (int i = 0; i < pts.size(); i++) { px[i] = X.applyAsDouble(pts.get(i)[0]); py[i] = Y.applyAsDouble(pts.get(i)[1]);
             g.setColor(L.fill); g.fill(new Ellipse2D.Double(px[i] - rad, py[i] - rad, 2 * rad, 2 * rad)); g.setColor(L.edge); g.setStroke(new BasicStroke(1f)); g.draw(new Ellipse2D.Double(px[i] - rad, py[i] - rad, 2 * rad, 2 * rad)); }
-        if (o.radialLabels) labels(c, labs, px, py, rad, new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0), TEXT, 10f);
+        if (o.radialLabels) labels(c, labs, px, py, rad, new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0), TEXT, 10f, o.repelRadial);
         // left axis (detached tick line with minor ticks), bottom axis (detached)
         g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); c.line(x0, Y.applyAsDouble(yl), x0, Y.applyAsDouble(yh));
         for (int i = 0; i < yt.length; i++) { double yy = Y.applyAsDouble(yt[i]); c.line(x0 - 6, yy, x0, yy); c.text(Canvas.tick(yt[i]), x0 - 10, yy + 4.5, 12f, 2, false);

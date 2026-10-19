@@ -10,6 +10,8 @@ public final class Bias {
         public String method, label, varModel = "", statName;
         public double statistic, pval, bias, seBias, tau = Double.NaN, intercept, seIntercept; public Double df = null;
         public double[] plotX, plotY;          // regression plot data (radial form)
+        /** Fit of the radial regression y = bias + effect * x (x = 1/SE, y = TE/SE): covariance {var(effect), cov(effect, bias), var(bias)} of the coefficients, critical value (t or z, 95%), and the residual variance of a new study: piSigma2 (multiplicative model) or 1 + piTau2 * x^2 (additive model). NaN / null when no regression plot. */
+        public double[] fitVb; public double fitCrit = Double.NaN, piTau2 = 0, piSigma2 = Double.NaN;
         public String plotXlab = "", plotYlab = "";
         public double kendallKs, kendallSe; public String methodTau = "DL";
         public boolean correct;
@@ -128,7 +130,7 @@ public final class Bias {
         double[] x = predictor.equals("sei") ? sei : cov;
         double[][] X = new double[k][2]; double[] v = new double[k];
         for (int i = 0; i < k; i++) { X[i][0] = 1; X[i][1] = x[i]; v[i] = sei[i] * sei[i]; }
-        double sigma, b1, seb1, b0, seb0; int dfr = k - 2;
+        double sigma, b1, seb1, b0, seb0; int dfr = k - 2; double[] vbq; double psig2 = Double.NaN, ptau2 = 0;
         if (model.equals("lm")) {
             double[] w = new double[k]; for (int i = 0; i < k; i++) w[i] = 1 / v[i];
             double[][] xtwx = new double[2][2]; double[] xtwy = new double[2];
@@ -137,11 +139,11 @@ public final class Bias {
             for (int i = 0; i < k; i++) { double f = beta[0] + beta[1] * x[i]; rss += w[i] * (y[i] - f) * (y[i] - f); }
             double s2 = rss / dfr; sigma = Math.sqrt(s2);
             b0 = beta[0]; b1 = beta[1]; seb0 = Math.sqrt(s2 * inv[0][0]); seb1 = Math.sqrt(s2 * inv[1][1]);
-            res.varModel = "multiplicative";
+            res.varModel = "multiplicative"; vbq = new double[]{s2 * inv[0][0], s2 * inv[0][1], s2 * inv[1][1]}; psig2 = s2;
         } else {
             int[] okIdx = new int[k]; for (int i = 0; i < k; i++) okIdx[i] = ok.get(i);
             Rma m = Rma.fit(y, v, X, s.methodTau.equals("PM") ? "PM" : s.methodTau, Pool.genqWeightsFor(s, okIdx));
-            sigma = Math.sqrt(m.tau2); b0 = m.beta[0]; b1 = m.beta[1]; seb0 = m.se[0]; seb1 = m.se[1]; res.varModel = "additive"; res.methodTau = s.methodTau;
+            sigma = Math.sqrt(m.tau2); b0 = m.beta[0]; b1 = m.beta[1]; seb0 = m.se[0]; seb1 = m.se[1]; res.varModel = "additive"; res.methodTau = s.methodTau; vbq = new double[]{m.vb[0][0], m.vb[0][1], m.vb[1][1]}; ptau2 = m.tau2;
         }
         res.statName = "t"; res.statistic = b1 / seb1; res.df = (double) dfr; res.pval = Dist.ptTwoSided(res.statistic, dfr);
         res.bias = b1; res.seBias = seb1; res.tau = sigma; res.intercept = b0; res.seIntercept = seb0;
@@ -149,6 +151,7 @@ public final class Bias {
             res.plotX = new double[k]; res.plotY = new double[k]; // radial: x = 1/se, y = TE/se
             for (int i = 0; i < k; i++) { res.plotX[i] = 1 / sei[i]; res.plotY[i] = y[i] / sei[i]; }
             res.plotXlab = "Inverse of standard error"; res.plotYlab = "Standardised treatment effect (z-score)";
+            res.fitVb = vbq; res.fitCrit = Dist.qt(0.975, dfr); res.piSigma2 = psig2; res.piTau2 = ptau2;
         }
         return res;
     }
