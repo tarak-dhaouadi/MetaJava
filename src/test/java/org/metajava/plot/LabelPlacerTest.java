@@ -69,7 +69,6 @@ public class LabelPlacerTest {
     }
 
     public static void main(String[] args) throws Exception {
-        System.setProperty("metajava.labelBudgetMs", "600000");   // the 1.5 s refinement budget would make the result depend on the speed of the machine (slow CI runners): test the placement itself
         outDir = args.length > 0 ? new java.io.File(args[0]) : null; if (outDir != null) outDir.mkdirs();
         for (String sm : new String[]{"RR", "OR"}) { System.out.println("== Binary outcome, " + sm); example(sm); }
         stress();
