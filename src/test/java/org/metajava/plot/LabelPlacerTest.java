@@ -12,7 +12,7 @@ import java.util.*;
  * Run: java -Djava.awt.headless=true -cp build/classes:build/test-classes org.metajava.plot.LabelPlacerTest [output-dir]
  */
 public class LabelPlacerTest {
-    static int fails = 0, plots = 0, labels = 0, leaders = 0, leaderThroughSymbol = 0, leaderCross = 0; static long worstMs = 0;
+    static int fails = 0, plots = 0, labels = 0, leaders = 0, leaderThroughSymbol = 0, leaderCross = 0, leaderOrigin = 0; static long worstMs = 0;
     static void check(boolean ok, String what) { if (!ok) { fails++; if (fails <= 12) System.out.println("FAIL: " + what); } }
 
     static double rectDist(double bx0, double by0, double bx1, double by1, double qx, double qy) { return Math.hypot(Math.max(Math.max(bx0 - qx, qx - bx1), 0), Math.max(Math.max(by0 - qy, qy - by1), 0)); }
@@ -22,10 +22,10 @@ public class LabelPlacerTest {
         return ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0));
     }
 
-    /** Checks one layout; returns {leaders through a symbol, leader pairs crossing}. */
+    /** Checks one layout; returns {leaders through a symbol that they could avoid, leader pairs crossing, leaders leaving an overlapping symbol they start in (unavoidable)}. */
     static int[] verify(String name, LabelPlacer.Layout L) { return verify(name, L, true); }
     static int[] verify(String name, LabelPlacer.Layout L, boolean boxes) {
-        int thru = 0, cross = 0; double eps = 1e-6;
+        int thru = 0, cross = 0, origin = 0; double eps = 1e-6;
         check(L.forced == 0, name + ": " + L.forced + " label(s) could not be kept off the symbols");
         for (int i = 0; i < L.n; i++) {
             double bx0 = L.cx[i] - L.w[i] / 2, bx1 = L.cx[i] + L.w[i] / 2, by0 = L.cy[i] - L.h[i] / 2, by1 = L.cy[i] + L.h[i] / 2;
@@ -35,9 +35,11 @@ public class LabelPlacerTest {
             for (int k = i + 1; k < L.n; k++) { if (!boxes) break; double qx0 = L.cx[k] - L.w[k] / 2, qx1 = L.cx[k] + L.w[k] / 2, qy0 = L.cy[k] - L.h[k] / 2, qy1 = L.cy[k] + L.h[k] / 2;
                 check(!(bx0 < qx1 + LabelPlacer.BOX_GAP - eps && qx0 < bx1 + LabelPlacer.BOX_GAP - eps && by0 < qy1 + LabelPlacer.BOX_GAP - eps && qy0 < by1 + LabelPlacer.BOX_GAP - eps), name + ": labels " + i + " and " + k + " overlap");
                 if (L.leader[i] && L.leader[k] && segSeg(L.seg[i], L.seg[k])) cross++; }
-            if (L.leader[i]) { double[] s = L.seg[i]; for (int j = 0; j < L.symbols.length; j++) if (j != L.symbolOf[i] && segPt(s[0], s[1], s[2], s[3], L.symbols[j][0], L.symbols[j][1]) < L.symbols[j][2]) { thru++; } }
+            if (L.leader[i]) { double[] s = L.seg[i]; for (int j = 0; j < L.symbols.length; j++) { if (j == L.symbolOf[i]) continue; double[] y = L.symbols[j];
+                if (segPt(s[0], s[1], s[2], s[3], y[0], y[1]) >= y[2]) continue;   // does not enter the symbol
+                if (LabelPlacer.avoidableInside(s[0], s[1], s[2], s[3], y[0], y[1], y[2]) > 0) thru++; else origin++; } }
         }
-        return new int[]{thru, cross};
+        return new int[]{thru, cross, origin};
     }
 
     static java.io.File outDir;
@@ -45,10 +47,10 @@ public class LabelPlacerTest {
         List<LabelPlacer.Layout> audit = new ArrayList<>(); LabelPlacer.AUDIT.set(audit); long t0 = System.currentTimeMillis(); BufferedImage img;
         try { img = plot.get(); } finally { LabelPlacer.AUDIT.remove(); }
         long ms = System.currentTimeMillis() - t0; worstMs = Math.max(worstMs, ms);
-        check(!audit.isEmpty(), name + ": the placer was not used"); int thru = 0, cross = 0, nl = 0, ld = 0;
-        for (LabelPlacer.Layout L : audit) { int[] v = verify(name, L); thru += v[0]; cross += v[1]; nl += L.n; for (boolean b : L.leader) if (b) ld++; }
-        plots++; labels += nl; leaders += ld; leaderThroughSymbol += thru; leaderCross += cross;
-        System.out.printf("%-34s labels %3d  leaders %3d  leader-through-symbol %d  leader-leader crossings %d  (%d ms)%n", name, nl, ld, thru, cross, ms);
+        check(!audit.isEmpty(), name + ": the placer was not used"); int thru = 0, cross = 0, org = 0, nl = 0, ld = 0;
+        for (LabelPlacer.Layout L : audit) { int[] v = verify(name, L); thru += v[0]; cross += v[1]; org += v[2]; nl += L.n; for (boolean b : L.leader) if (b) ld++; }
+        plots++; labels += nl; leaders += ld; leaderThroughSymbol += thru; leaderCross += cross; leaderOrigin += org;
+        System.out.printf("%-34s labels %3d  leaders %3d  avoidable-through-symbol %d  (origin overlaps %d)  leader-leader crossings %d  (%d ms)%n", name, nl, ld, thru, org, cross, ms);
         if (outDir != null && img != null) try { javax.imageio.ImageIO.write(img, "png", new java.io.File(outDir, name.replaceAll("[^A-Za-z0-9]+", "_") + ".png")); } catch (Exception e) { throw new RuntimeException(e); }
         return img;
     }
@@ -72,7 +74,7 @@ public class LabelPlacerTest {
         outDir = args.length > 0 ? new java.io.File(args[0]) : null; if (outDir != null) outDir.mkdirs();
         for (String sm : new String[]{"RR", "OR"}) { System.out.println("== Binary outcome, " + sm); example(sm); }
         stress();
-        System.out.printf("%n%d plots, %d labels, %d leader lines (%d through a symbol, %d leader-leader crossings), slowest plot %d ms%n", plots, labels, leaders, leaderThroughSymbol, leaderCross, worstMs);
+        System.out.printf("%n%d plots, %d labels, %d leader lines (%d avoidable through a symbol, %d unavoidable at overlapping symbols, %d leader-leader crossings), slowest plot %d ms%n", plots, labels, leaders, leaderThroughSymbol, leaderOrigin, leaderCross, worstMs);
         System.out.println(fails == 0 ? "ALL PASSED" : fails + " FAILED"); if (fails > 0) System.exit(1);
     }
 
@@ -117,7 +119,7 @@ public class LabelPlacerTest {
             Canvas c = new Canvas(600, 450, 1); List<LabelPlacer.Layout> audit = new ArrayList<>(); LabelPlacer.AUDIT.set(audit); long t0 = System.currentTimeMillis();
             try { for (double[] s : lpSymbols(lp)) { c.g.fill(new java.awt.geom.Ellipse2D.Double(s[0] - s[2], s[1] - s[2], 2 * s[2], 2 * s[2])); } lp.draw(c); } finally { LabelPlacer.AUDIT.remove(); }
             long ms = System.currentTimeMillis() - t0; worstMs = Math.max(worstMs, ms); int[] v = verify(name, audit.get(0), kind != 4); plots++; labels += n;
-            System.out.printf("%-34s labels %3d  leader-through-symbol %d  leader-leader crossings %d  (%d ms)%n", name, n, v[0], v[1], ms);
+            System.out.printf("%-34s labels %3d  avoidable-through-symbol %d  (origin overlaps %d)  leader-leader crossings %d  (%d ms)%n", name, n, v[0], v[2], v[1], ms);
             if (outDir != null) try { javax.imageio.ImageIO.write(c.img, "png", new java.io.File(outDir, name.replaceAll("[^A-Za-z0-9]+", "_") + ".png")); } catch (Exception e) { throw new RuntimeException(e); }
         }
     }

@@ -1,5 +1,6 @@
 package org.metajava.plot;
 
+import org.metajava.core.Par;
 import java.awt.*;
 import java.awt.geom.*;
 import java.util.*;
@@ -13,30 +14,42 @@ import java.util.List;
  * free place at all). Distance to the point and leader lines are what the algorithm trades for these rules: among the admissible places it takes the one that
  * keeps the label close to its point, whose leader line crosses no other symbol, no other label and no other leader line.
  * <p>
- * Method (no limit on the number of labels, no clock: the same data always gives the same layout, on any computer and at any export resolution):
+ * Order of the objectives (a lower one is never bought with a higher one): (1) no overlapping labels, (2) no leader line through a symbol that it could avoid,
+ * (3) no leader through a label or across another leader, (4) short leader lines. A leader that starts inside a symbol that overlaps its own (overlapping bubbles)
+ * has to leave that symbol: the shortest way out is unavoidable and free, only the part of the leader inside it beyond that shortest way counts as avoidable.
+ * <p>
+ * Method (no limit on the number of labels or iterations, no clock: the same data always gives the same layout, whatever the number of CPU threads):
  * <ol>
  * <li>Candidate places on rings of growing distance around each symbol (36 directions); a place that touches a symbol or a blocked rectangle is dropped for good.
  *     Symbols and placed labels live in spatial grids, so testing a place costs the same however many labels the plot has.</li>
  * <li>Greedy placement, most crowded symbol first, each label on the cheapest admissible place (distance, with a price that grows faster than linearly so one very long leader
  *     is dearer than several short ones; leader through a symbol; leader through another label; leader across another leader), then re-placement of each label and exchange of
  *     pairs of labels until nothing improves.</li>
- * <li>While a leader still crosses another leader, runs through a label or through a symbol: greedy restarts in shaken orders, then simulated annealing (labels jump to random
- *     free spots; worse moves are accepted with a falling probability, so crowded clusters get out of the local minima of the greedy pass), then the same re-placement.
- *     The annealing may let labels overlap while it moves, but only a state without overlap is ever returned.</li>
+ * <li>While a leader still runs through a symbol, through a label or across another leader (or labels overlap): cycles of {@link #CHAINS} independent simulated-annealing chains
+ *     (labels jump to random free spots; worse moves are accepted with a falling probability), half of them from the best layout so far and half from a greedy restart in a
+ *     shaken order, each followed by the re-placement of step 2. The chains of a cycle run in parallel (the number of chains does not depend on the number of CPU threads,
+ *     so the result does not either). The best layout of a cycle replaces the best so far when it is better; cycles go on until {@link #STALLS} cycles in a row have not reduced
+ *     the number of conflicts. A chain stops as soon as its layout is free of conflicts. The annealing may let labels overlap while it moves, but only a state without overlap
+ *     is ever returned. Nothing is capped: neither iterations nor time; a superseded analysis is cancelled through {@link Par#checkCancel}.</li>
  * <li>A label with no admissible ring place falls back to a scan of the panel (coarse, then fine, then a band around it); as the last resort (no spot free of symbols at all)
  *     it is put beside its symbol and reported in {@link Layout#forced}.</li>
  * </ol>
+ * All the arithmetic is exact IEEE arithmetic or {@link StrictMath}, so the layout does not depend on the Java version or the CPU.
  * Positions are in the logical (unscaled) coordinates of the {@link Canvas}.
  */
 final class LabelPlacer {
     static final double CLEAR = 2.5;        // minimum gap between a label box and any symbol
     static final double BOX_GAP = 2.0;      // minimum gap between two label boxes
     static final double LABEL_H = 15;       // box height at 8.5 pt
+    static final double THRU_TOL = 1.0;     // px of a leader inside an overlapping symbol, beyond the shortest way out, that is still not counted as avoidable
+    static final int CHAINS = 4;   // annealing chains per cycle (fixed: the result must not depend on the number of CPU threads)
     private static final double MIN_LEADER = 3.5;   // a leader line is drawn when the box is farther than this from the edge of its symbol
-    private static final double HARD = 1e6, SA_OVERLAP = 4000, K_SYMBOL = 1500, K_BOX = 1500, K_LEADER = 600, K_AMBIGUOUS = 40;
+    private static final double HARD = 1e6, SA_OVERLAP = 4000, K_THRU = 8000, K_BOX = 1500, K_LEADER = 600, K_AMBIGUOUS = 40;
+    private static final int ITER_PER_LABEL = 3000, ITER_MIN = 40000;   // length of one annealing run (not a limit: runs continue while they make progress)   // length of one annealing chain: proportional to the number of labels (no upper limit)
 
     /** Price of a leader line whose box is {@code gap} px from its symbol: grows faster than linearly, so one very long leader costs more than several short ones. */
     static double lenCost(double gap) { return gap + gap * gap / 200.0; }
+    private static double hyp(double dx, double dy) { return Math.sqrt(dx * dx + dy * dy); }   // exact (correctly rounded) on every platform, unlike Math.hypot
 
     private final double x0, y0, x1, y1; private final float font;
     private final List<String> texts = new ArrayList<>(); private final List<double[]> lab = new ArrayList<>(); private final List<Integer> labObs = new ArrayList<>();   // label points {x, y, radius}; index of the symbol among the obstacles
@@ -68,21 +81,42 @@ final class LabelPlacer {
     /** Test hook: when set (per thread), every {@link #draw} appends the layout it drew. */
     static final ThreadLocal<List<Layout>> AUDIT = new ThreadLocal<>();
 
-    /** One admissible place of a label: its box, its leader line and the part of its cost that does not depend on the other labels. */
+    /** One admissible place of a label: its box, its leader line and the part of its cost that does not depend on the other labels. Immutable once made (shared by the chains). */
     private static final class Cand {
         double cx, cy, cost, thru; double bx0, by0, bx1, by1; boolean lead; double sx, sy, ex, ey;   // thru: price of the leader running through other symbols (part of cost)
         double gx0, gy0, gx1, gy1;   // bounding box of the box and the leader (what the label grid stores)
+        int thruN; boolean forced;   // thruN: symbols the leader runs through although it could avoid them; forced: last-resort place (no spot free of symbols)
+    }
+    /** A complete layout and its quality: overlapping pairs, avoidable leader-through-symbol, other conflicts (leader through a label / across a leader / ...), energy. */
+    private static final class Res {
+        Cand[] s; int ov, tn, cf; double e;
+        /** Lower is better: overlaps, then avoidable symbol crossings, then the energy (which also prices the other conflicts and the distances). */
+        boolean beats(Res o) { return ov != o.ov ? ov < o.ov : tn != o.tn ? tn < o.tn : e < o.e - 1e-9; }
+        /** The conflict counts (what the search tries to reduce), lexicographically. */
+        boolean fewerConflictsThan(int[] k) { return ov != k[0] ? ov < k[0] : tn != k[1] ? tn < k[1] : cf < k[2]; }
+        int[] key() { return new int[]{ov, tn, cf}; }
+        boolean clean() { return ov == 0 && cf == 0 && tn == 0; }
     }
 
     // ------------------------------------------------------------------ geometry
-    private static double rectDist(double bx0, double by0, double bx1, double by1, double qx, double qy) { return Math.hypot(Math.max(Math.max(bx0 - qx, qx - bx1), 0), Math.max(Math.max(by0 - qy, qy - by1), 0)); }
+    private static double rectDist(double bx0, double by0, double bx1, double by1, double qx, double qy) { return hyp(Math.max(Math.max(bx0 - qx, qx - bx1), 0), Math.max(Math.max(by0 - qy, qy - by1), 0)); }
     private static double segPointDist(double ax, double ay, double bx, double by, double qx, double qy) {
-        double dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = l2 == 0 ? 0 : Math.max(0, Math.min(1, ((qx - ax) * dx + (qy - ay) * dy) / l2)); return Math.hypot(ax + t * dx - qx, ay + t * dy - qy);
+        double dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = l2 == 0 ? 0 : Math.max(0, Math.min(1, ((qx - ax) * dx + (qy - ay) * dy) / l2)); return hyp(ax + t * dx - qx, ay + t * dy - qy);
     }
     /** Length of the part of segment (a, b) inside the circle (c, r). */
     private static double chord(double ax, double ay, double bx, double by, double cx, double cy, double r) {
-        double dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy); if (l == 0) return 0; double fx = ax - cx, fy = ay - cy, A = l * l, B = 2 * (fx * dx + fy * dy), C = fx * fx + fy * fy - r * r, D = B * B - 4 * A * C;
+        double dx = bx - ax, dy = by - ay, l = hyp(dx, dy); if (l == 0) return 0; double fx = ax - cx, fy = ay - cy, A = l * l, B = 2 * (fx * dx + fy * dy), C = fx * fx + fy * fy - r * r, D = B * B - 4 * A * C;
         if (D <= 0) return 0; double q = Math.sqrt(D), t1 = Math.max(0, (-B - q) / (2 * A)), t2 = Math.min(1, (-B + q) / (2 * A)); return t2 > t1 ? (t2 - t1) * l : 0;
+    }
+    /**
+     * Length of the leader (a, b) inside the symbol (c, r) that it could have avoided. A leader that starts outside the symbol could avoid all of it. A leader that starts inside
+     * (the symbol overlaps the one the leader belongs to) has to leave it: the shortest way out, r - |a - c|, is unavoidable; only the excess length is avoidable.
+     * Returns 0 when the leader does not meet the symbol or the excess is within {@link #THRU_TOL}.
+     */
+    static double avoidableInside(double ax, double ay, double bx, double by, double cx, double cy, double r) {
+        double ch = chord(ax, ay, bx, by, cx, cy, r); if (ch <= 0) return 0;
+        double d0 = hyp(ax - cx, ay - cy); if (d0 >= r) return ch;          // starts outside: all of it
+        double excess = ch - (r - d0); return excess > THRU_TOL ? excess : 0;   // starts inside: only what exceeds the shortest way out
     }
     private static boolean segRect(double ax, double ay, double bx, double by, double r0, double s0, double r1, double s1) {   // Liang-Barsky: does the segment meet the rectangle?
         double t0 = 0, t1 = 1, dx = bx - ax, dy = by - ay; double[] p = {-dx, dx, -dy, dy}, q = {ax - r0, r1 - ax, ay - s0, s1 - ay};
@@ -101,6 +135,8 @@ final class LabelPlacer {
             this.cell = cell; ox = x0 - 1500; oy = y0 - 1500; gx = Math.max(1, (int) Math.ceil((x1 + 1500 - ox) / cell)); gy = Math.max(1, (int) Math.ceil((y1 + 1500 - oy) / cell));
             ids = new int[gx * gy][]; cnt = new int[gx * gy]; stamp = new int[Math.max(1, maxId)]; out = new int[Math.max(1, maxId)];
         }
+        /** A reader of a grid that is no longer modified (the symbols): shares its contents, has its own scratch space, so several threads can query "the same" grid. */
+        Grid(Grid g) { ox = g.ox; oy = g.oy; cell = g.cell; gx = g.gx; gy = g.gy; ids = g.ids; cnt = g.cnt; stamp = new int[g.stamp.length]; out = new int[g.out.length]; }
         int ix(double x) { return Math.max(0, Math.min(gx - 1, (int) Math.floor((x - ox) / cell))); }
         int iy(double y) { return Math.max(0, Math.min(gy - 1, (int) Math.floor((y - oy) / cell))); }
         void add(int id, double r0, double s0, double r1, double s1) {
@@ -121,17 +157,23 @@ final class LabelPlacer {
 
     // ------------------------------------------------------------------ the algorithm
     private final class Solver {
-        final int n, m; final double[] w, h, px, py, rad, ox, oy, orad; final int[] own; final Cand[][] ring; final Cand[] cur; final boolean[] forcedAt;
+        final int n, m; final double[] w, h, px, py, rad, ox, oy, orad; final int[] own; final Cand[][] ring; final Cand[] cur;
         final Grid symG, labG; final double maxRad, ext; boolean saMode = false; int lastOv = 0; final double[] dirX, dirY;
         Solver(FontMetrics fm) {
             n = texts.size(); m = obs.size(); w = new double[n]; h = new double[n]; px = new double[n]; py = new double[n]; rad = new double[n]; own = new int[n];
             for (int i = 0; i < n; i++) { w[i] = fm.stringWidth(texts.get(i)) + 10; h[i] = LABEL_H; px[i] = lab.get(i)[0]; py[i] = lab.get(i)[1]; rad[i] = lab.get(i)[2]; own[i] = labObs.get(i); }
             ox = new double[m]; oy = new double[m]; orad = new double[m]; double mr = 0; for (int j = 0; j < m; j++) { ox[j] = obs.get(j)[0]; oy[j] = obs.get(j)[1]; orad[j] = obs.get(j)[2]; mr = Math.max(mr, orad[j]); } maxRad = mr;
-            ring = new Cand[n][]; cur = new Cand[n]; forcedAt = new boolean[n]; ext = Math.hypot(x1 - x0, y1 - y0);
+            ring = new Cand[n][]; cur = new Cand[n]; ext = hyp(x1 - x0, y1 - y0);
             symG = new Grid(x0, y0, x1, y1, 48, m); for (int j = 0; j < m; j++) symG.add(j, ox[j], oy[j], ox[j], oy[j]);
             labG = new Grid(x0, y0, x1, y1, 64, n);
-            int nd = 36; dirX = new double[nd]; dirY = new double[nd]; for (int k = 0; k < nd; k++) { double th = 2 * Math.PI * k / nd; dirX[k] = Math.cos(th); dirY[k] = -Math.sin(th); }
+            int nd = 36; dirX = new double[nd]; dirY = new double[nd]; for (int k = 0; k < nd; k++) { double th = 2 * Math.PI * k / nd; dirX[k] = StrictMath.cos(th); dirY[k] = -StrictMath.sin(th); }
         }
+        /** A worker copy: the same input (shared, read-only), its own state. Chains running in different threads each work on one. */
+        private Solver(Solver b) {
+            n = b.n; m = b.m; w = b.w; h = b.h; px = b.px; py = b.py; rad = b.rad; ox = b.ox; oy = b.oy; orad = b.orad; own = b.own; ring = b.ring; maxRad = b.maxRad; ext = b.ext; dirX = b.dirX; dirY = b.dirY;
+            cur = new Cand[n]; symG = new Grid(b.symG); labG = new Grid(x0, y0, x1, y1, 64, n);
+        }
+        Solver fork() { return new Solver(this); }
 
         // ---- label grid bookkeeping (a label is "placed" while it is in the grid)
         void put(int i, Cand k) { cur[i] = k; labG.add(i, k.gx0, k.gy0, k.gx1, k.gy1); }
@@ -154,15 +196,19 @@ final class LabelPlacer {
             double reach = maxRad + CLEAR; int c = symG.query(bx0 - reach, by0 - reach, bx1 + reach, by1 + reach);
             for (int q = 0; q < c; q++) { int j = symG.out[q]; if (rectDist(bx0, by0, bx1, by1, ox[j], oy[j]) < orad[j] + CLEAR) return null; }
             Cand k = new Cand(); k.cx = cx; k.cy = cy; k.bx0 = bx0; k.by0 = by0; k.bx1 = bx1; k.by1 = by1;
-            double d = rectDist(bx0, by0, bx1, by1, px[i], py[i]), gap = d - rad[i]; k.cost = lenCost(Math.max(0, gap)) + 0.08 * Math.hypot(cx - px[i], cy - py[i]);
+            double d = rectDist(bx0, by0, bx1, by1, px[i], py[i]), gap = d - rad[i]; k.cost = lenCost(Math.max(0, gap)) + 0.08 * hyp(cx - px[i], cy - py[i]);
             k.lead = gap > MIN_LEADER; double lx0 = bx0, ly0 = by0, lx1 = bx1, ly1 = by1;
             if (k.lead) {
                 double qx = Math.max(bx0, Math.min(px[i], bx1)), qy = Math.max(by0, Math.min(py[i], by1)), ux = (qx - px[i]) / d, uy = (qy - py[i]) / d;
                 k.sx = px[i] + ux * rad[i]; k.sy = py[i] + uy * rad[i]; k.ex = qx; k.ey = qy;
                 lx0 = Math.min(lx0, Math.min(k.sx, k.ex)); lx1 = Math.max(lx1, Math.max(k.sx, k.ex)); ly0 = Math.min(ly0, Math.min(k.sy, k.ey)); ly1 = Math.max(ly1, Math.max(k.sy, k.ey));
                 int e = symG.query(Math.min(k.sx, k.ex) - reach, Math.min(k.sy, k.ey) - reach, Math.max(k.sx, k.ex) + reach, Math.max(k.sy, k.ey) + reach);
-                for (int q = 0; q < e; q++) { int j = symG.out[q]; if (j == own[i] || Math.hypot(ox[j] - k.sx, oy[j] - k.sy) < orad[j]) continue;   // (a symbol the leader already starts in, an overlapping neighbour, cannot be avoided)
-                    if (segPointDist(k.sx, k.sy, k.ex, k.ey, ox[j], oy[j]) < orad[j] + 1.0) k.thru += K_SYMBOL * (0.3 + 0.7 * Math.min(1, chord(k.sx, k.sy, k.ex, k.ey, ox[j], oy[j], orad[j]) / (2 * Math.max(orad[j], 1)))); }   // the longer inside it, the dearer
+                for (int q = 0; q < e; q++) { int j = symG.out[q]; if (j == own[i]) continue;
+                    if (segPointDist(k.sx, k.sy, k.ex, k.ey, ox[j], oy[j]) >= orad[j] + 1.0) continue;   // clear of it by more than a pixel
+                    boolean graze = segPointDist(k.sx, k.sy, k.ex, k.ey, ox[j], oy[j]) >= orad[j];       // within a pixel of the edge without entering
+                    double av = graze ? 0 : avoidableInside(k.sx, k.sy, k.ex, k.ey, ox[j], oy[j], orad[j]);
+                    if (!graze && av <= 0) continue;   // enters a symbol that overlaps its own, by no more than the shortest way out: unavoidable, free
+                    k.thru += K_THRU * (0.5 + 0.5 * Math.min(1, av / (2 * Math.max(orad[j], 1)))); k.thruN++; }   // the longer inside it, the dearer (a graze costs half)
                 k.cost += k.thru;
             } else {
                 int e = symG.query(bx0 - gap - 1.5 - maxRad, by0 - gap - 1.5 - maxRad, bx1 + gap + 1.5 + maxRad, by1 + gap + 1.5 + maxRad);
@@ -172,15 +218,19 @@ final class LabelPlacer {
             return k;
         }
 
-        Cand[] rings(int i) {
-            if (ring[i] != null) return ring[i];
+        Cand[] computeRings(int i) {
             final double[] extra = {0, 3, 7, 12, 18, 26, 36, 48, 64, 84, 110, 140, 180, 230, 300, 400, 520, 700}; double[] c = new double[2];
             List<Cand> out = new ArrayList<>();
             for (double e : extra) {
                 double dd = rad[i] + CLEAR + 0.5 + e; if (dd > ext) break;
                 for (int k = 0; k < dirX.length; k++) { centreAt(i, dirX[k], dirY[k], dd, c); Cand q = make(i, c[0], c[1], 0); if (q != null) out.add(q); }
             }
-            return ring[i] = out.toArray(new Cand[0]);
+            return out.toArray(new Cand[0]);
+        }
+        /** The ring places of every label, computed once, in parallel (each label is independent of the others, so the result does not depend on how the work is split). */
+        void prepareRings() {
+            final int parts = Math.min(n, 8); if (parts <= 0) return;
+            Par.forRange(parts, p -> { Solver f = fork(); for (int i = p; i < n; i += parts) ring[i] = f.computeRings(i); });
         }
 
         /** Interaction of two placed labels: >= SA_OVERLAP when their boxes overlap (HARD in the normal mode), else the penalties for a leader through the other box or across the other leader. */
@@ -202,25 +252,25 @@ final class LabelPlacer {
         double energy() {
             double e = 0; for (int i = 0; i < n; i++) { Cand k = cur[i]; e += k.cost; int c = labG.query(k.gx0, k.gy0, k.gx1, k.gy1); for (int q = 0; q < c; q++) { int j = labG.out[q]; if (j > i) e += pair(k, cur[j]); } } return e;
         }
-        /** Label pairs whose boxes overlap, and labels with a leader conflict (through a symbol, a label, or across another leader). */
+        /** {overlapping pairs, conflicts (labels whose leader runs through an avoidable symbol, pairs with a leader through a label or across a leader), avoidable symbol crossings}; {@code bad} marks the labels in conflict. */
         int[] conflicts(boolean[] bad) {
-            int ov = 0, cf = 0; if (bad != null) Arrays.fill(bad, false);
-            for (int i = 0; i < n; i++) { Cand k = cur[i]; if (k.thru > 0) { cf++; if (bad != null) bad[i] = true; }
+            int ov = 0, cf = 0, tn = 0; if (bad != null) Arrays.fill(bad, false);
+            for (int i = 0; i < n; i++) { Cand k = cur[i]; tn += k.thruN; if (k.thru > 0) { cf++; if (bad != null) bad[i] = true; }
                 int c = labG.query(k.gx0, k.gy0, k.gx1, k.gy1);
                 for (int q = 0; q < c; q++) { int j = labG.out[q]; if (j <= i) continue; double v = pair(k, cur[j]); if (v >= SA_OVERLAP) ov++; else if (v > 0) { cf++; if (bad != null) bad[i] = bad[j] = true; } } }
-            return new int[]{ov, cf};
+            return new int[]{ov, cf, tn};
         }
+        Res snapshot() { int[] c = conflicts(null); Res r = new Res(); r.s = cur.clone(); r.ov = c[0]; r.cf = c[1]; r.tn = c[2]; r.e = energy(); return r; }
 
         /** Cheapest place for label i among the rings (and, when those are all taken, the panel scan); {@code keep} (its current place, if any) wins ties. Label i must not be in the grid. */
-        Cand best(int i, Cand keep) { return best(i, keep, true); }
-        Cand best(int i, Cand keep, boolean allowScan) {
+        Cand best(int i, Cand keep) {
             Cand best = keep; double bc = keep == null ? Double.MAX_VALUE : total(i, keep, Double.MAX_VALUE);
-            for (Cand k : rings(i)) { double c = total(i, k, bc); if (c < bc - 1e-9) { bc = c; best = k; } }
-            if (allowScan && (best == null || bc >= HARD)) { Cand g = scan(i, bc); if (g != null) best = g; }
+            for (Cand k : ring[i]) { double c = total(i, k, bc); if (c < bc - 1e-9) { bc = c; best = k; } }
+            if (best == null || bc >= HARD) { Cand g = scan(i, bc); if (g != null) best = g; }
             if (best == null) {   // not a single place is free of symbols: put the label beside its symbol (reported by Layout.forced)
                 Cand f = make(i, Math.max(x0 + w[i] / 2, Math.min(x1 - w[i] / 2, px[i] + rad[i] + w[i] / 2 + CLEAR)), Math.max(y0 + h[i] / 2, Math.min(y1 - h[i] / 2, py[i])), 1e9);
                 if (f == null) { f = new Cand(); f.cx = px[i] + rad[i] + w[i] / 2 + CLEAR; f.cy = py[i]; f.bx0 = f.cx - w[i] / 2; f.bx1 = f.cx + w[i] / 2; f.by0 = f.cy - h[i] / 2; f.by1 = f.cy + h[i] / 2; f.gx0 = f.bx0; f.gx1 = f.bx1; f.gy0 = f.by0; f.gy1 = f.by1; }
-                forcedAt[i] = true; best = f;
+                f.forced = true; best = f;
             }
             return best;
         }
@@ -235,14 +285,12 @@ final class LabelPlacer {
             return best;
         }
 
-        /** Re-places each label (given all the others) and exchanges pairs of labels, until nothing improves. */
+        /** Re-places each label (given all the others) and exchanges pairs of labels, until nothing improves (every change lowers the energy by a fixed minimum, so this ends). */
         void refine(Integer[] order) {
-            int passes = n <= 40 ? 25 : n <= 100 ? 10 : 5;   // (the annealing that follows does the heavy lifting for big plots)
-            for (int pass = 0; pass < passes; pass++) {
-                boolean changed = false;
-                for (int i : order) { Cand old = cur[i]; take(i); Cand nw = best(i, old, pass < 2 || old == null); if (nw == null) nw = best(i, null, true); put(i, nw); if (nw != old) changed = true; }   // the (slow) panel scan only in the first passes
+            for (boolean changed = true; changed; ) {
+                changed = false; Par.checkCancel();
+                for (int i : order) { Cand old = cur[i]; take(i); Cand nw = best(i, old); put(i, nw); if (nw != old) changed = true; }
                 if (swaps()) changed = true;
-                if (!changed) break;
             }
         }
         /** Exchanges the places of two nearby labels (their box centres) when that lowers the energy; true if any exchange was made. */
@@ -268,43 +316,64 @@ final class LabelPlacer {
         void setState(Cand[] s) { for (int i = 0; i < n; i++) take(i); for (int i = 0; i < n; i++) put(i, s[i]); }
 
         /** Simulated annealing from the current layout: a label jumps to a random place clear of every symbol; the move is kept when it lowers the energy, or by chance while the
-         *  temperature is high. Overlapping labels are only a (heavy) cost during the run; the state with the fewest overlaps and then the lowest energy is restored at the end. */
+         *  temperature is high. Overlapping labels are only a (heavy) cost during the run. Ends with the layout free of conflicts as soon as there is one, else with the best layout seen
+         *  (fewest overlaps, then fewest avoidable symbol crossings, then lowest energy). */
         void anneal(long seed, int iters, double T0) {
-            Random rnd = new Random(seed); saMode = true; double E = energy(); int ov = conflicts(null)[0]; Cand[] bestS = cur.clone(); int bestOv = ov; double bestE = E;
+            Random rnd = new Random(seed); saMode = true; double E = energy(); int[] c0 = conflicts(null); int ov = c0[0], tn = c0[2];
+            Cand[] bestS = cur.clone(); int bestOv = ov, bestTn = tn; double bestE = E; boolean done = false;
             double T1 = 0.5, scaleMax = Math.max(30, Math.min(260, ext / 3)); boolean[] bad = new boolean[n]; int[] badList = new int[n]; int nb = 0; double[] c = new double[2];
-            for (int k = 0; k < iters; k++) {
-                if (k % 2000 == 0) { conflicts(bad); nb = 0; for (int i = 0; i < n; i++) if (bad[i]) badList[nb++] = i; }
-                double T = T0 * Math.pow(T1 / T0, (double) k / iters); int i = nb > 0 && rnd.nextInt(10) < 7 ? badList[rnd.nextInt(nb)] : rnd.nextInt(n);   // most moves go to labels in conflict
-                double prog = (double) k / iters, sc = Math.max(24, scaleMax * Math.pow(1 - prog, 1.5));   // long jumps early (to leave a crowded cluster), short ones late (to settle)
-                double th = rnd.nextDouble() * 2 * Math.PI, gap = 2.5 + -Math.log(1 - rnd.nextDouble()) * Math.exp(Math.log(3) + rnd.nextDouble() * Math.log(sc / 3));
-                centreAt(i, Math.cos(th), Math.sin(th), rad[i] + gap, c); Cand nw = make(i, c[0], c[1], 0); if (nw == null) continue;
-                Cand old = cur[i]; take(i); double eo = total(i, old, Double.MAX_VALUE); int oo = lastOv, en = 0; double enew = total(i, nw, Double.MAX_VALUE); int on = lastOv; double d = enew - eo;
-                if (d <= 0 || rnd.nextDouble() < Math.exp(-d / T)) { put(i, nw); E += d; ov += on - oo; if (ov < bestOv || (ov == bestOv && E < bestE - 1e-9)) { bestOv = ov; bestE = E; bestS = cur.clone(); } } else put(i, old);
+            for (int k = 0; k < iters && !done; k++) {
+                if (k % 2000 == 0) { Par.checkCancel(); int[] cc = conflicts(bad); if (cc[0] == 0 && cc[1] == 0) { bestS = cur.clone(); done = true; break; }
+                    nb = 0; for (int i = 0; i < n; i++) if (bad[i]) badList[nb++] = i; }
+                double T = T0 * StrictMath.pow(T1 / T0, (double) k / iters); int i = nb > 0 && rnd.nextInt(10) < 7 ? badList[rnd.nextInt(nb)] : rnd.nextInt(n);   // most moves go to labels in conflict
+                double prog = (double) k / iters, sc = Math.max(24, scaleMax * StrictMath.pow(1 - prog, 1.5));   // long jumps early (to leave a crowded cluster), short ones late (to settle)
+                double th = rnd.nextDouble() * 2 * Math.PI, gap = 2.5 + -StrictMath.log(1 - rnd.nextDouble()) * StrictMath.exp(StrictMath.log(3) + rnd.nextDouble() * StrictMath.log(sc / 3));
+                centreAt(i, StrictMath.cos(th), StrictMath.sin(th), rad[i] + gap, c); Cand nw = make(i, c[0], c[1], 0); if (nw == null) continue;
+                Cand old = cur[i]; take(i); double eo = total(i, old, Double.MAX_VALUE); int oo = lastOv; double enew = total(i, nw, Double.MAX_VALUE); int on = lastOv; double d = enew - eo;
+                if (d <= 0 || rnd.nextDouble() < StrictMath.exp(-d / T)) { put(i, nw); E += d; ov += on - oo; tn += nw.thruN - old.thruN;
+                    if (ov < bestOv || (ov == bestOv && (tn < bestTn || (tn == bestTn && E < bestE - 1e-9)))) { bestOv = ov; bestTn = tn; bestE = E; bestS = cur.clone(); } } else put(i, old);
             }
             saMode = false; setState(bestS);
         }
 
+        /** One annealing chain: from the given layout, or (fresh) from a greedy restart in a shaken order. It then anneals in runs (each from the best layout so far, with new random numbers,
+         *  followed by the re-placement of the labels) for as long as a run still reduces the number of conflicts below the lowest seen; it ends with a conflict-free layout or after the first run
+         *  that brought no progress. The length of a run is fixed by the number of labels; the number of runs is not limited. */
+        Res chain(Cand[] start, Integer[] order, long seed, boolean fresh, double T0, int iters) {
+            if (fresh) { Random rnd = new Random(seed ^ 0x5DEECE66DL); Integer[] ord = order.clone(); for (int i = ord.length - 1; i > 0; i--) { int j = rnd.nextInt(i + 1); Integer t = ord[i]; ord[i] = ord[j]; ord[j] = t; } once(ord); }
+            else setState(start);
+            Res best = snapshot(); int[] seen = best.key();
+            for (int run = 0; !best.clean(); run++) {
+                anneal(seed + 104729L * run, iters, T0); refine(order); Res s = snapshot();
+                boolean progress = s.fewerConflictsThan(seen); if (progress) seen = s.key();
+                if (s.beats(best)) best = s;
+                if (!progress) break;
+                setState(best.s);
+            }
+            return best;
+        }
+
         Layout run() {
+            prepareRings();
             Integer[] order = new Integer[n]; int[] crowd = new int[n];
-            for (int i = 0; i < n; i++) { order[i] = i; int c = symG.query(px[i] - 60 - maxRad, py[i] - 60 - maxRad, px[i] + 60 + maxRad, py[i] + 60 + maxRad); for (int q = 0; q < c; q++) { int j = symG.out[q]; if (j != own[i] && Math.hypot(ox[j] - px[i], oy[j] - py[i]) < 60 + orad[j]) crowd[i]++; } }
+            for (int i = 0; i < n; i++) { order[i] = i; int c = symG.query(px[i] - 60 - maxRad, py[i] - 60 - maxRad, px[i] + 60 + maxRad, py[i] + 60 + maxRad); for (int q = 0; q < c; q++) { int j = symG.out[q]; if (j != own[i] && hyp(ox[j] - px[i], oy[j] - py[i]) < 60 + orad[j]) crowd[i]++; } }
             Arrays.sort(order, (a, b) -> crowd[b] != crowd[a] ? Integer.compare(crowd[b], crowd[a]) : Integer.compare(a, b));   // most crowded first
-            once(order); Cand[] bestS = cur.clone(); double bestE = energy(); int[] cf = conflicts(null);
-            if (cf[1] > 0 || cf[0] > 0) {   // a leader still crosses another leader / runs through a label or a symbol (or labels overlap): shaken restarts, then annealing
-                Random rnd = new Random(12345); int starts = n <= 30 ? 6 : n <= 60 ? 2 : 0;   // (a restart costs a full greedy pass, annealing iterations are far cheaper: big plots rely on the latter)
-                for (int s = 0; s < starts; s++) {
-                    Integer[] ord = order.clone(); for (int i = ord.length - 1; i > 0; i--) { int j = rnd.nextInt(i + 1); Integer t = ord[i]; ord[i] = ord[j]; ord[j] = t; }
-                    once(ord); double e = energy(); if (e < bestE - 1e-9) { bestE = e; bestS = cur.clone(); } }
-                setState(bestS); cf = conflicts(null);
-                int iters = Math.max(250000, Math.min(500000, n * 15000));
-                for (int run = 0; run < 3 && (cf[1] > 0 || cf[0] > 0); run++) {
-                    anneal(1234L + 77 * run, iters, run == 0 ? 300 : run == 1 ? 100 : 40); refine(order); double e = energy(); int[] c2 = conflicts(null);
-                    boolean better = c2[0] < cf[0] || (c2[0] == cf[0] && e < bestE - 1e-9); if (better) { bestE = e; bestS = cur.clone(); } else setState(bestS);
-                    boolean fewer = c2[0] + c2[1] < cf[0] + cf[1]; cf = better ? c2 : cf; if (!fewer) break; }   // a further run only while the previous one still removed conflicts
-                setState(bestS);
+            once(order); Res best = snapshot();
+            if (!best.clean()) {   // a leader still runs through a symbol / a label or across another leader (or labels overlap): cycles of annealing chains
+                final int iters = Math.max(ITER_MIN, ITER_PER_LABEL * n); int[] key = best.key();
+                for (int cycle = 0; !best.clean(); cycle++) {
+                    final Cand[] startS = best.s; final long base = 1234L + 7919L * cycle; final Res[] res = new Res[CHAINS];
+                    Par.forRange(CHAINS, ch -> res[ch] = fork().chain(startS, order, base + 77L * ch, ch >= CHAINS / 2, ch % 2 == 0 ? 300 : 100, iters));
+                    Res pick = res[0]; for (int ch = 1; ch < CHAINS; ch++) if (res[ch].beats(pick)) pick = res[ch];   // (ties: the lowest chain number, whatever the thread timing)
+                    if (pick.beats(best)) best = pick;
+                    boolean progress = false; for (Res r : res) if (r.fewerConflictsThan(key)) { key = r.key(); progress = true; }
+                    if (!progress) break;
+                }
+                setState(best.s);
             }
             double[][] sym = new double[m][]; for (int j = 0; j < m; j++) sym[j] = new double[]{ox[j], oy[j], orad[j]};
-            Layout L = new Layout(n, sym, blocks.toArray(new double[0][]), own.clone()); for (boolean f : forcedAt) if (f) L.forced++;
-            for (int i = 0; i < n; i++) { Cand k = cur[i]; L.cx[i] = k.cx; L.cy[i] = k.cy; L.w[i] = w[i]; L.h[i] = h[i]; L.px[i] = px[i]; L.py[i] = py[i]; L.rad[i] = rad[i]; L.leader[i] = k.lead; if (k.lead) L.seg[i] = new double[]{k.sx, k.sy, k.ex, k.ey}; }
+            Layout L = new Layout(n, sym, blocks.toArray(new double[0][]), own.clone());
+            for (int i = 0; i < n; i++) { Cand k = cur[i]; if (k.forced) L.forced++; L.cx[i] = k.cx; L.cy[i] = k.cy; L.w[i] = w[i]; L.h[i] = h[i]; L.px[i] = px[i]; L.py[i] = py[i]; L.rad[i] = rad[i]; L.leader[i] = k.lead; if (k.lead) L.seg[i] = new double[]{k.sx, k.sy, k.ex, k.ey}; }
             return L;
         }
     }
