@@ -1,5 +1,11 @@
 # Changelog
 
+### Added - "Baujat model" drop-down (Baujat plot no longer hard-wired to the common-effect model)
+- New drop-down **Baujat model** (section 10, directly below *Baujat plot*, same look as *Trim-fill model* and *Radial model*): **As the analysis (metafor)** (default) and **Common effect (meta)**.
+- *Common effect (meta)*: the plot of meta::baujat as before (contribution to overall heterogeneity, influence on the overall result; common-effect refit without each study).
+- *As the analysis (metafor)*: when the random-effects model is selected, the plot of metafor::baujat.rma: x = squared Pearson residual (y_i - mu)^2 / (v_i + tau^2) of the full fit, y = influence on the fitted value (mu - mu_(-i))^2 / var(mu_(-i)); the model (tau^2 estimator, GENQ / GENQM weights, Knapp-Hartung scale factor) is refitted after every deletion. The axes are labelled accordingly. With a common-effect analysis, and for GLMM analyses (not covered by metafor's baujat), both entries give the common-effect plot.
+- Applies to both themes (Default, ggplot2 style); the points of each model are computed once per analysis and in parallel. New self-tests compare the random-effects points with an independent DerSimonian-Laird computation and check that the two models differ only for a random-effects analysis.
+
 ### Fixed / Added - radial plot follows the random-effects model; new "Radial model" drop-down
 - The Default, ggplot2 and STATA radial plots silently used the common-effect model even when the random-effects model was selected; only the metafor style used the analysis model. All four themes now use the same model.
 - New drop-down **Radial model** (section 10, directly below *Radial (Galbraith) plot*, same look as *Trim-fill model*): **As the analysis (metafor)** (default; random effects, i.e. tau^2 in the weights, random-effects slope and interval, when the random-effects model is selected, otherwise common effect) or **Common effect (meta)** (always the common-effect model). It applies to every theme.

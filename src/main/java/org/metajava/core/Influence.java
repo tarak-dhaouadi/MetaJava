@@ -23,6 +23,24 @@ public final class Influence {
         return adhoc && s < 1 ? 1 : s;
     }
 
+    /** Points of metafor::baujat.rma for a random-effects model without moderators: x = squared Pearson residual (y_i - mu)^2 / (v_i + tau^2) of the full fit, y = standardised squared difference
+     *  (mu - mu_(-i))^2 / var(mu_(-i)) between the pooled estimate with and without study i, the model (tau^2 estimator, GENQ weights, Knapp-Hartung scale factor) being refitted after every deletion;
+     *  third value = weight 1 / (v_i + tau^2) (symbol size of the ggplot2 style). An entry is null when the refit without that study fails. */
+    public static double[][] baujatRandom(double[] y, double[] v, String method, double[] gw, boolean knha, boolean adhoc) {
+        final int k = y.length; final double[][] pts = new double[k][];
+        final Rma full = Rma.fit(y, v, null, method, gw); final double mu = full.beta[0], t2 = full.tau2; final boolean wtd = MetaSpec.isGenq(method) && gw != null;
+        if (k < 2 || Double.isNaN(t2) || Double.isNaN(mu)) return pts;
+        Par.forRange(k, i -> {
+            int m = k - 1; double[] y2 = new double[m], v2 = new double[m], g2 = wtd ? new double[m] : null; int c = 0;
+            for (int j = 0; j < k; j++) if (j != i) { y2[c] = y[j]; v2[c] = v[j]; if (wtd) g2[c] = gw[j]; c++; }
+            Rma d; try { d = Rma.fit(y2, v2, null, method, g2); } catch (Exception e) { return; }
+            if (d.vb == null || Double.isNaN(d.tau2) || Double.isNaN(d.beta[0])) return;
+            double vdel = s2w(d, knha, adhoc) * d.vb[0][0]; if (!(vdel > 0)) return;
+            pts[i] = new double[]{(y[i] - mu) * (y[i] - mu) / (v[i] + t2), (mu - d.beta[0]) * (mu - d.beta[0]) / vdel, 1 / (v[i] + t2)};
+        });
+        return pts;
+    }
+
     /** knha=true mimics test="knha" (adhoc=true: test="adhoc", scale factor floored at 1). */
     public static Influence run(double[] y, double[] v, double[][] X0, String method, String[] labels, String[] coefNames, boolean knha, boolean adhoc) {
         return run(y, v, X0, method, labels, coefNames, knha, adhoc, null);

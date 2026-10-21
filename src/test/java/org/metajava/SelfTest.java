@@ -19,6 +19,13 @@ public class SelfTest {
 
     static boolean same(BufferedImage a, BufferedImage b) { if (a.getWidth() != b.getWidth() || a.getHeight() != b.getHeight()) return false; for (int y = 0; y < a.getHeight(); y++) for (int x = 0; x < a.getWidth(); x++) if (a.getRGB(x, y) != b.getRGB(x, y)) return false; return true; }
     static int darkCount(BufferedImage im, int x0, int y0, int x1, int y1) { int n = 0; for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) { int rgb = im.getRGB(x, y); if ((rgb >> 16 & 255) < 60 && (rgb >> 8 & 255) < 60 && (rgb & 255) < 60) n++; } return n; }
+    /** DerSimonian-Laird fit without study 'skip' (-1: none): {mu, tau2, var(mu)}; independent of the library code. */
+    static double[] dlFit(double[] y, double[] v, int skip) {
+        double sw = 0, sw2 = 0, swy = 0; int m = 0; for (int i = 0; i < y.length; i++) if (i != skip) { double w = 1 / v[i]; sw += w; sw2 += w * w; swy += w * y[i]; m++; }
+        double mc = swy / sw, q = 0; for (int i = 0; i < y.length; i++) if (i != skip) q += (y[i] - mc) * (y[i] - mc) / v[i];
+        double t2 = Math.max(0, (q - (m - 1)) / (sw - sw2 / sw)), a = 0, b = 0; for (int i = 0; i < y.length; i++) if (i != skip) { double w = 1 / (v[i] + t2); a += w; b += w * y[i]; }
+        return new double[]{b / a, t2, 1 / a};
+    }
     static void check(boolean ok, String what) { checks++; if (!ok) { failures++; System.out.println("FAIL: " + what); } else System.out.println("ok:   " + what); }
     static int[] pixels(java.awt.image.BufferedImage im) { return im.getRGB(0, 0, im.getWidth(), im.getHeight(), null, 0, im.getWidth()); }
     static void near(double got, double want, double tol, String what) { check(Math.abs(got - want) <= tol, what + " (got " + got + ", expected " + want + " +/- " + tol + ")"); }
@@ -762,6 +769,26 @@ public class SelfTest {
                 } finally { Par.setThreads(oldThreads); }
             }
         } catch (Exception e) { e.printStackTrace(); check(false, "asymmetry-test (meta / metafor) tests threw " + e); }
+
+        // ---- Baujat model (metafor::baujat.rma for the random-effects analysis, meta::baujat for the common-effect model)
+        try {
+            final double[] BT = {0.15619, 0.29910, 0.01761, -0.20216, 0.05837, 0.35535, 0.67845, 0.26147, -0.12771, 0.50847, 0.07148, 0.30391, 0.34216, 0.20934, 0.17643, -0.25949, -0.10307, 0.37826, 0.04549, 0.31993, 0.71792, 0.21288, -0.02555, 0.18620, 0.32047, 0.29902, 0.34393, 0.87863, 0.08648, 0.24543, -0.05728, 0.19867, 0.11262, 0.21947, 0.28166, 0.37987, 0.75569, 0.39152, 0.08332, 0.20562};
+            final double[] BS = {0.26878, 0.32897, 0.12536, 0.27023, 0.05413, 0.17934, 0.34650, 0.10257, 0.28676, 0.19087, 0.36637, 0.24167, 0.23168, 0.09787, 0.05499, 0.22955, 0.35737, 0.20050, 0.39005, 0.06775, 0.34406, 0.21304, 0.35719, 0.06060, 0.13700, 0.05738, 0.11694, 0.33058, 0.06775, 0.08369, 0.35355, 0.08538, 0.07854, 0.07714, 0.09662, 0.18138, 0.36381, 0.06167, 0.34072, 0.09086};
+            double[] by = BT.clone(), bv = new double[BS.length]; for (int i = 0; i < bv.length; i++) bv[i] = BS[i] * BS[i]; int k = by.length;
+            double[][] got = org.metajava.core.Influence.baujatRandom(by, bv, "DL", null, false, false);
+            double[] full = dlFit(by, bv, -1); double maxErr = 0; boolean allThere = true;
+            for (int i = 0; i < k; i++) {
+                if (got[i] == null) { allThere = false; continue; }
+                double[] del = dlFit(by, bv, i); double x = Math.pow(by[i] - full[0], 2) / (bv[i] + full[1]), yy = Math.pow(full[0] - del[0], 2) / del[2];
+                maxErr = Math.max(maxErr, Math.max(Math.abs(got[i][0] - x), Math.abs(got[i][1] - yy)));
+            }
+            check(allThere && maxErr < 1e-10, "Baujat (random effects, DL): squared Pearson residuals and influence on the fitted value agree with an independent computation (max error " + maxErr + ")");
+            MetaSpec bs = new MetaSpec(); bs.type = "gen"; bs.sm = "MD"; bs.methodTau = "DL"; bs.random = true; bs.common = true; MetaResult br = Meta.run(bs, gen(BT, BS, false));
+            Plots.Opts oa = new Plots.Opts(), oc = new Plots.Opts(); oa.baujatModel = org.metajava.plot.BaujatPlot.MODEL_ANALYSIS; oc.baujatModel = org.metajava.plot.BaujatPlot.MODEL_COMMON;
+            check(!same(Plots.baujat(br, oa), Plots.baujat(br, oc)), "Baujat plot: \"As the analysis (metafor)\" differs from \"Common effect (meta)\" when the analysis is random effects");
+            MetaSpec bc = bs.clone(); bc.random = false; MetaResult cr = Meta.run(bc, gen(BT, BS, false));
+            check(same(Plots.baujat(cr, oa), Plots.baujat(cr, oc)), "Baujat plot: both models give the common-effect plot when the analysis is common effect");
+        } catch (Exception e) { e.printStackTrace(); check(false, "Baujat model tests threw " + e); }
 
         // ---- data validation
         try {

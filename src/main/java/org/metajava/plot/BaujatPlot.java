@@ -18,6 +18,12 @@ public final class BaujatPlot {
     private BaujatPlot() {}
     public static final String DEFAULT = "Default", GG = "ggplot2 style", AUTO = "Theme default", WHITE = "White";
     public static final String[] THEMES = {DEFAULT, GG};
+    /** "Baujat model" drop-down: the model of the analysis as metafor::baujat.rma draws it (random effects when selected: squared Pearson residuals against the influence on the fitted value, tau^2 re-estimated
+     *  after every deletion) or the common-effect model as meta::baujat draws it; with a common-effect analysis (and for GLMMs, which metafor's baujat does not cover) both give the common-effect plot. */
+    public static final String MODEL_ANALYSIS = "As the analysis (metafor)", MODEL_COMMON = "Common effect (meta)";
+    public static final String[] MODELS = {MODEL_ANALYSIS, MODEL_COMMON};
+    /** True when the plot is drawn with the random-effects model of the analysis. */
+    static boolean useRandom(org.metajava.core.MetaSpec s, Plots.Opts o) { return s.random && !s.isGlmm() && !MODEL_COMMON.equals(o.baujatModel); }
     public static final String[] SYMBOL_COLOURS = prepend(RegPlots.COLOURS, AUTO), BACK_COLOURS = prepend(RegPlots.COLOURS, AUTO, WHITE);
     private static String[] prepend(String[] a, String... first) { String[] o = new String[first.length + a.length]; System.arraycopy(first, 0, o, 0, first.length); System.arraycopy(a, 0, o, first.length, a.length); return o; }
 
@@ -38,7 +44,7 @@ public final class BaujatPlot {
         String[] out = new String[t.length]; for (int i = 0; i < t.length; i++) out[i] = String.format(Locale.ROOT, "%." + dec + "f", t[i]).replaceFirst("^-(0\\.?0*)$", "$1"); return out;
     }
 
-    static BufferedImage gg(List<double[]> pts, List<String> labs, Plots.Opts o) {
+    static BufferedImage gg(List<double[]> pts, List<String> labs, Plots.Opts o, boolean rnd) {
         Canvas c = new Canvas(760, 620, o.scale); Graphics2D g = c.g;
         double L = 82, R = 20, T = 16, B = 66, x0 = L, x1 = c.w / c.scaleF() - R, y0 = T, y1 = c.h / c.scaleF() - B;
         double xm = 0, ym = 0, wmax = 0; for (double[] q : pts) { xm = Math.max(xm, q[0]); ym = Math.max(ym, q[1]); wmax = Math.max(wmax, q[2]); }
@@ -61,7 +67,7 @@ public final class BaujatPlot {
         g.setStroke(new BasicStroke(1f));
         for (int i = 0; i < xs.size(); i++) { double xx = X.applyAsDouble(xs.get(i)); g.setColor(new Color(51, 51, 51)); c.line(xx, y1, xx, y1 + 4); g.setColor(new Color(77, 77, 77)); c.text(xlab[i], xx, y1 + 19, 13f, 1, false); }
         for (int i = 0; i < ys.size(); i++) { double yy = Y.applyAsDouble(ys.get(i)); g.setColor(new Color(51, 51, 51)); c.line(x0 - 4, yy, x0, yy); g.setColor(new Color(77, 77, 77)); c.text(ylab[i], x0 - 8, yy + 4.5, 13f, 2, false); }
-        g.setColor(Color.BLACK); c.text("Overall heterogeneity contribution", (x0 + x1) / 2, y1 + 50, 17f, 1, false); c.textRot("Influence on pooled result", 20, (y0 + y1) / 2, 17f);
+        g.setColor(Color.BLACK); c.text(rnd ? "Squared Pearson residual" : "Overall heterogeneity contribution", (x0 + x1) / 2, y1 + 50, 17f, 1, false); c.textRot(rnd ? "Influence on fitted value" : "Influence on pooled result", 20, (y0 + y1) / 2, 17f);
         // points
         int n = pts.size(); double[] px = new double[n], py = new double[n], rad = new double[n];
         g.setClip(new Rectangle2D.Double(x0 - 14, y0 - 14, x1 - x0 + 28, y1 - y0 + 28));

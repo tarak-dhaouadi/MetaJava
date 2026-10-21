@@ -8,7 +8,7 @@ public class MetaResult {
     public String[] studlab; public double[] TE, seTE, lower, upper;
     public int kAll;
     public Pool overall;
-    public volatile java.util.List<double[]> baujatPts; public volatile java.util.List<String> baujatLabs; public final Object baujatLock = new Object();   // Baujat plot points, computed on first use
+    public volatile java.util.List<double[]> baujatPts; public volatile java.util.List<String> baujatLabs; public final Object baujatLock = new Object(); public volatile java.util.List<double[]> baujatPtsRnd; public volatile java.util.List<String> baujatLabsRnd;   // Baujat plot points, computed on first use
     public double[] wCommonFull, wRandomFull;          // per-study weights (NaN for excluded)
     // subgroup analysis
     public List<String> sgLevels = new ArrayList<>(); public List<Pool> sgPools = new ArrayList<>();

@@ -20,7 +20,7 @@ public final class Plots {
         public boolean logAxis = false;   // regression plots of ratio measures: log-scaled OR / RR / HR axis (the fitted line is straight) instead of the back-transformed, curved line
         public boolean confInt = false; public String bubbleStyle = RegPlots.DEFAULT_STYLE, colPoints = RegPlots.POINTS_DEFAULT, colLine = RegPlots.LINE_DEFAULT, colBand = RegPlots.BAND_DEFAULT, colBandLine = RegPlots.BANDLINE_DEFAULT;   // regression plots
         public boolean predInt = false; public String colPred = RegPlots.PRED_DEFAULT, colPredLine = RegPlots.PREDLINE_DEFAULT, symbol = RegPlots.SYM_DEFAULT; public double symSize = 1.0;   // prediction interval, study symbol
-        public String baujatTheme = BaujatPlot.DEFAULT, baujatSymbol = BaujatPlot.AUTO, baujatBack = BaujatPlot.AUTO;   // Baujat plot: theme, symbol colour, background colour
+        public String baujatModel = BaujatPlot.MODEL_ANALYSIS, baujatTheme = BaujatPlot.DEFAULT, baujatSymbol = BaujatPlot.AUTO, baujatBack = BaujatPlot.AUTO;   // Baujat plot: theme, symbol colour, background colour
         public String labbeTheme = LabbePlot.DEFAULT, labbeSymbol = LabbePlot.AUTO, labbeBack = LabbePlot.AUTO, labbeCircle = LabbePlot.AUTO, labbeRef = LabbePlot.AUTO, labbeEst = LabbePlot.AUTO, labbeCI = LabbePlot.AUTO, labbePI = LabbePlot.AUTO;   // L'Abbe plot: theme, symbol (circle border) colour, background, circle fill, reference line, estimated-effect line, confidence area, prediction area
         public String radialModel = RadialPlot.MODEL_ANALYSIS, radialTheme = RadialPlot.DEFAULT, radialSymbol = RadialPlot.AUTO, radialBack = RadialPlot.AUTO, radialCircle = RadialPlot.AUTO, radialReg = RadialPlot.AUTO, radialRef = RadialPlot.AUTO, radialCI = RadialPlot.AUTO, radialCILine = RadialPlot.AUTO; public boolean radialLabels = true, labbeLabels = true; public boolean precision = false;   // funnel plot of precision (y = 1 / SE)   // Radial plot: theme, colours, study labels; L'Abbe plot: study labels
         /** Drapery plot (meta::drapery): test statistic or p-value, layout and colour of the study lines, study labels and their angle, prediction region, model(s) shown and their colours. */
@@ -907,16 +907,25 @@ public final class Plots {
         return c.img;
     }
 
-    /** Baujat points (contribution to overall heterogeneity, influence on the overall result): one leave-one-out refit per study, computed once per analysis (rendering the
-     *  plot again, e.g. to save it at a higher resolution, reuses them) and in parallel. Only the common-effect refit is read, so GLMM refits skip the random-effects fit
-     *  and the likelihood-ratio heterogeneity test. */
-    private static void baujatPoints(MetaResult r) {
-        if (r.baujatPts != null) return;
+    /** Baujat points, computed once per analysis and model (rendering the plot again, e.g. to save it at a higher resolution, reuses them) and in parallel.
+     *  Common-effect model (meta::baujat): contribution to overall heterogeneity, influence on the overall result, one leave-one-out refit per study; only the common-effect refit is read, so GLMM refits
+     *  skip the random-effects fit and the likelihood-ratio heterogeneity test. Random-effects model (metafor::baujat.rma): see {@link org.metajava.core.Influence#baujatRandom}. */
+    private static void baujatPoints(MetaResult r, boolean rnd) {
+        if ((rnd ? r.baujatPtsRnd : r.baujatPts) != null) return;
         synchronized (r.baujatLock) {   // per analysis: other analyses (subgroups) are not held up, and the labels are stored before the points (both volatile)
-        if (r.baujatPts != null) return;
-        final MetaSpec s2 = r.spec.clone(); s2.skipTauCi = true; s2.skipLrt = true; s2.skipHet = true; if (s2.isGlmm()) s2.random = false;
-        final Pool p = r.overall; final int n = r.TE.length; final List<Integer> use = new ArrayList<>();
+        if ((rnd ? r.baujatPtsRnd : r.baujatPts) != null) return;
+        final int n = r.TE.length; final List<Integer> use = new ArrayList<>();
         for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && r.seTE[i] > 0) use.add(i);
+        if (rnd) {
+            final MetaSpec s = r.spec; final int k = use.size(); double[] y = new double[k], v = new double[k]; int[] sel = new int[k];
+            for (int j = 0; j < k; j++) { int i = use.get(j); y[j] = r.TE[i]; v[j] = r.seTE[i] * r.seTE[i]; sel[j] = i; }
+            boolean hk = s.methodRandomCi.equals("HK");   // test = "knha" is passed on to every refit, as metafor does
+            double[][] xy = org.metajava.core.Influence.baujatRandom(y, v, s.methodTau, Pool.genqWeightsFor(s, sel), hk, hk && s.adhocHakn.equals("se"));
+            List<double[]> pts = new ArrayList<>(); List<String> labs = new ArrayList<>(); for (int q = 0; q < k; q++) if (xy[q] != null) { pts.add(xy[q]); labs.add(r.studlab[use.get(q)]); }
+            r.baujatLabsRnd = labs; r.baujatPtsRnd = pts; return;
+        }
+        final MetaSpec s2 = r.spec.clone(); s2.skipTauCi = true; s2.skipLrt = true; s2.skipHet = true; if (s2.isGlmm()) s2.random = false;
+        final Pool p = r.overall;
         final double[][] xy = new double[use.size()][];
         org.metajava.core.Par.forRange(xy.length, q -> {
             int i = use.get(q); double w = 1 / (r.seTE[i] * r.seTE[i]); double x = w * Math.pow(r.TE[i] - p.teCommon, 2);
@@ -928,12 +937,14 @@ public final class Plots {
         }
     }
 
+    /** Baujat plot: "Baujat model" = common effect (meta::baujat) or the model of the analysis (metafor::baujat.rma when it is a random-effects model). */
     public static BufferedImage baujat(MetaResult r, Opts o) {
-        baujatPoints(r); List<double[]> pts = r.baujatPts; List<String> labs = r.baujatLabs;
-        if (BaujatPlot.isGg(o)) return BaujatPlot.gg(pts, labs, o);
+        final boolean rnd = BaujatPlot.useRandom(r.spec, o);
+        baujatPoints(r, rnd); List<double[]> pts = rnd ? r.baujatPtsRnd : r.baujatPts; List<String> labs = rnd ? r.baujatLabsRnd : r.baujatLabs;
+        if (BaujatPlot.isGg(o)) return BaujatPlot.gg(pts, labs, o, rnd);
         Canvas c = new Canvas(560, 520, o.scale); double xm = 0, ym = 0; for (double[] q : pts) { xm = Math.max(xm, q[0]); ym = Math.max(ym, q[1]); }
         c.g.setColor(BaujatPlot.backColour(o, false)); c.g.fill(new Rectangle2D.Double(70, 40, c.w / c.scaleF() - 100, c.h / c.scaleF() - 100));   // panel background (the frame is drawn on top)
-        Axes a = axes(c, 0, xm * 1.08, 0, ym * 1.08, false, "Contribution to overall heterogeneity", "Influence on overall result", false, "");
+        Axes a = axes(c, 0, xm * 1.08, 0, ym * 1.08, false, rnd ? "Squared Pearson Residual" : "Contribution to overall heterogeneity", rnd ? "Influence on Fitted Value" : "Influence on overall result", false, "");
         Color sym = BaujatPlot.symbolColour(o, false);
         for (int i = 0; i < pts.size(); i++) { double xx = a.X(pts.get(i)[0]), yy = a.Y(pts.get(i)[1]); c.g.setColor(sym); c.g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) { c.g.setColor(Color.BLACK); ptLabel(c, a, labs.get(i), xx, yy, 4, -3, false); } }
         c.g.setColor(Color.BLACK); return c.img;
