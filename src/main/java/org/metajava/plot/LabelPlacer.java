@@ -62,10 +62,13 @@ final class LabelPlacer {
     static LabelPlacer on(boolean enabled, Plots.Axes a) { return enabled ? new LabelPlacer(a.x0, a.y0, a.x1, a.y1, 8.5f) : null; }
     static LabelPlacer on(boolean enabled, double x0, double y0, double x1, double y1) { return enabled ? new LabelPlacer(x0, y0, x1, y1, 8.5f) : null; }
 
+    private final List<Color> tcol = new ArrayList<>();   // optional colour of each label, parallel to texts
     /** A plotted point that carries a label (its symbol is an obstacle for all the labels); rad = radius of the circle that encloses the drawn symbol. */
-    void add(String text, double x, double y, double rad) {
+    void add(String text, double x, double y, double rad) { add(text, x, y, rad, null); }
+    /** Same, with a colour for the label (text and box border; null = the usual grey). */
+    void add(String text, double x, double y, double rad, Color colour) {
         if (text == null || !Double.isFinite(x) || !Double.isFinite(y)) return;
-        texts.add(text); lab.add(new double[]{x, y, rad}); labObs.add(obs.size()); obs.add(new double[]{x, y, rad});
+        tcol.add(colour); texts.add(text); lab.add(new double[]{x, y, rad}); labObs.add(obs.size()); obs.add(new double[]{x, y, rad});
     }
     /** A plotted symbol without a label (still an obstacle). */
     void point(double x, double y, double rad) { if (Double.isFinite(x) && Double.isFinite(y)) obs.add(new double[]{x, y, rad}); }
@@ -393,8 +396,8 @@ final class LabelPlacer {
         for (int i = 0; i < n; i++) if (L.leader[i]) c.line(L.seg[i][0], L.seg[i][1], L.seg[i][2], L.seg[i][3]);   // leader line: from the edge of the symbol to the nearest point of the box
         for (int i = 0; i < n; i++) {
             RoundRectangle2D.Double b = new RoundRectangle2D.Double(L.cx[i] - L.w[i] / 2, L.cy[i] - L.h[i] / 2, L.w[i], L.h[i], 5, 5);
-            g.setColor(Color.WHITE); g.fill(b); g.setColor(new Color(50, 50, 50)); g.setStroke(new BasicStroke(0.8f)); g.draw(b);
-            g.setColor(new Color(60, 60, 60)); c.text(texts.get(i), L.cx[i], L.cy[i] + 3.2, font, 1, false);
+            g.setColor(Color.WHITE); g.fill(b); Color tc = tcol.get(i); g.setColor(tc != null ? tc : new Color(50, 50, 50)); g.setStroke(new BasicStroke(0.8f)); g.draw(b);
+            g.setColor(tc != null ? tc : new Color(60, 60, 60)); c.text(texts.get(i), L.cx[i], L.cy[i] + 3.2, font, 1, false);
         }
         g.setStroke(new BasicStroke(1f)); g.setClip(clip); g.setColor(Color.BLACK);
     }

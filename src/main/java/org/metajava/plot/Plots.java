@@ -20,7 +20,7 @@ public final class Plots {
         public boolean logAxis = false;   // regression plots of ratio measures: log-scaled OR / RR / HR axis (the fitted line is straight) instead of the back-transformed, curved line
         public boolean confInt = false; public String bubbleStyle = RegPlots.DEFAULT_STYLE, colPoints = RegPlots.POINTS_DEFAULT, colLine = RegPlots.LINE_DEFAULT, colBand = RegPlots.BAND_DEFAULT, colBandLine = RegPlots.BANDLINE_DEFAULT;   // regression plots
         public boolean predInt = false; public String colPred = RegPlots.PRED_DEFAULT, colPredLine = RegPlots.PREDLINE_DEFAULT, symbol = RegPlots.SYM_DEFAULT; public double symSize = 1.0;   // prediction interval, study symbol
-        public String baujatModel = BaujatPlot.MODEL_ANALYSIS, baujatTheme = BaujatPlot.DEFAULT, baujatSymbol = BaujatPlot.AUTO, baujatBack = BaujatPlot.AUTO;   // Baujat plot: theme, symbol colour, background colour
+        public String baujatModel = BaujatPlot.MODEL_ANALYSIS, baujatTheme = BaujatPlot.DEFAULT, baujatSymbol = BaujatPlot.AUTO, baujatBack = BaujatPlot.AUTO, baujatQuadRule = BaujatPlot.Q_MEDIAN; public boolean baujatQuad = false; public double baujatSymSize = 1.0;   // Baujat plot: theme, symbol colour, background colour, quadrant-line rule, quadrants on/off, symbol size (multiplier)
         public String labbeTheme = LabbePlot.DEFAULT, labbeSymbol = LabbePlot.AUTO, labbeBack = LabbePlot.AUTO, labbeCircle = LabbePlot.AUTO, labbeRef = LabbePlot.AUTO, labbeEst = LabbePlot.AUTO, labbeCI = LabbePlot.AUTO, labbePI = LabbePlot.AUTO;   // L'Abbe plot: theme, symbol (circle border) colour, background, circle fill, reference line, estimated-effect line, confidence area, prediction area
         public String radialModel = RadialPlot.MODEL_ANALYSIS, radialTheme = RadialPlot.DEFAULT, radialSymbol = RadialPlot.AUTO, radialBack = RadialPlot.AUTO, radialCircle = RadialPlot.AUTO, radialReg = RadialPlot.AUTO, radialRef = RadialPlot.AUTO, radialCI = RadialPlot.AUTO, radialCILine = RadialPlot.AUTO; public boolean radialLabels = true, labbeLabels = true; public boolean precision = false;   // funnel plot of precision (y = 1 / SE)   // Radial plot: theme, colours, study labels; L'Abbe plot: study labels
         /** Drapery plot (meta::drapery): test statistic or p-value, layout and colour of the study lines, study labels and their angle, prediction region, model(s) shown and their colours. */
@@ -943,10 +943,13 @@ public final class Plots {
         baujatPoints(r, rnd); List<double[]> pts = rnd ? r.baujatPtsRnd : r.baujatPts; List<String> labs = rnd ? r.baujatLabsRnd : r.baujatLabs;
         if (BaujatPlot.isGg(o)) return BaujatPlot.gg(pts, labs, o, rnd);
         Canvas c = new Canvas(560, 520, o.scale); double xm = 0, ym = 0; for (double[] q : pts) { xm = Math.max(xm, q[0]); ym = Math.max(ym, q[1]); }
+        { double[] e = BaujatPlot.extend(xm, ym, o, pts); xm = e[0]; ym = e[1]; }   // quadrant lines always inside the plot
         c.g.setColor(BaujatPlot.backColour(o, false)); c.g.fill(new Rectangle2D.Double(70, 40, c.w / c.scaleF() - 100, c.h / c.scaleF() - 100));   // panel background (the frame is drawn on top)
-        Axes a = axes(c, 0, xm * 1.08, 0, ym * 1.08, false, rnd ? "Squared Pearson Residual" : "Contribution to overall heterogeneity", rnd ? "Influence on Fitted Value" : "Influence on overall result", false, "");
-        Color sym = BaujatPlot.symbolColour(o, false);
-        for (int i = 0; i < pts.size(); i++) { double xx = a.X(pts.get(i)[0]), yy = a.Y(pts.get(i)[1]); c.g.setColor(sym); c.g.fill(new Ellipse2D.Double(xx - 2.5, yy - 2.5, 5, 5)); if (o.studyLabels) { c.g.setColor(Color.BLACK); ptLabel(c, a, labs.get(i), xx, yy, 4, -3, false); } }
+        Axes a = axes(c, 0, xm * 1.08, 0, ym * 1.08, false, rnd ? "Squared Pearson Residual" : "Contribution to overall heterogeneity", "Influence on overall result", false, "");
+        BaujatPlot.quadrants(c, a::X, a::Y, a.x0, a.y0, a.x1, a.y1, pts, o);   // optional quadrants (shading, lines, captions) below the points
+        Color sym = BaujatPlot.symbolColour(o, false); double d = 5 * o.baujatSymSize;   // symbol diameter: 5 x "Baujat symbol size"
+        final boolean[] fl = BaujatPlot.flagged(pts, o);   // studies in the shaded quadrant: symbol and label in the colour of the quadrant lines
+        for (int i = 0; i < pts.size(); i++) { double xx = a.X(pts.get(i)[0]), yy = a.Y(pts.get(i)[1]); boolean hot = fl != null && fl[i]; c.g.setColor(hot ? BaujatPlot.QUAD_LINE : sym); c.g.fill(new Ellipse2D.Double(xx - d / 2, yy - d / 2, d, d)); if (o.studyLabels) { c.g.setColor(hot ? BaujatPlot.QUAD_LINE : Color.BLACK); ptLabel(c, a, labs.get(i), xx, yy, 4 + (d - 5) / 2, -3 - (d - 5) / 2, false); } }
         c.g.setColor(Color.BLACK); return c.img;
     }
 

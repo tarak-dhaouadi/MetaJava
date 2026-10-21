@@ -1537,6 +1537,33 @@ public class SelfTest {
             check(!java.util.Arrays.equals(pF1, pF2), "adjusted regression plot: choosing the second selected factor changes the colouring and the legend");
             check(java.util.Arrays.equals(pF2, pixels(org.metajava.plot.RegPlots.adjusted(cg, cn1, cf, "f2", new Plots.Opts(), cr))), "adjusted regression plot is reproducible");
         }
+        {   // Baujat plot: quadrants, quadrant-line rules, symbol size, y-axis label
+            java.util.List<double[]> bp = new java.util.ArrayList<>(); double[] bx = {0.1, 0.2, 0.3, 0.4, 5.0}, by = {0.01, 0.02, 0.03, 0.04, 0.50};
+            for (int q = 0; q < 5; q++) bp.add(new double[]{bx[q], by[q], 1});
+            double[] cm = org.metajava.plot.BaujatPlot.cutoffs(bp, org.metajava.plot.BaujatPlot.Q_MEDIAN), cn = org.metajava.plot.BaujatPlot.cutoffs(bp, org.metajava.plot.BaujatPlot.Q_MEAN),
+                c90 = org.metajava.plot.BaujatPlot.cutoffs(bp, org.metajava.plot.BaujatPlot.Q_P90), ct = org.metajava.plot.BaujatPlot.cutoffs(bp, org.metajava.plot.BaujatPlot.Q_THEORY),
+                ck = org.metajava.plot.BaujatPlot.cutoffs(bp, org.metajava.plot.BaujatPlot.Q_TUKEY);
+            check(Math.abs(cm[0] - 0.3) < 1e-12 && Math.abs(cm[1] - 0.03) < 1e-12, "Baujat quadrants, median split: x-line = median of x, y-line = median of y");
+            check(Math.abs(cn[0] - 1.2) < 1e-12 && Math.abs(cn[1] - 0.12) < 1e-12, "Baujat quadrants, mean split: x-line = mean of x, y-line = mean of y");
+            check(Math.abs(c90[0] - (0.4 + 0.6 * (5.0 - 0.4))) < 1e-12, "Baujat quadrants, 90th percentile: R type-7 quantile (linear interpolation)");
+            check(Math.abs(ct[0] - 3.841458820694124) < 1e-12 && Math.abs(ct[1] - 4.0 / 5) < 1e-12, "Baujat quadrants, theoretical rule: x = chi-square(1) 95% quantile, y = 4/k");
+            check(Math.abs(ck[0] - (0.4 + 1.5 * (0.4 - 0.2))) < 1e-12, "Baujat quadrants, Tukey fence: Q3 + 1.5 IQR");
+            MetaResult br = simResult(new double[]{0.10, 0.12, 0.55, 0.45, 0.15, 0.08, 0.20, 0.05}, new double[]{0.12, 0.15, 0.10, 0.11, 0.13, 0.20, 0.14, 0.18});
+            { Plots.Opts fo = new Plots.Opts(); fo.baujatQuad = true; fo.baujatQuadRule = org.metajava.plot.BaujatPlot.Q_MEDIAN;
+              java.util.List<double[]> fp = new java.util.ArrayList<>(); double[] fx = {0.1, 0.2, 0.3, 0.4, 5.0}, fy = {0.01, 0.02, 0.03, 0.04, 0.50}; for (int q = 0; q < 5; q++) fp.add(new double[]{fx[q], fy[q], 1});
+              boolean[] fl = org.metajava.plot.BaujatPlot.flaggedForTest(fp, fo);
+              check(fl != null && fl.length == 5 && !fl[0] && !fl[1] && !fl[2] && fl[3] && fl[4], "Baujat quadrants: studies strictly beyond both lines are flagged (drawn in red), studies on a line or outside are not");
+              check(org.metajava.plot.BaujatPlot.flaggedForTest(fp, new Plots.Opts()) == null, "Baujat quadrants off: no study is flagged"); }
+            Plots.Opts b0 = new Plots.Opts(), bq = new Plots.Opts(), bz = new Plots.Opts(); bq.baujatQuad = true; bz.baujatSymSize = 2.0;
+            for (String th : org.metajava.plot.BaujatPlot.THEMES) {
+                b0.baujatTheme = th; bq.baujatTheme = th; bz.baujatTheme = th;
+                int[] p0 = pixels(Plots.baujat(br, b0));
+                check(java.util.Arrays.equals(p0, pixels(Plots.baujat(br, b0))), "Baujat plot (" + th + ") is reproducible");
+                check(!java.util.Arrays.equals(p0, pixels(Plots.baujat(br, bq))), "Baujat plot (" + th + "): the quadrants option changes the plot");
+                check(!java.util.Arrays.equals(p0, pixels(Plots.baujat(br, bz))), "Baujat plot (" + th + "): the symbol size option changes the plot");
+                for (String rule : org.metajava.plot.BaujatPlot.QUAD_RULES) { bq.baujatQuadRule = rule; check(Plots.baujat(br, bq) != null, "Baujat plot (" + th + ") with quadrant rule '" + rule + "' is drawn"); }
+            }
+        }
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);
     }
