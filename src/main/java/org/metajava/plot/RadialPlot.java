@@ -16,6 +16,7 @@ import java.util.List;
  * <li>ggplot2 style: open axes, dotted grid, grey confidence area, dark-red regression line, teal no-effect line, navy points, title;</li>
  * <li>STATA style: pale-blue frame, navy title, white panel, dashed confidence limits, black regression line, navy points, navy labels.</li>
  * </ul>
+ * The "Radial model" option ({@link #MODELS}) applies to every theme: the model of the analysis (random effects when selected) or the common-effect model.
  * All four themes carry a framed legend below the plot (only the elements that are drawn are listed). The seven colour options apply to every theme; "Theme default" keeps
  * what the theme prescribes. Elements a theme does not draw by itself (e.g. the no-effect line or the confidence area in the Default theme) appear when a colour is chosen.
  */
@@ -23,6 +24,11 @@ public final class RadialPlot {
     private RadialPlot() {}
     public static final String DEFAULT = "Default", METAFOR = "metafor style", GG = "ggplot2 style", STATA = "STATA style", AUTO = "Theme default", WHITE = "White";
     public static final String[] THEMES = {DEFAULT, METAFOR, GG, STATA};
+    /** "Radial model" drop-down: the model of the analysis (random effects when selected, as in metafor) or the common-effect model (as in meta); applies to every theme. */
+    public static final String MODEL_ANALYSIS = "As the analysis (metafor)", MODEL_COMMON = "Common effect (meta)";
+    public static final String[] MODELS = {MODEL_ANALYSIS, MODEL_COMMON};
+    /** True when the radial plot is drawn with the random-effects model (tau^2 in the weights, random-effects slope and interval). */
+    static boolean useRandom(MetaSpec s, Plots.Opts o) { return s.random && !MODEL_COMMON.equals(o.radialModel); }
     public static final String[] COLOURS = prepend(RegPlots.COLOURS, AUTO), BACK_COLOURS = prepend(RegPlots.COLOURS, AUTO, WHITE);
     private static String[] prepend(String[] a, String... first) { String[] o = new String[first.length + a.length]; System.arraycopy(first, 0, o, 0, first.length); System.arraycopy(a, 0, o, first.length, a.length); return o; }
 
@@ -101,9 +107,9 @@ public final class RadialPlot {
 
     // ------------------------------------------------------------------ plot
     public static BufferedImage draw(MetaResult r, Plots.Opts o) {
-        MetaSpec s = r.spec; Pool p = r.overall; Look L = look(o); int n = r.TE.length; boolean met = L.kind == 1;
-        double tau2 = met && s.random && !Double.isNaN(p.tau2) ? p.tau2 : 0;
-        double b = met && s.random && !Double.isNaN(p.teRandom) ? p.teRandom : p.teCommon; if (Double.isNaN(b)) b = Double.isNaN(p.teRandom) ? 0 : p.teRandom;
+        MetaSpec s = r.spec; Pool p = r.overall; Look L = look(o); int n = r.TE.length; boolean met = L.kind == 1, rnd = useRandom(s, o) && !Double.isNaN(p.tau2) && !Double.isNaN(p.teRandom);
+        double tau2 = rnd ? p.tau2 : 0;
+        double b = rnd ? p.teRandom : p.teCommon; if (Double.isNaN(b)) b = Double.isNaN(p.teRandom) ? 0 : p.teRandom;
         List<double[]> pts = new ArrayList<>(); List<String> labs = new ArrayList<>(); double elo = Double.POSITIVE_INFINITY, ehi = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < n; i++) if (!Double.isNaN(r.TE[i]) && r.seTE[i] > 0) { double sd = Math.sqrt(r.seTE[i] * r.seTE[i] + tau2); pts.add(new double[]{1 / sd, r.TE[i] / sd}); labs.add(r.studlab[i]); elo = Math.min(elo, r.TE[i]); ehi = Math.max(ehi, r.TE[i]); }
         if (pts.isEmpty()) { Canvas c = new Canvas(520, 200, o.scale); c.text("Radial plot not available (no study with a valid estimate and standard error)", 260, 100, 12, 1, false); return c.img; }
@@ -116,14 +122,14 @@ public final class RadialPlot {
         if (showLine) leg.add(new Leg(0, L.ciLine, null, L.ciDash, pct(s.levelMa) + "% CI limits"));
         leg.add(new Leg(2, L.fill, L.edge, null, "Studies")); leg.add(new Leg(0, L.reg, null, null, "Regression line")); if (showRef) leg.add(new Leg(0, L.ref, null, null, "No effect"));
         int[] ls = legendSize(leg);
-        switch (L.kind) { case 1: return metafor(r, o, L, pts, labs, b, tau2, xm, ym, yn, z, elo, ehi, leg, ls, showArea, showLine, showRef);
-            default: return standard(r, o, L, pts, labs, b, xm, ym, yn, z, leg, ls, showArea, showLine, showRef); }
+        switch (L.kind) { case 1: return metafor(r, o, L, pts, labs, b, tau2, rnd, xm, ym, yn, z, elo, ehi, leg, ls, showArea, showLine, showRef);
+            default: return standard(r, o, L, pts, labs, b, tau2, xm, ym, yn, z, leg, ls, showArea, showLine, showRef); }
     }
 
     /** Default, ggplot2 and STATA themes. */
-    private static BufferedImage standard(MetaResult r, Plots.Opts o, Look L, List<double[]> pts, List<String> labs, double b, double xm, double ym, double yn, double z,
+    private static BufferedImage standard(MetaResult r, Plots.Opts o, Look L, List<double[]> pts, List<String> labs, double b, double tau2, double xm, double ym, double yn, double z,
                                           List<Leg> leg, int[] ls, boolean showArea, boolean showLine, boolean showRef) {
-        MetaSpec s = r.spec; int k = L.kind; boolean def = k == 0; String eff = (s.isRatioSm() ? "ln" : "") + s.sm;
+        MetaSpec s = r.spec; int k = L.kind; boolean def = k == 0, rnd = tau2 > 0; String eff = (s.isRatioSm() ? "ln" : "") + s.sm;
         double xh = def ? xm * 1.05 : Canvas.pretty(0, xm, 5)[Canvas.pretty(0, xm, 5).length - 1], xl = k == 3 ? -0.04 * xh : 0;
         if (def) { xh = xm * 1.05; }
         double lo = Math.min(yn, 0), hi = Math.max(Math.max(ym, b * xh), 0);
@@ -160,22 +166,23 @@ public final class RadialPlot {
         if (def) { g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); g.draw(panel);
             for (double t : xt) { if (t < xl - 1e-9 || t > xh + 1e-9) continue; double xx = a.X(t); c.line(xx, y1, xx, y1 + 5); c.text(Canvas.tick(t), xx, y1 + 18, 10, 1, false); }
             for (double t : yt) { if (t < yl - 1e-9 || t > yh + 1e-9) continue; double yy = a.Y(t); c.line(x0 - 5, yy, x0, yy); c.textRot(Canvas.tick(t), x0 - 10, yy, 10); }
-            c.text("Inverse of standard error", (x0 + x1) / 2, y1 + 40, 11, 1, false); c.textRot("Standardised treatment estimate", 16, (y0 + y1) / 2, 11); }
+            c.text(rnd ? "Inverse of \u221A(SE\u00B2 + \u03C4\u00B2)" : "Inverse of standard error", (x0 + x1) / 2, y1 + 40, 11, 1, false); c.textRot(rnd ? "Standardised treatment estimate (random effects)" : "Standardised treatment estimate", 16, (y0 + y1) / 2, 11); }
         else { g.setColor(Color.BLACK); g.setStroke(new BasicStroke(k == 3 ? 1.2f : 1f)); c.line(x0, y0, x0, y1); c.line(x0, y1, x1, y1);
             float tf = k == 3 ? 13f : 12f;
             for (double t : xt) { if (t < xl - 1e-9 || t > xh + 1e-9) continue; double xx = a.X(t); g.setColor(Color.BLACK); c.line(xx, y1, xx, y1 + 5); g.setColor(k == 3 ? Color.BLACK : TEXT); c.text(Canvas.tick(t), xx, y1 + 21, tf, 1, false); }
             for (double t : yt) { if (t < yl - 1e-9 || t > yh + 1e-9) continue; double yy = a.Y(t); g.setColor(Color.BLACK); c.line(x0 - 5, yy, x0, yy); g.setColor(k == 3 ? Color.BLACK : TEXT);
                 if (k == 3) c.textRot(Canvas.tick(t), x0 - 12, yy, tf); else c.text(Canvas.tick(t), x0 - 9, yy + 4.5, tf, 2, false); }
             g.setColor(k == 3 ? Color.BLACK : TEXT);
-            c.text(k == 3 ? "1 / SE" : "Precision (1 / SE)", (x0 + x1) / 2, y1 + 46, 13f, 1, false); c.textRot(k == 3 ? eff + " / SE" : "Standardised effect (" + eff + " / SE)", 20, (y0 + y1) / 2, 13f); }
+            String den = rnd ? "\u221A(SE\u00B2 + \u03C4\u00B2)" : "SE";
+            c.text(k == 3 ? "1 / " + den : "Precision (1 / " + den + ")", (x0 + x1) / 2, y1 + 46, 13f, 1, false); c.textRot(k == 3 ? eff + " / " + den : "Standardised effect (" + eff + " / " + den + ")", 20, (y0 + y1) / 2, 13f); }
         g.setColor(Color.BLACK); legend(c, leg, (x0 + x1) / 2, legTop); return c.img;
     }
 
     /** metafor style: detached axes, shaded band with dotted limits, arc axis for the effect size. */
-    private static BufferedImage metafor(MetaResult r, Plots.Opts o, Look L, List<double[]> pts, List<String> labs, double b, double tau2, double xm, double ym, double yn, double z,
+    private static BufferedImage metafor(MetaResult r, Plots.Opts o, Look L, List<double[]> pts, List<String> labs, double b, double tau2, boolean rnd, double xm, double ym, double yn, double z,
                                          double elo, double ehi, List<Leg> leg, int[] ls, boolean showArea, boolean showLine, boolean showRef) {
         MetaSpec s = r.spec; Pool p = r.overall; boolean logAx = s.backtransf && s.isRatioSm();
-        double ciLo = s.random ? p.loRandom : p.loCommon, ciUp = s.random ? p.upRandom : p.upCommon;
+        double ciLo = rnd ? p.loRandom : p.loCommon, ciUp = rnd ? p.upRandom : p.upCommon;
         double xend = xm * 1.25; if (!(xend > 0)) xend = 1;
         double lo = Math.min(yn, Math.min(0, b * xend)) - z, hi = Math.max(ym, Math.max(0, b * xend)) + z; if (hi < z + 0.5) hi = z + 0.5; if (lo > -z - 0.5) lo = -z - 0.5;
         double[] yt = Canvas.pretty(lo, hi, 6); double yl = yt[0], yh = yt[yt.length - 1];
