@@ -34,18 +34,28 @@ public final class BaujatPlot {
     }
     static Color symbolColour(Plots.Opts o, boolean gg) { Color c = colourOf(o.baujatSymbol); return c != null ? c : gg ? new Color(0, 0, 255) : Color.BLACK; }
     static Color backColour(Plots.Opts o, boolean gg) { Color c = colourOf(o.baujatBack); return c != null ? c : gg ? new Color(235, 235, 235) : Color.WHITE; }
+    /** Colour "Theme default" stands for in the given theme (swatch of the drop-down lists); roles: 0 symbol colour, 1 background colour. */
+    public static Color defaultColour(String theme, int role) { Plots.Opts o = new Plots.Opts(); o.baujatTheme = theme; return role == 0 ? symbolColour(o, isGg(o)) : backColour(o, isGg(o)); }
     static boolean isGg(Plots.Opts o) { return GG.equals(o.baujatTheme); }
     private static boolean light(Color c) { return 0.299 * c.getRed() + 0.587 * c.getGreen() + 0.114 * c.getBlue() > 238; }
 
     // ------------------------------------------------------------------ quadrants
     /** Positions of the two quadrant lines (\"Baujat quadrant lines\" drop-down). Baujat et al. (2002) and the R packages meta / metafor define no cut-off (the plot is read visually, relative to the other studies);
      *  the rules below are the data-driven and the conventional influence-diagnostic cut-offs used in the literature. x-line: contribution to heterogeneity, y-line: influence on the overall result. */
-    public static final String Q_MEDIAN = "Median split", Q_MEAN = "Mean split", Q_P75 = "75th percentile (upper quartile)", Q_P85 = "85th percentile", Q_P90 = "90th percentile", Q_P95 = "95th percentile",
-        Q_TUKEY = "Tukey fence (Q3 + 1.5 IQR)", Q_SD = "Mean + 2 SD", Q_MAD = "Median + 2.5 MAD (robust)", Q_THEORY = "Theoretical (chi-square 3.84; 4/k)";
-    public static final String[] QUAD_RULES = {Q_MEDIAN, Q_MEAN, Q_P75, Q_P85, Q_P90, Q_P95, Q_TUKEY, Q_SD, Q_MAD, Q_THEORY};
+    public static final String Q_MEDIAN = "Median split", Q_MEAN = "Mean split", Q_P75 = "75th percentile (upper quartile)", Q_P85 = "85th percentile", Q_P90 = "90th percentile", Q_P95 = "95th percentile", Q_P99 = "99th percentile",
+        Q_TUKEY = "Tukey fence (Q3 + 1.5 IQR)", Q_SD = "Mean + 2 SD", Q_SD3 = "Mean + 3 SD", Q_MAD = "Median + 2.5 MAD (robust)", Q_THEORY = "Theoretical (chi-square 3.84; 4/k)";
+    public static final String[] QUAD_RULES = {Q_MEDIAN, Q_MEAN, Q_P75, Q_P85, Q_P90, Q_P95, Q_P99, Q_TUKEY, Q_SD, Q_SD3, Q_MAD, Q_THEORY};
     /** 0.95 quantile of the chi-square distribution with 1 df (= 1.96^2). */
     static final double CHI2_1_95 = 3.841458820694124;
-    static final Color QUAD_LINE = new Color(200, 30, 30), QUAD_FILL = new Color(200, 30, 30, 62);
+    /** "Baujat quadrant colour" drop-down: the default red of the original quadrants or one of the named plot colours. The colour applies to the two quadrant lines (opaque), the shaded quadrant (same colour at
+     *  {@link #FILL_ALPHA} / 255 opacity, always far more transparent than the lines) and the symbol and label of every study inside the shaded quadrant. */
+    public static final String QUAD_AUTO = "Default (red)";
+    public static final String[] QUAD_COLOURS = prepend(RegPlots.COLOURS, QUAD_AUTO);
+    static final Color QUAD_DEFAULT = new Color(200, 30, 30); static final int FILL_ALPHA = 62;
+    /** Colour of a quadrant-colour item (the default red for {@link #QUAD_AUTO}); for the drop-down swatches. */
+    public static Color quadColourOf(String name) { Color c = colourOf(name); return c != null ? c : QUAD_DEFAULT; }
+    static Color quadLine(Plots.Opts o) { return quadColourOf(o.baujatQuadColour); }
+    static Color quadFill(Plots.Opts o) { Color c = quadLine(o); return new Color(c.getRed(), c.getGreen(), c.getBlue(), FILL_ALPHA); }
     /** For tests. */
     public static boolean[] flaggedForTest(List<double[]> pts, Plots.Opts o) { return flagged(pts, o); }
     /** Studies inside the shaded quadrant (strictly beyond both quadrant lines) when the quadrants are on; null otherwise. Their symbols and labels are drawn in the colour of the lines. */
@@ -71,8 +81,10 @@ public final class BaujatPlot {
         if (Q_P85.equals(rule)) return quantile(a, 0.85);
         if (Q_P90.equals(rule)) return quantile(a, 0.90);
         if (Q_P95.equals(rule)) return quantile(a, 0.95);
+        if (Q_P99.equals(rule)) return quantile(a, 0.99);
         if (Q_TUKEY.equals(rule)) { double q1 = quantile(a, 0.25), q3 = quantile(a, 0.75); return q3 + 1.5 * (q3 - q1); }
         if (Q_SD.equals(rule)) return mean(a) + 2 * sd(a);
+        if (Q_SD3.equals(rule)) return mean(a) + 3 * sd(a);
         if (Q_MAD.equals(rule)) { double med = quantile(a, 0.5); double[] d = new double[k]; for (int i = 0; i < k; i++) d[i] = Math.abs(a[i] - med); Arrays.sort(d); return med + 2.5 * 1.4826 * quantile(d, 0.5); }
         if (Q_THEORY.equals(rule)) return yAxis ? 4.0 / k : CHI2_1_95;   // y: (2 / sqrt(k))^2, the DFBETAS cut-off of Belsley, Kuh & Welsch squared (Cook's D: 4/k); x: squared 1.96 residual
         return quantile(a, 0.5);   // median split (default)
@@ -93,8 +105,8 @@ public final class BaujatPlot {
         double[] cu = cutoffs(pts, o.baujatQuadRule); if (Double.isNaN(cu[0]) || Double.isNaN(cu[1])) return;
         Graphics2D g = c.g; Shape clip = g.getClip(); Stroke st = g.getStroke(); g.setClip(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0));
         double xv = Math.max(x0, Math.min(x1, X.applyAsDouble(cu[0]))), yv = Math.max(y0, Math.min(y1, Y.applyAsDouble(cu[1])));
-        g.setColor(QUAD_FILL); g.fill(new Rectangle2D.Double(xv, y0, x1 - xv, yv - y0));
-        g.setColor(QUAD_LINE); g.setStroke(new BasicStroke(1.4f)); c.line(xv, y0, xv, y1); c.line(x0, yv, x1, yv);
+        g.setColor(quadFill(o)); g.fill(new Rectangle2D.Double(xv, y0, x1 - xv, yv - y0));
+        g.setColor(quadLine(o)); g.setStroke(new BasicStroke(1.4f)); c.line(xv, y0, xv, y1); c.line(x0, yv, x1, yv);
         final float fs = 11f; g.setFont(Canvas.bold(fs)); FontMetrics fm = g.getFontMetrics();
         // caption of the horizontal line (influence), right-aligned just below it (above it when the line is at the bottom of the panel)
         String hl = "High influence"; double hy = yv + 15 < y1 - 3 ? yv + 15 : yv - 5; c.text(hl, x1 - 6, hy, fs, 2, true);
@@ -144,14 +156,14 @@ public final class BaujatPlot {
         Integer[] ord = new Integer[n]; for (int i = 0; i < n; i++) { ord[i] = i; px[i] = X.applyAsDouble(pts.get(i)[0]); py[i] = Y.applyAsDouble(pts.get(i)[1]); rad[i] = o.baujatSymSize * (3.5 + 8.5 * Math.sqrt(pts.get(i)[2] / wmax)); }
         Arrays.sort(ord, (a, b) -> Double.compare(rad[b], rad[a]));   // small circles on top of large ones
         final boolean[] fl = flagged(pts, o);
-        for (int i : ord) { Color cc = fl != null && fl[i] ? QUAD_LINE : pc; g.setColor(new Color(cc.getRed(), cc.getGreen(), cc.getBlue(), 190)); g.fill(new Ellipse2D.Double(px[i] - rad[i], py[i] - rad[i], 2 * rad[i], 2 * rad[i])); }
+        for (int i : ord) { Color cc = fl != null && fl[i] ? quadLine(o) : pc; g.setColor(new Color(cc.getRed(), cc.getGreen(), cc.getBlue(), 190)); g.fill(new Ellipse2D.Double(px[i] - rad[i], py[i] - rad[i], 2 * rad[i], 2 * rad[i])); }
         g.setClip(clip);
-        if (o.studyLabels) labels(c, labs, px, py, rad, x0, y0, x1, y1, fl);
+        if (o.studyLabels) labels(c, labs, px, py, rad, x0, y0, x1, y1, fl, quadLine(o));
         return c.img;
     }
 
     /** Boxed labels with leader lines (geom_label_repel-like): see {@link LabelPlacer}, which every plot offering "Avoid label overlap" shares. */
-    private static void labels(Canvas c, List<String> labs, double[] px, double[] py, double[] rad, double x0, double y0, double x1, double y1, boolean[] fl) {
-        LabelPlacer lp = new LabelPlacer(x0, y0, x1, y1, 8.5f); for (int i = 0; i < labs.size(); i++) lp.add(labs.get(i), px[i], py[i], rad[i], fl != null && fl[i] ? QUAD_LINE : null); lp.draw(c);
+    private static void labels(Canvas c, List<String> labs, double[] px, double[] py, double[] rad, double x0, double y0, double x1, double y1, boolean[] fl, Color hot) {
+        LabelPlacer lp = new LabelPlacer(x0, y0, x1, y1, 8.5f); for (int i = 0; i < labs.size(); i++) lp.add(labs.get(i), px[i], py[i], rad[i], fl != null && fl[i] ? hot : null); lp.draw(c);
     }
 }

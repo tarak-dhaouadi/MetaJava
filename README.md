@@ -221,6 +221,7 @@ The limits and the tick spacing can be set with *X-axis minimum*, *X-axis maximu
 | RevMan 5 style | blue squares, black diamond, rule under the header, *Weight* before the estimate, "0.36 [0.30, 0.44]", pooled row "Total (95% CI)", footer "Heterogeneity: Tau² = …; Chi² = …, df = … (P …); I² = …%" |
 | BMJ style | purple diamonds, "No of events / total" as "e / n", grey rules, weight in %, "0.36 (0.30 to 0.44)", footer "Test for heterogeneity: τ²=…; χ²=…, df=…, P …; I²=…%" |
 | STATA style | pale-blue frame with a navy title, grey squares with a black dot, hollow diamond, solid null line and dashed dark-red pooled line, "Overall (I-squared = …%, p = …)", "% Weight" column, note under the table, "Favours …" labels centred on each half of the axis (use *X-axis left / right label*) |
+| metafor style | the R package `metafor` look: black squares with end caps and black diamond, prediction interval as a thick red bar, rules under the header and above each summary, solid null line and dotted pooled line, *Weight* and "0.36 [0.30, 0.44]" columns on the right, effect measure as axis title, footer "I² = …%, τ² = …, p = …" and "Test for overall effect: z = … (p = …)" |
 
 Below the theme, seven options override whatever the theme prescribes (**Theme default** keeps the theme's own choice):
 *Study-square fill colour* (the diamonds of the BMJ style), *Diamond fill* and *Diamond border* (pooled effects; **None** = hollow / no border),
@@ -229,7 +230,7 @@ All of them are saved in project files.
 
 ### Funnel plot themes (section 9)
 
-**Funnel plot themes** (Default, MetaWin style, STATA style) changes the look of the funnel plot and of the trim-and-fill funnel plot; imputed studies are orange in the MetaWin and STATA styles. MetaWin style is always a contour-enhanced sunset funnel with the power colour bar; STATA style shows grey pseudo 95% limits, or the grey contour bands when *Contour-enhanced* is on. *Study labels* applies to every theme.
+**Funnel plot themes** (Default, MetaWin style, STATA style, metafor style) changes the look of the funnel plot and of the trim-and-fill funnel plot; imputed studies are orange in the MetaWin and STATA styles. MetaWin style is always a contour-enhanced sunset funnel with the power colour bar; STATA style shows grey pseudo 95% limits, or the grey contour bands when *Contour-enhanced* is on. metafor style follows `metafor::funnel`: light-grey panel with white grid lines, white pseudo 95% region with dotted limits and a dotted line at the pooled estimate, black points (open circles for the imputed studies); with *Contour-enhanced* the 90 / 95 / 99% regions around the pooled estimate are shaded (white and two greys). It applies to the funnel plot, the funnel plot of precision (inverse standard error) and both trim-and-fill versions. *Back-transform*, *Study labels* and *Avoid label overlap* apply to every theme.
 
 ### Subgroup analysis (section 5)
 

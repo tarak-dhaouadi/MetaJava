@@ -12,13 +12,14 @@ import java.util.List;
  * <ul>
  * <li>MetaWin style: sunset (power-enhanced) funnel with contour bands on a red-yellow-green power map, colour bar, dashed pseudo-confidence limits;</li>
  * <li>STATA style: pale-blue frame, navy title, light grid, grey pseudo 95% limits (or grey contour bands), crimson estimate line, framed legend.</li>
+ * <li>metafor style: as metafor::funnel (light-grey panel with white grid lines, white pseudo 95% confidence region, dotted limits and centre line, black points, open circles for the imputed studies; contour-enhanced: 90 / 95 / 99% regions in white and two greys).</li>
  * </ul>
  * The Default theme (meta style) is drawn by {@link Plots#funnel}.
  */
 public final class FunnelThemes {
     private FunnelThemes() {}
-    public static final String DEFAULT = "Default", METAWIN = "MetaWin style", STATA = "STATA style";
-    public static final String[] NAMES = {DEFAULT, METAWIN, STATA};
+    public static final String DEFAULT = "Default", METAWIN = "MetaWin style", STATA = "STATA style", METAFOR = "metafor style";
+    public static final String[] NAMES = {DEFAULT, METAWIN, STATA, METAFOR};
 
     static final Color NAVY = new Color(26, 71, 111), CRIMSON = new Color(165, 24, 60), ORANGE = new Color(222, 125, 0), PALE = new Color(234, 242, 243), TABBLUE = new Color(31, 119, 180), TABORANGE = new Color(255, 127, 14);
     static final double Z90 = Dist.qnorm(0.95), Z95 = Dist.qnorm(0.975), Z99 = Dist.qnorm(0.995);
@@ -139,6 +140,57 @@ public final class FunnelThemes {
             g.setColor(Color.BLACK); c.text(leg.get(k)[1], cx + 38, cy + 4, 12f, 0, false);
             if (kind.equals("est")) c.text(d.thetaSub(), cx + 38 + f12.stringWidth(leg.get(k)[1]) + 1, cy + 7, 9f, 0, false);
         }
+        return c.img;
+    }
+
+
+    // =================================================================== metafor
+    static final Color MF_BACK = new Color(211, 211, 211), MF_BAND95 = new Color(190, 190, 190), MF_BAND99 = new Color(169, 169, 169);   // colours of metafor::funnel (lightgray panel; regions between 90-95% and 95-99%)
+    private static final BasicStroke MF_DOT = new BasicStroke(1.1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{1.6f, 3f}, 0);
+    /** Label of a tick of the vertical axis: rounded to 3 decimals, without trailing zeros ("0", "1.331"). */
+    static String mfNum(double v) { return new java.math.BigDecimal(v).setScale(3, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString().replaceFirst("^-0$", "0"); }
+
+    /** metafor style: funnel plot, contour-enhanced funnel plot, funnel plot of precision (inverse standard error) and the trim-and-fill versions, as drawn by metafor::funnel. The funnel and the regions are centred on the
+     *  pooled estimate (as metafor does for a fitted model) and the axes are extended by 4% (as base R). */
+    static BufferedImage metafor(MetaResult r, Plots.Opts o, TrimFill tf) {
+        D d = new D(r, tf, o.precision, o); final boolean con = o.contour;
+        final double[] zs = con ? new double[]{Z90, Z95, Z99} : new double[]{Z95};   // levels of the regions, narrowest first; the plain funnel shows the pseudo 95% confidence region
+        final int W = 640, H = 500, x0 = 70, x1 = W - 24, y0 = 24, y1 = H - 72;
+        // ---- ranges: data and the narrowest region at the largest standard error, plus 4% on every side
+        double lo = Double.POSITIVE_INFINITY, hi = Double.NEGATIVE_INFINITY, minPrec = Double.POSITIVE_INFINITY;
+        for (int i = 0; i < d.te.length; i++) if (d.ok(i)) { lo = Math.min(lo, d.te[i]); hi = Math.max(hi, d.te[i]); if (d.se[i] > 0) minPrec = Math.min(minPrec, 1 / d.se[i]); }
+        if (!Double.isFinite(lo)) { lo = d.center - 1; hi = d.center + 1; }
+        lo = Math.min(lo, d.center - zs[0] * d.maxse); hi = Math.max(hi, d.center + zs[0] * d.maxse); double padx = (hi - lo) * 0.04; lo -= padx; hi += padx;
+        { double[] cl = Plots.clampRaw(d.s, lo, hi); lo = cl[0]; hi = cl[1]; } d.cov = Plots.coverAxis(lo, hi, d.log, d.bk, x1 - x0); if (d.cov.t.size() >= 2) { lo = d.cov.xl; hi = d.cov.xh; } else d.cov = null; final double xl = lo, xh = hi;
+        final double vMin = d.prec ? (Double.isFinite(minPrec) ? minPrec : 0) : 0, vMax = d.prec ? d.maxPrec : d.maxse, vr = Math.max(vMax - vMin, 1e-9);
+        final double yLo = vMin - 0.04 * vr, yHi = vMax + 0.04 * vr;   // vertical range of the panel (SE: top = small values; precision: top = large values)
+        java.util.function.DoubleUnaryOperator X = v -> x0 + (v - xl) / (xh - xl) * (x1 - x0), Y = v -> d.prec ? y1 - (v - yLo) / (yHi - yLo) * (y1 - y0) : y0 + (v - yLo) / (yHi - yLo) * (y1 - y0);
+        Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g;
+        g.setColor(MF_BACK); g.fill(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0));
+        Shape clip0 = g.getClip(); g.setClip(new Rectangle2D.Double(x0, y0, x1 - x0, y1 - y0));
+        final double yBase = d.prec ? Math.max(yLo, 1e-9) : yHi, yApex = d.prec ? yHi : 0;   // the regions run from the bottom of the panel to the apex (precision: to the top of the panel)
+        java.util.function.DoubleFunction<Shape> region = z -> d.prec ? curvePoly(X, Y, d.center, z, yBase, yHi, xh - xl) : tri(X.applyAsDouble(d.center - z * yHi), Y.applyAsDouble(yHi), X.applyAsDouble(d.center), Y.applyAsDouble(0), X.applyAsDouble(d.center + z * yHi), Y.applyAsDouble(yHi));
+        if (con) { g.setColor(MF_BAND99); g.fill(region.apply(zs[2])); g.setColor(MF_BAND95); g.fill(region.apply(zs[1])); g.setColor(Color.WHITE); g.fill(region.apply(zs[0])); }
+        else { g.setColor(Color.WHITE); g.fill(region.apply(zs[0])); }
+        // white horizontal grid lines at the ticks of the vertical axis (5 ticks from the smallest to the largest value, as metafor's steps = 5)
+        double[] yt = new double[5]; for (int k = 0; k < 5; k++) yt[k] = vMin + k * vr / 4;
+        g.setColor(Color.WHITE); g.setStroke(new BasicStroke(1.7f)); for (double t : yt) c.line(x0, Y.applyAsDouble(t), x1, Y.applyAsDouble(t));
+        // dotted limits of the regions and dotted line at the pooled estimate
+        g.setColor(Color.BLACK); g.setStroke(MF_DOT);
+        for (double z : zs) { if (d.prec) { g.draw(curve(X, Y, d.center, -z, yBase, yHi, xh - xl, true)); g.draw(curve(X, Y, d.center, z, yBase, yHi, xh - xl, true)); }
+            else { c.line(X.applyAsDouble(d.center), Y.applyAsDouble(0), X.applyAsDouble(d.center - z * yHi), Y.applyAsDouble(yHi)); c.line(X.applyAsDouble(d.center), Y.applyAsDouble(0), X.applyAsDouble(d.center + z * yHi), Y.applyAsDouble(yHi)); } }
+        c.line(X.applyAsDouble(d.center), d.prec ? y0 : Y.applyAsDouble(0), X.applyAsDouble(d.center), y1);
+        g.setStroke(new BasicStroke(1f));
+        // studies: black dots; the imputed studies of a trim-and-fill plot are open circles
+        final double R = 3.2;
+        for (int i = 0; i < d.te.length; i++) { if (!d.ok(i)) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.yv(i)); Ellipse2D.Double e = new Ellipse2D.Double(xx - R, yy - R, 2 * R, 2 * R);
+            if (d.filled(i)) { g.setColor(Color.WHITE); g.fill(e); g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1.1f)); g.draw(e); g.setStroke(new BasicStroke(1f)); } else { g.setColor(Color.BLACK); g.fill(e); } }
+        g.setClip(clip0); if (o.studyLabels) labels(c, d, X, Y, x1, Color.BLACK, o.repelFunnel, x0, y0, y1);
+        // axes: left and bottom lines of the panel, outward ticks, rotated tick labels on the vertical axis
+        g.setColor(Color.BLACK); g.setStroke(new BasicStroke(1f)); c.line(x0, y0, x0, y1); c.line(x0, y1, x1, y1);
+        for (double t : yt) { double yy = Y.applyAsDouble(t); c.line(x0 - 5, yy, x0, yy); c.textRot(mfNum(t), x0 - 12, yy, 12f); }
+        for (double[] t : xticks(d, xl, xh, x1 - x0, 6, true)) { double xx = X.applyAsDouble(t[0]); c.line(xx, y1, xx, y1 + 5); c.text(Canvas.tick(t[1]), xx, y1 + 21, 12f, 1, false); }
+        c.text(d.xlab, (x0 + x1) / 2.0, y1 + 48, 13f, 1, false); c.textRot(d.prec ? "Inverse Standard Error" : "Standard Error", 18, (y0 + y1) / 2.0, 13f);
         return c.img;
     }
 

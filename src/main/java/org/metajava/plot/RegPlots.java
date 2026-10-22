@@ -18,6 +18,25 @@ public final class RegPlots {
     /** Named colours offered for the study circles, the regression line and the confidence band / lines. */
     public static final String[] COLOURS = {"Blue", "Navy", "Steel blue", "Light blue", "Red", "Dark red", "Light red", "Green", "Dark green", "Light green", "Orange", "Light orange", "Purple", "Light purple", "Black", "Dark grey", "Grey", "Light grey"};
     private static final Color[] RGB = {new Color(0, 0, 255), new Color(31, 78, 140), new Color(70, 130, 180), new Color(173, 200, 235), new Color(255, 0, 0), new Color(139, 0, 0), new Color(245, 170, 170), new Color(34, 160, 80), new Color(0, 100, 0), new Color(190, 235, 200), new Color(255, 140, 0), new Color(255, 215, 170), new Color(128, 0, 128), new Color(215, 190, 235), Color.BLACK, new Color(70, 70, 70), new Color(150, 150, 150), new Color(211, 211, 211)};
+    /** First entry of the six bubble-plot colour lists: keep the colour of the plot style (Default: the grey circles, black line and grey bands of meta; ggplot2 style: POINTS_DEFAULT ... PREDLINE_DEFAULT below). Any other entry applies to both styles. */
+    public static final String AUTO = "Theme default";
+    public static final String[] COLOURS_AUTO = new String[COLOURS.length + 1];
+    static { COLOURS_AUTO[0] = AUTO; System.arraycopy(COLOURS, 0, COLOURS_AUTO, 1, COLOURS.length); }
+    /** Colours of the Default (meta) style: study circles, regression line, confidence area (with its alpha) and lines, prediction area and lines. */
+    static final Color META_POINTS = new Color(150, 150, 150), META_LINE = Color.BLACK, META_BAND = new Color(215, 215, 215, 170), META_BANDLINE = new Color(70, 70, 70), META_PRED = new Color(235, 235, 235, 150), META_PREDLINE = new Color(70, 70, 70);
+    static boolean isAuto(String n) { return n == null || AUTO.equals(n); }
+    /** Colour "Theme default" stands for in a plot style (swatch of the drop-down lists); roles: 0 study symbol, 1 regression line, 2 confidence area, 3 confidence lines, 4 prediction area, 5 prediction lines. */
+    public static Color defaultColour(String style, int role) {
+        boolean gg = GG.equals(style);
+        switch (role) { case 0: return gg ? colour(null, POINTS_DEFAULT) : META_POINTS; case 1: return gg ? colour(null, LINE_DEFAULT) : META_LINE; case 2: return gg ? colour(null, BAND_DEFAULT) : META_BAND; case 3: return gg ? colour(null, BANDLINE_DEFAULT) : META_BANDLINE; case 4: return gg ? colour(null, PRED_DEFAULT) : META_PRED; default: return gg ? colour(null, PREDLINE_DEFAULT) : META_PREDLINE; }
+    }
+    // Default (meta) style: the colour chosen in the menu, or the meta colour for "Theme default" (fills keep the meta transparency, chosen fills use the transparency of the ggplot2 style)
+    static Color metaPoints(Plots.Opts o) { return isAuto(o.colPoints) ? META_POINTS : colour(o.colPoints, POINTS_DEFAULT); }
+    static Color metaLine(Plots.Opts o) { return isAuto(o.colLine) ? META_LINE : colour(o.colLine, LINE_DEFAULT); }
+    static Color metaBand(Plots.Opts o) { return isAuto(o.colBand) ? META_BAND : alpha(colour(o.colBand, BAND_DEFAULT), 0.75); }
+    static Color metaBandLine(Plots.Opts o) { return isAuto(o.colBandLine) ? META_BANDLINE : colour(o.colBandLine, BANDLINE_DEFAULT); }
+    static Color metaPred(Plots.Opts o) { return isAuto(o.colPred) ? META_PRED : alpha(colour(o.colPred, PRED_DEFAULT), 0.5); }
+    static Color metaPredLine(Plots.Opts o) { return isAuto(o.colPredLine) ? META_PREDLINE : colour(o.colPredLine, PREDLINE_DEFAULT); }
     public static final String POINTS_DEFAULT = "Blue", LINE_DEFAULT = "Red", BAND_DEFAULT = "Light grey", BANDLINE_DEFAULT = "Dark grey", PRED_DEFAULT = "Light grey", PREDLINE_DEFAULT = "Grey";
     /** Dotted stroke of the prediction bounds. */
     static final BasicStroke DOTTED = new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10, new float[]{0.1f, 3.4f}, 0);
@@ -95,9 +114,9 @@ public final class RegPlots {
      *  (ggplot2 style, adjusted plot); otherwise with the fixed colours of the default style. The order is the one of the plot: regression line, confidence interval, prediction interval. */
     static List<LegItem> legendItems(Plots.Opts o, MetaSpec s, boolean menuColours) {
         List<LegItem> l = new ArrayList<>(); if (!o.confInt && !o.predInt) return l;
-        if (o.regLine) { Color c = menuColours ? colour(o.colLine, LINE_DEFAULT) : Color.BLACK; l.add(new LegItem(true, c, c, new BasicStroke(menuColours ? 2.3f : 1.4f), "Regression line")); }
-        if (o.confInt) l.add(new LegItem(false, menuColours ? alpha(colour(o.colBand, BAND_DEFAULT), 0.75) : new Color(215, 215, 215, 170), menuColours ? colour(o.colBandLine, BANDLINE_DEFAULT) : new Color(70, 70, 70), CI_DASH, pct(s.levelMa) + " Confidence Interval"));
-        if (o.predInt) l.add(new LegItem(false, menuColours ? alpha(colour(o.colPred, PRED_DEFAULT), 0.5) : new Color(235, 235, 235, 150), menuColours ? colour(o.colPredLine, PREDLINE_DEFAULT) : new Color(70, 70, 70), DOTTED, pct(s.levelPredict) + " Prediction Interval"));
+        if (o.regLine) { Color c = menuColours ? colour(o.colLine, LINE_DEFAULT) : metaLine(o); l.add(new LegItem(true, c, c, new BasicStroke(menuColours ? 2.3f : 1.4f), "Regression line")); }
+        if (o.confInt) l.add(new LegItem(false, menuColours ? alpha(colour(o.colBand, BAND_DEFAULT), 0.75) : metaBand(o), menuColours ? colour(o.colBandLine, BANDLINE_DEFAULT) : metaBandLine(o), CI_DASH, pct(s.levelMa) + " Confidence Interval"));
+        if (o.predInt) l.add(new LegItem(false, menuColours ? alpha(colour(o.colPred, PRED_DEFAULT), 0.5) : metaPred(o), menuColours ? colour(o.colPredLine, PREDLINE_DEFAULT) : metaPredLine(o), DOTTED, pct(s.levelPredict) + " Prediction Interval"));
         return l;
     }
     /** Height of the legend box. */

@@ -349,6 +349,15 @@ public class SelfTest {
             qs = opt.apply("Default"); qd = opt.apply("Default"); qs.pooledColour = "Red"; qs.pooledStyle = "Solid"; qd.pooledColour = "Red"; qd.pooledStyle = "Dotted";
             check(cnt.apply(qs, 0xCD0000) > cnt.apply(qd, 0xCD0000) + 50, "pooled-effect line style: dotted has fewer pixels than solid");
             q = opt.apply("STATA style"); q.nullStyle = "Dotted"; q.pooledStyle = "Solid"; check(Plots.forest(br, q).getWidth() > 300, "overrides also apply on top of the STATA theme");
+            // metafor style: own look, black squares / diamond, red prediction bar, and every override applies
+            { Plots.Opts mf = opt.apply("metafor style"); BufferedImage m1 = Plots.forest(br, mf);
+              check(!sameImage(m1, Plots.forest(br, opt.apply("Default"))) && !sameImage(m1, Plots.forest(br, opt.apply("RevMan 5 style"))) && !sameImage(m1, Plots.forest(br, opt.apply("BMJ style"))) && !sameImage(m1, Plots.forest(br, opt.apply("STATA style"))), "metafor forest theme differs from the four other themes");
+              check(cnt.apply(mf, 0xFF0000) > 300, "metafor forest theme: prediction interval drawn as a thick red bar");
+              q = opt.apply("metafor style"); q.squareColour = "Green"; q.diamondFill = "Orange"; q.diamondBorder = "Dark green"; q.nullColour = "Blue"; q.pooledColour = "Red";
+              check(cnt.apply(q, 0x009600) > 500 && cnt.apply(q, 0xF08200) > 100 && cnt.apply(q, 0x0000FF) > 100, "metafor forest theme: square, diamond and line colour overrides apply");
+              q = opt.apply("metafor style"); q.diamondFill = "None"; q.diamondBorder = "None"; check(cnt.apply(q, 0x000000) < cnt.apply(mf, 0x000000), "metafor forest theme: diamond fill / border 'None' leaves the diamond hollow");
+              BufferedImage lo1 = Plots.forestSeries(br, br.loo, br.looLabels, mf, "loo"), cu1 = Plots.forestSeries(br, br.cum, br.cumLabels, mf, "cum");
+              check(!sameImage(lo1, Plots.forestSeries(br, br.loo, br.looLabels, opt.apply("Default"), "loo")) && !sameImage(cu1, Plots.forestSeries(br, br.cum, br.cumLabels, opt.apply("Default"), "cum")), "metafor forest theme applies to the leave-one-out and cumulative forest plots"); }
             // vector export of a themed plot
             q = opt.apply("BMJ style"); org.metajava.plot.VectorGraphics vg = org.metajava.plot.Canvas.record(sc -> { Plots.Opts z = opt.apply("BMJ style"); z.scale = sc; return Plots.forest(br, z); }, 1.0); check(vg != null, "themed forest plot can be recorded as vector graphics (SVG / PDF)");
         } catch (Exception e) { e.printStackTrace(); check(false, "forest theme tests threw " + e); }
@@ -1050,6 +1059,18 @@ public class SelfTest {
                 check(diff, "'" + stl + "' bubble plot: the prediction interval changes the picture"); }
             for (String sy : org.metajava.plot.RegPlots.SYMBOLS) { Plots.Opts q = new Plots.Opts(); q.studyLabels = false; q.symbol = sy; q.symSize = 1.4; q.predInt = true; q.confInt = true;
                 try { check(Plots.bubble(rg, q, res) != null, "bubble plot with study symbol '" + sy + "'"); q.bubbleStyle = org.metajava.plot.RegPlots.GG; check(Plots.bubble(rg, q, res) != null, "ggplot2-style bubble plot with study symbol '" + sy + "'"); } catch (Exception e) { check(false, "study symbol " + sy + " threw " + e); } } }
+        {   // bubble plot colours apply to the Default (meta) style too; "Theme default" keeps the old look
+            double[][] dd = simData(1, 7, 14); MetaResult res = simResult(dd[0], dd[1]); java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", dd[2]);
+            Reg rg = Reg.run(res, java.util.List.of("x"), nd, java.util.List.of(), new java.util.HashMap<>(), true, new java.util.HashMap<>());
+            Plots.Opts d0 = new Plots.Opts(); d0.studyLabels = false; d0.regLine = true; d0.confInt = true; d0.predInt = true; d0.scale = 1; d0.bubbleStyle = org.metajava.plot.RegPlots.DEFAULT_STYLE;
+            check(org.metajava.plot.RegPlots.AUTO.equals(org.metajava.plot.RegPlots.COLOURS_AUTO[0]) && org.metajava.plot.RegPlots.AUTO.equals(d0.colPoints) && org.metajava.plot.RegPlots.AUTO.equals(d0.colLine), "bubble plot colour lists start with 'Theme default', which is the initial choice");
+            int[] base = pixels(Plots.bubble(rg, d0, res)); int[] chk = pixels(Plots.bubble(rg, d0, res)); check(java.util.Arrays.equals(base, chk), "Default-style bubble plot with 'Theme default' colours is reproducible");
+            java.util.function.Function<int[], int[]> cnt = px -> { int red = 0, blue = 0, green = 0; for (int q0 : px) { int r2 = q0 >> 16 & 255, g2 = q0 >> 8 & 255, b2 = q0 & 255; if (r2 > g2 + 90 && r2 > b2 + 90) red++; if (b2 > r2 + 90 && b2 > g2 + 40) blue++; if (g2 > r2 + 60 && g2 > b2 + 40) green++; } return new int[]{red, blue, green}; };
+            int[] c0 = cnt.apply(base); check(c0[0] == 0 && c0[1] == 0 && c0[2] == 0, "Default-style bubble plot: grey / black meta look with 'Theme default'");
+            Plots.Opts d1 = new Plots.Opts(); d1.studyLabels = false; d1.regLine = true; d1.confInt = true; d1.predInt = true; d1.scale = 1; d1.bubbleStyle = org.metajava.plot.RegPlots.DEFAULT_STYLE; d1.colPoints = "Blue"; d1.colLine = "Red"; d1.colBand = "Light green"; d1.colBandLine = "Dark green"; d1.colPred = "Light orange"; d1.colPredLine = "Purple";
+            int[] c1 = cnt.apply(pixels(Plots.bubble(rg, d1, res))); check(c1[0] > 0 && c1[1] > 0 && c1[2] > 0, "Default-style bubble plot: study symbol, regression line and the band colours chosen in the menu are applied");
+            for (String sy : org.metajava.plot.RegPlots.SYMBOLS) { d1.symbol = sy; check(Plots.bubble(rg, d1, res) != null, "Default-style bubble plot with colours and study symbol '" + sy + "'"); }
+        }
         // ---- 3c. Drapery plot analysis and interpretation: model-consistent, conditional on the plotted result
         {
             MetaSpec dsp = new MetaSpec(); dsp.type = "bin"; dsp.sm = "OR"; dsp.methodTau = "DL"; dsp.prediction = true; dsp.common = false; dsp.random = true; MetaData ddat = new MetaData();
@@ -1554,15 +1575,42 @@ public class SelfTest {
               boolean[] fl = org.metajava.plot.BaujatPlot.flaggedForTest(fp, fo);
               check(fl != null && fl.length == 5 && !fl[0] && !fl[1] && !fl[2] && fl[3] && fl[4], "Baujat quadrants: studies strictly beyond both lines are flagged (drawn in red), studies on a line or outside are not");
               check(org.metajava.plot.BaujatPlot.flaggedForTest(fp, new Plots.Opts()) == null, "Baujat quadrants off: no study is flagged"); }
-            Plots.Opts b0 = new Plots.Opts(), bq = new Plots.Opts(), bz = new Plots.Opts(); bq.baujatQuad = true; bz.baujatSymSize = 2.0;
+            { double[] c99 = org.metajava.plot.BaujatPlot.cutoffs(bp, org.metajava.plot.BaujatPlot.Q_P99), c95 = org.metajava.plot.BaujatPlot.cutoffs(bp, org.metajava.plot.BaujatPlot.Q_P95),
+                  s2 = org.metajava.plot.BaujatPlot.cutoffs(bp, org.metajava.plot.BaujatPlot.Q_SD), s3 = org.metajava.plot.BaujatPlot.cutoffs(bp, org.metajava.plot.BaujatPlot.Q_SD3), mn = org.metajava.plot.BaujatPlot.cutoffs(bp, org.metajava.plot.BaujatPlot.Q_MEAN);
+              check(Math.abs(c99[0] - (0.4 + 0.96 * (5.0 - 0.4))) < 1e-12 && c99[0] > c95[0] && c99[1] > c95[1], "Baujat quadrants, 99th percentile: R type-7 quantile, beyond the 95th percentile");
+              check(Math.abs((s3[0] - mn[0]) - 1.5 * (s2[0] - mn[0])) < 1e-12 && Math.abs((s3[1] - mn[1]) - 1.5 * (s2[1] - mn[1])) < 1e-12 && s3[0] > s2[0], "Baujat quadrants, Mean + 3 SD: mean plus three standard deviations on each axis");
+              java.util.List<String> ru = java.util.Arrays.asList(org.metajava.plot.BaujatPlot.QUAD_RULES);
+              check(ru.indexOf(org.metajava.plot.BaujatPlot.Q_P99) == ru.indexOf(org.metajava.plot.BaujatPlot.Q_P95) + 1 && ru.indexOf(org.metajava.plot.BaujatPlot.Q_SD3) == ru.indexOf(org.metajava.plot.BaujatPlot.Q_SD) + 1, "Baujat quadrant lines list: 99th percentile just below the 95th, Mean + 3 SD just below Mean + 2 SD");
+              java.awt.Color lc = org.metajava.plot.BaujatPlot.quadColourOf("Green"); Plots.Opts qo = new Plots.Opts(); qo.baujatQuadColour = "Green";
+              check(!lc.equals(org.metajava.plot.BaujatPlot.quadColourOf(org.metajava.plot.BaujatPlot.QUAD_AUTO)) && org.metajava.plot.BaujatPlot.QUAD_COLOURS[0].equals(org.metajava.plot.BaujatPlot.QUAD_AUTO), "Baujat quadrant colour list: default red first, then the named plot colours"); }
+            Plots.Opts b0 = new Plots.Opts(), bq = new Plots.Opts(), bz = new Plots.Opts(), bc = new Plots.Opts(); bq.baujatQuad = true; bc.baujatQuad = true; bc.baujatQuadColour = "Blue"; bz.baujatSymSize = 2.0;
             for (String th : org.metajava.plot.BaujatPlot.THEMES) {
                 b0.baujatTheme = th; bq.baujatTheme = th; bz.baujatTheme = th;
                 int[] p0 = pixels(Plots.baujat(br, b0));
                 check(java.util.Arrays.equals(p0, pixels(Plots.baujat(br, b0))), "Baujat plot (" + th + ") is reproducible");
                 check(!java.util.Arrays.equals(p0, pixels(Plots.baujat(br, bq))), "Baujat plot (" + th + "): the quadrants option changes the plot");
                 check(!java.util.Arrays.equals(p0, pixels(Plots.baujat(br, bz))), "Baujat plot (" + th + "): the symbol size option changes the plot");
+                bc.baujatTheme = th; { int[] ir = pixels(Plots.baujat(br, bq)), ib = pixels(Plots.baujat(br, bc)); int blueR = 0, blueB = 0, redR = 0, redB = 0;
+                    for (int px : ir) { int pr = px >> 16 & 255, pg = px >> 8 & 255, pb = px & 255; if (pb > pr + 60 && pg < 170) blueR++; if (pr > pb + 60 && pg < 120) redR++; }
+                    for (int px : ib) { int pr = px >> 16 & 255, pg = px >> 8 & 255, pb = px & 255; if (pb > pr + 60 && pg < 170) blueB++; if (pr > pb + 60 && pg < 120) redB++; }
+                    check(!java.util.Arrays.equals(ir, ib) && redR > 0 && redB == 0 && blueB > blueR, "Baujat plot (" + th + "): the quadrant colour replaces the red of lines, shading, symbols and labels"); }
                 for (String rule : org.metajava.plot.BaujatPlot.QUAD_RULES) { bq.baujatQuadRule = rule; check(Plots.baujat(br, bq) != null, "Baujat plot (" + th + ") with quadrant rule '" + rule + "' is drawn"); }
             }
+        }
+        {   // metafor style funnel plots (funnel, contour-enhanced, precision, trim-and-fill, trim-and-fill of precision)
+            try {
+                double[] ft = {14.6, 9.4, 8.1, 2.8, 10.6, 15.5, 21.3, 46.5, 12.2, 7.7, 5.1, 6.3, 4.6, 4.8, 7.2, 9.8, 15.2, 15.6, 9.3, 15.0}, fs = {0.34, 0.9, 1.0, 0.75, 0.95, 0.97, 1.0, 1.1, 1.3, 1.4, 1.6, 1.7, 1.9, 1.9, 2.0, 2.1, 2.4, 2.4, 2.6, 2.7};
+                MetaResult fr = simResult(ft, fs); org.metajava.core.TrimFill ftf = org.metajava.core.TrimFill.run(fr, null, false, "L0", false, true);
+                Plots.Opts fo = new Plots.Opts(); fo.scale = 1; fo.funnelTheme = org.metajava.plot.FunnelThemes.DEFAULT; BufferedImage fd = Plots.funnel(fr, fo, null); fo.funnelTheme = org.metajava.plot.FunnelThemes.METAFOR;
+                BufferedImage m0 = Plots.funnel(fr, fo, null); check(!sameImage(fd, m0) && countColour(m0, 0xD3D3D3) > 20000, "metafor funnel theme: light-grey panel, different from the Default theme");
+                fo.contour = true; BufferedImage mc = Plots.funnel(fr, fo, null); check(countColour(mc, 0xA9A9A9) > 500 && countColour(mc, 0xBEBEBE) > 500 && countColour(m0, 0xA9A9A9) < 100, "metafor funnel theme: contour-enhanced shows the 95-99% and 90-95% regions");
+                fo.contour = false; fo.precision = true; BufferedImage mp = Plots.funnel(fr, fo, null); fo.contour = true; BufferedImage mpc = Plots.funnel(fr, fo, null);
+                check(!sameImage(m0, mp) && !sameImage(mp, mpc) && countColour(mpc, 0xA9A9A9) > 100, "metafor funnel theme: funnel plot of precision (plain and contour-enhanced)");
+                fo.contour = false; fo.precision = false; BufferedImage mt = Plots.funnel(fr, fo, ftf); fo.precision = true; BufferedImage mtp = Plots.funnel(fr, fo, ftf);
+                check(!sameImage(mt, m0) && !sameImage(mtp, mp) && !sameImage(mt, mtp), "metafor funnel theme: trim-and-fill funnel plot and trim-and-fill funnel plot of precision");
+                fo.precision = false; fo.studyLabels = false; BufferedImage nl = Plots.funnel(fr, fo, null); fo.studyLabels = true; fo.repelFunnel = false; BufferedImage wl = Plots.funnel(fr, fo, null); fo.repelFunnel = true; BufferedImage rl = Plots.funnel(fr, fo, null);
+                check(!sameImage(nl, wl) && !sameImage(wl, rl), "metafor funnel theme: study labels, with and without 'Avoid label overlap'");
+            } catch (Exception e) { check(false, "metafor funnel theme: " + e); }
         }
         System.out.println(checks + " checks, " + failures + " failed");
         if (failures > 0) System.exit(1);

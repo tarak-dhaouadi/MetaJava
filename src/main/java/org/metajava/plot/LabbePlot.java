@@ -25,6 +25,12 @@ public final class LabbePlot {
     public static final String[] COLOURS = prepend(RegPlots.COLOURS, AUTO), BACK_COLOURS = prepend(RegPlots.COLOURS, AUTO, WHITE);
     private static String[] prepend(String[] a, String... first) { String[] o = new String[first.length + a.length]; System.arraycopy(first, 0, o, 0, first.length); System.arraycopy(a, 0, o, first.length, a.length); return o; }
 
+    /** Colour "Theme default" stands for in the given theme (swatch of the drop-down lists; null when the theme does not draw that element); roles: 0 symbol (border), 1 background, 2 study circle,
+     *  3 no-effect line, 4 estimated-effect line, 5 confidence area, 6 prediction area. */
+    public static Color defaultColour(String theme, int role) {
+        boolean gg = GG.equals(theme);
+        switch (role) { case 0: return Color.BLACK; case 1: return Color.WHITE; case 2: return gg ? GG_CIRCLE : DEF_CIRCLE; case 3: return gg ? Color.BLACK : new Color(211, 211, 211); case 4: return Color.BLACK; case 5: return gg ? GG_CI : null; default: return gg ? GG_PI : null; }
+    }
     static boolean isGg(Plots.Opts o) { return GG.equals(o.labbeTheme); }
     /** Colour chosen in a drop-down, or null for "Theme default". */
     static Color chosen(String name) { return BaujatPlot.colourOf(name); }

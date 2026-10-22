@@ -9,13 +9,14 @@ import java.util.*;
  * <li>Default: the look of meta::forest (R package meta);</li>
  * <li>RevMan 5 style: Cochrane Review Manager 5 (blue squares, black diamond, rule under the header, "0.36 [0.30, 0.44]", weight before the estimate);</li>
  * <li>BMJ style: purple diamonds, "e / n" columns, grey rules, "0.36 (0.30 to 0.44)", weight in %;</li>
+ * <li>metafor style: R package metafor (forest.rma): black squares and diamond, a prediction interval as a thick red bar, rules under the header and above the summary, solid line at the null effect and dotted line at the pooled effect, weight and "estimate [CI]" columns on the right, axis title under the axis, \"I\u00B2 = ..., \u03C4\u00B2 = ..., p = ...\" under the table;</li>
  * <li>STATA style: Stata metan look (pale-blue frame, navy title, grey squares with a dot, hollow diamond, dashed red pooled line, "Favours ..." labels, note under the table).</li>
  * </ul>
  * The individual options (square fill, diamond fill / border, null-effect line and pooled-effect line colour and style) override the theme.
  */
 public final class ForestTheme {
-    public static final String DEFAULT = "Default", REVMAN = "RevMan 5 style", BMJ = "BMJ style", STATA = "STATA style";
-    public static final String[] THEMES = {DEFAULT, REVMAN, BMJ, STATA};
+    public static final String DEFAULT = "Default", REVMAN = "RevMan 5 style", BMJ = "BMJ style", STATA = "STATA style", METAFOR = "metafor style";
+    public static final String[] THEMES = {DEFAULT, REVMAN, BMJ, STATA, METAFOR};
     /** First entry of every override list: keep what the theme prescribes. */
     public static final String AUTO = "Theme default", NONE = "None";
 
@@ -36,7 +37,7 @@ public final class ForestTheme {
     static final float[] DOTTED = {1.5f, 2.5f}, DASHED = {5f, 3f};
 
     // ------------------------------------------------------------------ resolved theme
-    public final int kind;               // 0 Default, 1 RevMan 5, 2 BMJ, 3 STATA
+    public final int kind;               // 0 Default, 1 RevMan 5, 2 BMJ, 3 STATA, 4 metafor
     final int rowBase, plotW;            // row height at spacing 1, width of the plot area
     final boolean noDataCols, boldHead, boldPool, twoLineHead, markerDiamond, markerDot, ciFollowsMarker;
     final float tickSize, markerMax;
@@ -46,7 +47,7 @@ public final class ForestTheme {
 
     private ForestTheme(int kind) {
         this.kind = kind;
-        rowBase = kind == 3 ? 24 : 20; plotW = kind == 3 ? 300 : 230; noDataCols = kind == 3; boldHead = kind != 3; boldPool = kind <= 1; twoLineHead = kind != 0;
+        rowBase = kind == 3 ? 24 : 20; plotW = kind == 3 ? 300 : 230; noDataCols = kind == 3; boldHead = kind != 3; boldPool = kind <= 1 || kind == 4; twoLineHead = kind != 0 && kind != 4;
         markerDiamond = kind == 2; markerDot = kind == 3; ciFollowsMarker = kind == 2; tickSize = kind == 0 ? 13f : 12f; markerMax = kind == 2 ? 13f : kind == 3 ? 18f : 15f;
         axisCol = kind == 2 ? new Color(90, 90, 90) : kind == 3 ? new Color(80, 90, 95) : Color.BLACK;
         nullW = kind == 3 ? 1.3f : 1.1f; pooledW = kind == 3 ? 1.2f : 0.9f;
@@ -54,6 +55,7 @@ public final class ForestTheme {
             case 1: headRule = Color.BLACK; squareFill = new Color(0, 0, 255); diamondFill = Color.BLACK; diamondBorder = Color.BLACK; nullCol = Color.BLACK; pooledCol = Color.BLACK; nullDash = null; pooledDash = DOTTED; break;
             case 2: headRule = new Color(165, 165, 165); squareFill = PALETTE.get("Purple"); diamondFill = PALETTE.get("Purple"); diamondBorder = PALETTE.get("Purple"); nullCol = new Color(140, 140, 140); pooledCol = new Color(40, 40, 40); nullDash = null; pooledDash = DOTTED; nullW = 1.0f; break;
             case 3: headRule = null; bgOuter = new Color(234, 242, 243); boxBorder = new Color(150, 165, 170); titleCol = new Color(26, 71, 111); squareFill = new Color(192, 192, 192); diamondFill = Color.WHITE; diamondBorder = Color.BLACK; nullCol = Color.BLACK; pooledCol = new Color(128, 0, 0); nullDash = null; pooledDash = DASHED; break;
+            case 4: headRule = Color.BLACK; squareFill = Color.BLACK; diamondFill = Color.BLACK; diamondBorder = Color.BLACK; nullCol = Color.BLACK; pooledCol = Color.BLACK; nullDash = null; pooledDash = DOTTED; nullW = 1.0f; pooledW = 1.0f; break;
             default: squareFill = new Color(192, 192, 192); diamondFill = new Color(192, 192, 192); diamondBorder = Color.BLACK; nullCol = Color.BLACK; pooledCol = Color.BLACK; nullDash = null; pooledDash = DOTTED;
         }
         if (kind == 2) ciCol = squareFill;
@@ -61,7 +63,7 @@ public final class ForestTheme {
 
     static ForestTheme of(Plots.Opts o) {
         String name = o.theme == null ? DEFAULT : o.theme;
-        ForestTheme t = new ForestTheme(name.equals(REVMAN) ? 1 : name.equals(BMJ) ? 2 : name.equals(STATA) ? 3 : 0);
+        ForestTheme t = new ForestTheme(name.equals(REVMAN) ? 1 : name.equals(BMJ) ? 2 : name.equals(STATA) ? 3 : name.equals(METAFOR) ? 4 : 0);
         Color c = pick(o.squareColour); if (c != null) { t.squareFill = c; if (t.ciFollowsMarker) t.ciCol = c; }
         if (!isAuto(o.diamondFill)) t.diamondFill = o.diamondFill.equals(NONE) ? null : orElse(pick(o.diamondFill), t.diamondFill);
         if (!isAuto(o.diamondBorder)) t.diamondBorder = o.diamondBorder.equals(NONE) ? null : orElse(pick(o.diamondBorder), t.diamondBorder);
@@ -70,6 +72,12 @@ public final class ForestTheme {
         if (!isAuto(o.nullStyle)) t.nullDash = dash(o.nullStyle, t.nullDash);
         if (!isAuto(o.pooledStyle)) t.pooledDash = dash(o.pooledStyle, t.pooledDash);
         return t;
+    }
+
+    /** Colour a "Theme default" entry stands for in the given theme (swatch of the drop-down lists); roles: 0 study square, 1 diamond fill, 2 diamond border, 3 null-effect line, 4 pooled-effect line. */
+    public static Color defaultColour(String theme, int role) {
+        Plots.Opts o = new Plots.Opts(); o.theme = theme; ForestTheme t = of(o);
+        switch (role) { case 0: return t.squareFill; case 1: return t.diamondFill; case 2: return t.diamondBorder; case 3: return t.nullCol; default: return t.pooledCol; }
     }
 
     private static boolean isAuto(String s) { return s == null || s.isEmpty() || s.equals(AUTO); }

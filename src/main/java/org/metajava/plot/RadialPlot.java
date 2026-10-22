@@ -59,6 +59,13 @@ public final class RadialPlot {
         return l;
     }
 
+    /** Colour "Theme default" stands for in the given theme (swatch of the drop-down lists; null when the theme does not draw that element); roles: 0 symbol (border), 1 background, 2 study circle,
+     *  3 regression line, 4 no-effect line, 5 confidence area, 6 confidence-limit lines. */
+    public static Color defaultColour(String theme, int role) {
+        Plots.Opts o = new Plots.Opts(); o.radialTheme = theme; Look l = look(o);
+        switch (role) { case 0: return l.edge; case 1: return l.bg; case 2: return l.fill; case 3: return l.reg; case 4: return l.ref; case 5: return l.area; default: return l.ciLine; }
+    }
+
     // ------------------------------------------------------------------ small helpers
     private static FontMetrics fm(float size) { return Canvas.probe().g.getFontMetrics(Canvas.font(size)); }
 

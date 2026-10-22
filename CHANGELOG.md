@@ -1,5 +1,31 @@
 # Changelog
 
+### Changed - bubble plot colours apply to the Default (meta) style as well
+- The six colour options of the regression plots (*Study symbol colour*, *Regression line colour*, *Confidence area colour*, *Confidence lines colour*, *Prediction area colour*, *Prediction line colour*) now apply to the Default (meta style) bubble plot, its legend included, as well as to the ggplot2 style and the adjusted plot; they are no longer greyed out in the Default style.
+- Every list starts with a new entry **Theme default** (the initial choice; its swatch shows the colour of the selected style): in the Default style it keeps the grey circles, black line and grey bands of meta, in the ggplot2 style and the adjusted plot the former defaults (blue, red, light grey, dark grey, light grey, grey). Any other colour replaces it in both styles. Projects saved earlier keep their chosen colours.
+- Tests (`SelfTest`): 'Theme default' keeps the grey / black look, chosen colours appear in the Default style (all study symbols).
+
+### Changed - colour drop-downs show a swatch for "Theme default" / "Default"; "Baujat quadrant colour"
+- Forest plot (study-square fill, diamond fill, diamond border, null-effect and pooled-effect line colour), Baujat (symbol, background), radial plot (symbol, background, study circle, regression line, no-effect line, confidence area, confidence-limit lines) and L'Abbe plot (symbol, background, circle, no-effect line, estimated-effect line, confidence and prediction area): the "Theme default" entry now shows a colour square, like "Default (red)" of the Baujat quadrant list. The square is the colour the currently selected theme prescribes and follows the theme drop-down. Where a theme does not draw an element by itself (e.g. the confidence area of the Default L'Abbe plot) there is no colour to show and the entry stays without a square.
+- "Baujat quadrant color" renamed "Baujat quadrant colour" (GUI and documentation).
+
+### Changed - "Study-square fill colour" drop-down shows a colour swatch
+- The list now shows a colour square in front of every name, like *Diamond fill*, *Diamond border* and the line-colour lists.
+
+### Fixed - metafor-style forest plots: plot-column heading and null-effect line
+- The main and subgroup forest plots in the metafor style now show the heading above the plot column (the effect measure, e.g. "Odds Ratio") like the Default theme; the measure is still repeated as the axis title under the axis.
+- The null-effect line no longer starts at the top of the figure: it starts at the rule under the header, so it no longer runs through the headings "Leave-One-Out Meta-Analysis" / "Cumulative Meta-Analysis" (or the new measure heading).
+
+### Added - "Baujat quadrant colour" and two more quadrant-line rules
+- **Baujat quadrant colour** (section 10, directly below *Baujat quadrant lines*; active when *Baujat quadrants* is ticked): default red or any of the named plot colours. It colours the two quadrant lines (opaque), the shaded quadrant (same colour at about 24% opacity, always far more transparent than the lines), the captions, and the symbol and label (label box border in the ggplot2 style) of every study that falls in the shaded quadrant. Both themes.
+- **Baujat quadrant lines**: new rules **99th percentile** (directly below the 95th percentile) and **Mean + 3 SD** (directly below Mean + 2 SD).
+- Tests (`SelfTest`): cut-offs of the new rules, order of the list, colour replaces the red in both themes (1096 checks).
+
+### Added - "metafor style" theme for the forest plots and the funnel plots
+- **Forest plots** (*Theme* drop-down): "metafor style" (R package metafor) applies to the main, subgroup, leave-one-out and cumulative forest plots. Black squares with end caps on the confidence intervals, black diamond, prediction interval as a thick red bar, rule under the header and above each summary, solid line at the null effect and dotted line at the pooled effect, *Weight* and "estimate [CI]" columns on the right, the effect measure as axis title under the axis (tick labels with the same number of decimals), and the footer "I\u00B2 = ..., \u03C4\u00B2 = ..., p = ..." / "Test for overall effect: z = ... (p = ...)". All the options of the other themes apply on top of it (study-square colour, diamond fill and border, null-effect and pooled-effect line colour and style, axis limits and ticks, spacing, heterogeneity and test lines, study order, etc.).
+- **Funnel plots** (*Funnel plot theme* drop-down): "metafor style" (as metafor::funnel) applies to the funnel plot, the funnel plot of precision (inverse standard error), the trim-and-fill funnel plot and the trim-and-fill funnel plot of precision: light-grey panel with white grid lines at five ticks of the vertical axis, white pseudo 95% confidence region with dotted limits and a dotted line at the pooled estimate, black points (open circles for the imputed studies), axes extended by 4%. *Contour-enhanced* shows the 90 / 95 / 99% regions around the pooled estimate (white and two greys, no legend, as in metafor); back-transformed axes, study labels and "Avoid label overlap" apply.
+- Tests (`SelfTest`): the new themes are drawn for every plot type, differ from the other themes, and honour the colour options.
+
 ### Added - Baujat quadrants, "Baujat symbol size" and the y-axis label "Influence on overall result"
 - **Y-axis label.** Both Baujat plot themes (Default and ggplot2 style), for the common-effect and the random-effects model, now label the y-axis "Influence on overall result" (it was "Influence on fitted value" / "Influence on pooled result").
 - **Baujat symbol size** (section 10, directly below *Baujat symbol colour*): multiplier of the study-symbol size, 0.3 to 4.0, default 1.0, same control as *Size of study symbol* of the bubble plot. Both themes; in the ggplot2 style the symbols stay proportional to the study weights.
