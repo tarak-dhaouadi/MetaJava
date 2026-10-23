@@ -33,8 +33,12 @@ public final class Canvas {
     }
     public static Font font(float size) { return new Font("SansSerif", Font.PLAIN, Math.round(size)).deriveFont(size); }
     public static Font bold(float size) { return new Font("SansSerif", Font.BOLD, Math.round(size)).deriveFont(size); }
+    /** Monospaced font (the table of the IBM SPSS style forest plot). */
+    public static Font mono(float size, boolean bold) { return new Font(Font.MONOSPACED, bold ? Font.BOLD : Font.PLAIN, Math.round(size)).deriveFont(size); }
+    /** When set, {@link #text} draws in the monospaced font. */
+    public boolean mono = false;
     public void text(String s, double x, double y, float size, int align, boolean bold) {
-        g.setFont(bold ? bold(size) : font(size)); FontMetrics fm = g.getFontMetrics(); double wd = fm.stringWidth(s);
+        g.setFont(mono ? mono(size, bold) : bold ? bold(size) : font(size)); FontMetrics fm = g.getFontMetrics(); double wd = fm.stringWidth(s);
         double xx = align == 0 ? x : align == 1 ? x - wd / 2 : x - wd; g.drawString(s, (float) xx, (float) y);
     }
     public void textRot(String s, double x, double y, float size) {

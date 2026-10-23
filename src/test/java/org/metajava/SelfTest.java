@@ -295,6 +295,38 @@ public class SelfTest {
     }
 
     /** Funnel plot themes (Default, MetaWin style, STATA style) for the main and the trim-and-fill funnel plot. */
+    /** IBM SPSS style: forest plots (main, subgroup, leave-one-out, cumulative) and funnel plots (funnel, precision, trim-and-fill, trim-and-fill of precision). */
+    static void spssThemes() {
+        try {
+            double[] e1 = {220, 180, 200, 230, 200, 240}, n1 = {1000, 800, 780, 750, 900, 850}, e2 = {440, 348, 420, 380, 460, 370}, n2 = n1;
+            MetaSpec bs = new MetaSpec(); bs.type = "bin"; bs.sm = "OR"; bs.methodTau = "DL"; bs.prediction = true; bs.subgroupName = "Group";
+            MetaData bd = new MetaData(); bd.put("event.e", e1); bd.put("n.e", n1); bd.put("event.c", e2); bd.put("n.c", n2); bd.subgroup = new String[]{"A", "B", "A", "B", "A", "B"};
+            MetaResult br = Meta.run(bs, bd); Meta.leaveOneOut(br); Meta.cumulative(br, null);
+            Plots.Opts sp = new Plots.Opts(), df = new Plots.Opts(); sp.theme = org.metajava.plot.ForestTheme.SPSS; sp.scale = 1; df.scale = 1;
+            BufferedImage m = Plots.forest(br, sp), lo = Plots.forestSeries(br, br.loo, br.looLabels, sp, "loo"), cu = Plots.forestSeries(br, br.cum, br.cumLabels, sp, "cum");
+            check(m.getWidth() > 400 && lo.getWidth() > 400 && cu.getWidth() > 400, "IBM SPSS forest style: main (with subgroups), leave-one-out and cumulative plots are drawn");
+            check(!sameImage(m, Plots.forest(br, df)), "IBM SPSS forest style differs from the Default style");
+            int sq = countColour(m, 0x0091EB), dia = countColour(m, 0x961455), red = near(m, 0xCD1E2D);
+            check(sq > 200 && dia > 50 && red > 50, "IBM SPSS forest style: blue squares, maroon diamonds and the red dashed line at the overall effect");
+            Plots.Opts ov = new Plots.Opts(); ov.theme = org.metajava.plot.ForestTheme.SPSS; ov.scale = 1; ov.squareColour = "Green"; ov.diamondFill = "Navy"; ov.pooledColour = "Orange"; ov.nullColour = "Purple"; ov.nullStyle = "Dashed";
+            BufferedImage mo = Plots.forest(br, ov); check(countColour(mo, 0x0091EB) == 0 && countColour(mo, 0x009600) > 200 && countColour(mo, 0x000080) > 50, "IBM SPSS forest style honours the colour overrides (square, diamond, lines)");
+            Plots.Opts sw = new Plots.Opts(); sw.theme = org.metajava.plot.ForestTheme.SPSS; sw.scale = 1; sw.spacing = 1.5; sw.digits = 3; sw.hetStats = false; sw.testOverall = false; sw.overallResults = true; sw.xLeft = "Favours A"; sw.xRight = "Favours B"; sw.analysisDetails = true; sw.xMin = "0.1"; sw.xMax = "3";
+            check(!sameImage(m, Plots.forest(br, sw)) && Plots.forest(br, sw).getHeight() != m.getHeight(), "IBM SPSS forest style honours spacing, digits, heterogeneity / test lines, axis labels and limits, methods details");
+            double[] ax = Plots.lastForestAxis(); check(ax != null && Math.abs(ax[0] - 0.1) < 1e-9 && Math.abs(ax[1] - 3) < 1e-9, "IBM SPSS forest style honours the x-axis limits");
+            // funnel plots
+            double[] ft = {14.6, 9.4, 8.1, 2.8, 10.6, 15.5, 21.3, 46.5, 12.2, 7.7}, fs = {0.34, 0.9, 1.0, 0.75, 0.95, 0.97, 1.0, 1.1, 1.3, 1.4};
+            MetaResult fr = simResult(ft, fs); org.metajava.core.TrimFill ftf = org.metajava.core.TrimFill.run(fr, null, false, "L0", false, true);
+            Plots.Opts fo = new Plots.Opts(); fo.scale = 1; fo.studyLabels = false; fo.funnelTheme = org.metajava.plot.FunnelThemes.DEFAULT; BufferedImage fd = Plots.funnel(fr, fo, null); fo.funnelTheme = org.metajava.plot.FunnelThemes.SPSS;
+            BufferedImage s0 = Plots.funnel(fr, fo, null); check(!sameImage(fd, s0) && countColour(s0, 0x0091EB) > 20, "IBM SPSS funnel style: blue points, different from the Default style");
+            fo.precision = true; BufferedImage s1 = Plots.funnel(fr, fo, null); fo.precision = false; BufferedImage s2 = Plots.funnel(fr, fo, ftf); fo.precision = true; BufferedImage s3 = Plots.funnel(fr, fo, ftf); fo.precision = false;
+            check(!sameImage(s0, s1) && !sameImage(s0, s2) && !sameImage(s1, s3) && !sameImage(s2, s3), "IBM SPSS funnel style: funnel, precision, trim-and-fill and trim-and-fill of precision are four different plots");
+            fo.contour = true; BufferedImage s4 = Plots.funnel(fr, fo, null); check(!sameImage(s0, s4), "IBM SPSS funnel style: contour-enhanced adds the bands (and their key)");
+            fo.contour = false; fo.studyLabels = true; BufferedImage s5 = Plots.funnel(fr, fo, null); fo.repelFunnel = true; BufferedImage s6 = Plots.funnel(fr, fo, null);
+            check(!sameImage(s0, s5) && !sameImage(s5, s6), "IBM SPSS funnel style: study labels, with and without 'Avoid label overlap'");
+            fo.repelFunnel = false; fo.studyLabels = false; fo.funnelBack = true; BufferedImage s7 = Plots.funnel(fr, fo, null); check(s7 != null, "IBM SPSS funnel style: back-transformed axis is drawn");
+        } catch (Exception e) { e.printStackTrace(); check(false, "IBM SPSS style tests threw " + e); }
+    }
+
     static void funnelThemes() {
         try {
             double[] te = {0.07, -0.02, -0.06, 0.03, 0.12, 0.30, -0.18, -0.14, -0.07, 0.27, -0.32, 0.18, 0.80, -0.02, 0.23, 0.54, 0.26, 1.18, -0.06, 0.06}, se = {0.094, 0.103, 0.102, 0.125, 0.147, 0.140, 0.160, 0.167, 0.175, 0.165, 0.222, 0.224, 0.252, 0.290, 0.291, 0.302, 0.370, 0.374, 0.168, 0.095};
@@ -1045,7 +1077,7 @@ public class SelfTest {
             near(t2, 0.024484777046880103, 1e-12, "REML: tau^2 of the exact solution (metafor's Fisher scoring, stopped at a change <= 1e-5, reports 0.02448828)");
         } catch (Exception e) { e.printStackTrace(); check(false, "REML estimating-equation test threw " + e); }
 
-        forestThemes(); funnelThemes(); trimFillEstimators();
+        forestThemes(); funnelThemes(); spssThemes(); trimFillEstimators();
 
         // ---- prediction interval and study symbols of the regression plots
         { double[][] dd = simData(1, 7, 14); MetaResult res = simResult(dd[0], dd[1]); java.util.Map<String, double[]> nd = new java.util.HashMap<>(); nd.put("x", dd[2]);

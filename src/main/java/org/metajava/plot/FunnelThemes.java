@@ -14,12 +14,13 @@ import java.util.List;
  * <li>STATA style: pale-blue frame, navy title, light grid, grey pseudo 95% limits (or grey contour bands), crimson estimate line, framed legend.</li>
  * <li>metafor style: as metafor::funnel (light-grey panel with white grid lines, white pseudo 95% confidence region, dotted limits and centre line, black points, open circles for the imputed studies; contour-enhanced: 90 / 95 / 99% regions in white and two greys).</li>
  * </ul>
+ * <li>IBM SPSS style: as the funnel plot of the SPSS meta-analysis procedure (bold title, grey horizontal grid lines at the reversed standard-error axis, blue points, dashed pseudo confidence limits, key at the right).</li>
  * The Default theme (meta style) is drawn by {@link Plots#funnel}.
  */
 public final class FunnelThemes {
     private FunnelThemes() {}
-    public static final String DEFAULT = "Default", METAWIN = "MetaWin style", STATA = "STATA style", METAFOR = "metafor style";
-    public static final String[] NAMES = {DEFAULT, METAWIN, STATA, METAFOR};
+    public static final String DEFAULT = "Default", METAWIN = "MetaWin style", STATA = "STATA style", METAFOR = "metafor style", SPSS = "IBM SPSS style";
+    public static final String[] NAMES = {DEFAULT, METAWIN, STATA, METAFOR, SPSS};
 
     static final Color NAVY = new Color(26, 71, 111), CRIMSON = new Color(165, 24, 60), ORANGE = new Color(222, 125, 0), PALE = new Color(234, 242, 243), TABBLUE = new Color(31, 119, 180), TABORANGE = new Color(255, 127, 14);
     static final double Z90 = Dist.qnorm(0.95), Z95 = Dist.qnorm(0.975), Z99 = Dist.qnorm(0.995);
@@ -191,6 +192,92 @@ public final class FunnelThemes {
         for (double t : yt) { double yy = Y.applyAsDouble(t); c.line(x0 - 5, yy, x0, yy); c.textRot(mfNum(t), x0 - 12, yy, 12f); }
         for (double[] t : xticks(d, xl, xh, x1 - x0, 6, true)) { double xx = X.applyAsDouble(t[0]); c.line(xx, y1, xx, y1 + 5); c.text(Canvas.tick(t[1]), xx, y1 + 21, 12f, 1, false); }
         c.text(d.xlab, (x0 + x1) / 2.0, y1 + 48, 13f, 1, false); c.textRot(d.prec ? "Inverse Standard Error" : "Standard Error", 18, (y0 + y1) / 2.0, 13f);
+        return c.img;
+    }
+
+
+    // =================================================================== IBM SPSS
+    static final Color SP_BLUE = new Color(0, 145, 235), SP_EDGE = new Color(10, 40, 70), SP_GRID = new Color(190, 190, 190), SP_AXIS = new Color(95, 95, 95), SP_LINE = new Color(50, 50, 50), SP_ADJ = new Color(190, 60, 30);
+    /** Tick labels of the standard-error / precision axis with the same number of decimals ("0.0", "0.2", ...). */
+    private static String[] uniform(double[] t) {
+        int dec = 0; for (double v : t) { String s = Canvas.tick(v); int p = s.indexOf('.'); if (p >= 0) dec = Math.max(dec, Math.min(4, s.length() - p - 1)); }
+        String[] out = new String[t.length]; for (int i = 0; i < t.length; i++) out[i] = String.format(Locale.ROOT, "%." + dec + "f", t[i]).replaceFirst("^-(0\\.?0*)$", "$1"); return out;
+    }
+    /** Lines of {@code text} no wider than {@code maxW} pixels (breaks at spaces). */
+    private static List<String> wrap(String text, FontMetrics fm, int maxW) {
+        List<String> out = new ArrayList<>(); StringBuilder cur = new StringBuilder();
+        for (String w : text.split(" ")) { String t = cur.length() == 0 ? w : cur + " " + w; if (cur.length() > 0 && fm.stringWidth(t) > maxW) { out.add(cur.toString()); cur = new StringBuilder(w); } else { cur = new StringBuilder(t); } }
+        if (cur.length() > 0) out.add(cur.toString()); return out;
+    }
+
+    /** IBM SPSS style (the funnel plot of the SPSS meta-analysis procedure): bold title, horizontal grey grid lines at the ticks of the reversed standard-error axis, left and bottom axis lines without tick marks,
+     *  blue study points, dashed pseudo confidence limits, solid line at the estimated overall effect and a key at the right. The funnel of precision (1/SE upwards) and the contour-enhanced funnel (shaded bands
+     *  around the null value, listed in the key) follow the same look; imputed studies of a trim-and-fill plot are open blue circles and the estimate of the observed and imputed studies is a second line. */
+    static BufferedImage spss(MetaResult r, Plots.Opts o, TrimFill tf) {
+        D d = new D(r, tf, o.precision, o); MetaSpec s = d.s; final boolean con = Plots.contourOn(o, s); final double z = Dist.qnorm(1 - (1 - s.levelMa) / 2);
+        final double obsCenter = s.random ? r.overall.teRandom : r.overall.teCommon;
+        // ---- key entries {kind, text}
+        List<String[]> leg = new ArrayList<>();
+        leg.add(new String[]{"dot", "Primary studies"}); if (d.tf) leg.add(new String[]{"imp", "Imputed studies"});
+        leg.add(new String[]{"ci", Fmt.num(s.levelMa * 100, 0) + "% pseudo confidence intervals"});
+        leg.add(new String[]{"est", d.tf ? "Estimated overall effect size (observed studies)" : "Estimated overall effect size (observed studies)"}); if (d.tf) leg.add(new String[]{"adj", "Estimated overall effect size (observed and imputed studies)"});
+        if (con) { leg.add(new String[]{"b0", "p > 0.10"}); leg.add(new String[]{"b1", "0.05 < p < 0.10"}); leg.add(new String[]{"b2", "0.01 < p < 0.05"}); leg.add(new String[]{"b3", "p < 0.01"}); }
+        Canvas probe = Canvas.probe(); FontMetrics f13 = probe.g.getFontMetrics(Canvas.font(13f)); final int legTextW = 210;
+        int legH = 0; List<List<String>> legLines = new ArrayList<>(); for (String[] it : leg) { List<String> ln = wrap(it[1], f13, legTextW); legLines.add(ln); legH += ln.size() * 17 + 7; }
+        final int W = 960, x0 = 84, x1 = W - 20 - 32 - legTextW - 14, y0 = 56, y1 = Math.max(430, 56 + legH + 20), H = y1 + 78;
+        // ---- ranges
+        double lo = Double.POSITIVE_INFINITY, hi = Double.NEGATIVE_INFINITY;
+        for (int i = 0; i < d.te.length; i++) if (d.ok(i)) { lo = Math.min(lo, d.te[i]); hi = Math.max(hi, d.te[i]); }
+        if (!Double.isFinite(lo)) { lo = d.center - 1; hi = d.center + 1; }
+        lo = Math.min(lo, d.center - z * d.maxse); hi = Math.max(hi, d.center + z * d.maxse); if (con) { lo = Math.min(lo, d.ref - z * d.maxse); hi = Math.max(hi, d.ref + z * d.maxse); }
+        double padx = (hi - lo) * 0.04; lo -= padx; hi += padx;
+        { double[] cl = Plots.clampRaw(s, lo, hi); lo = cl[0]; hi = cl[1]; } d.cov = Plots.coverAxis(lo, hi, d.log, d.bk, x1 - x0); if (d.cov.t.size() >= 2) { lo = d.cov.xl; hi = d.cov.xh; } else d.cov = null; final double xl = lo, xh = hi;
+        final double vMax = d.prec ? d.maxPrec : d.maxse; double[] yt = Canvas.pretty(0, vMax * 1.12, 6); final double vEnd = yt[yt.length - 1], vLo = -0.03 * vEnd;   // axis from just beyond 0 to the last tick
+        java.util.function.DoubleUnaryOperator X = v -> x0 + (v - xl) / (xh - xl) * (x1 - x0), Y = v -> d.prec ? y1 - (v - vLo) / (vEnd - vLo) * (y1 - y0) : y0 + (v - vLo) / (vEnd - vLo) * (y1 - y0);
+        Canvas c = new Canvas(W, H, o.scale); Graphics2D g = c.g;
+        g.setColor(Color.BLACK); String ttl = (con ? "Contour-enhanced Funnel Plot" : "Funnel Plot") + (d.prec ? " of Precision" : ""); c.text(ttl, (x0 + x1) / 2.0, 30, 17f, 1, true);
+        Shape clip0 = g.getClip(); g.setClip(new Rectangle2D.Double(x0, y0 - 2, x1 - x0, y1 - y0 + 4));
+        // horizontal grid lines at every tick of the vertical axis
+        g.setColor(SP_GRID); g.setStroke(new BasicStroke(1.4f)); for (double t : yt) if (t >= vLo - 1e-9 && t <= vEnd + 1e-9) c.line(x0, Y.applyAsDouble(t), x1, Y.applyAsDouble(t));
+        // contour bands around the null value
+        if (con) { double[] zs = {Z99, Z95, Z90}; Color[] cols = {new Color(228, 228, 228), new Color(205, 205, 205), new Color(182, 182, 182)}; double yb = d.prec ? vEnd : vMax;
+            for (int i = 0; i < 3; i++) { g.setColor(cols[i]); g.fill(d.prec ? curvePoly(X, Y, d.ref, zs[i], 0, vEnd, xh - xl) : tri(X.applyAsDouble(d.ref - zs[i] * yb), Y.applyAsDouble(yb), X.applyAsDouble(d.ref), Y.applyAsDouble(0), X.applyAsDouble(d.ref + zs[i] * yb), Y.applyAsDouble(yb))); }
+            g.setColor(SP_GRID); g.setStroke(new BasicStroke(1.4f)); for (double t : yt) if (t >= vLo - 1e-9 && t <= vEnd + 1e-9) c.line(x0, Y.applyAsDouble(t), x1, Y.applyAsDouble(t)); }
+        // pseudo confidence limits (dashed) and the estimate lines
+        g.setColor(SP_LINE); g.setStroke(new BasicStroke(1.3f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{8f, 6f}, 0));
+        double yBot = d.prec ? vEnd : d.maxse;
+        if (d.prec) { g.draw(curve(X, Y, d.center, -z, 0, vEnd, xh - xl, true)); g.draw(curve(X, Y, d.center, z, 0, vEnd, xh - xl, true)); }
+        else { c.line(X.applyAsDouble(d.center), Y.applyAsDouble(0), X.applyAsDouble(d.center - z * yBot), Y.applyAsDouble(yBot)); c.line(X.applyAsDouble(d.center), Y.applyAsDouble(0), X.applyAsDouble(d.center + z * yBot), Y.applyAsDouble(yBot)); }
+        g.setStroke(new BasicStroke(1.4f));
+        double yTopLine = d.prec ? y0 : Y.applyAsDouble(0), yBotLine = d.prec ? y1 : Y.applyAsDouble(d.maxse);
+        if (d.tf) { g.setColor(SP_LINE); c.line(X.applyAsDouble(obsCenter), yTopLine, X.applyAsDouble(obsCenter), yBotLine); g.setColor(SP_ADJ); g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{2f, 3f}, 0)); c.line(X.applyAsDouble(d.center), yTopLine, X.applyAsDouble(d.center), yBotLine); }
+        else { g.setColor(SP_LINE); c.line(X.applyAsDouble(d.center), yTopLine, X.applyAsDouble(d.center), yBotLine); }
+        g.setStroke(new BasicStroke(1f));
+        // studies
+        final double R = 4.2;
+        for (int i = 0; i < d.te.length; i++) { if (!d.ok(i)) continue; double xx = X.applyAsDouble(d.te[i]), yy = Y.applyAsDouble(d.yv(i)); Ellipse2D.Double e = new Ellipse2D.Double(xx - R, yy - R, 2 * R, 2 * R);
+            if (d.filled(i)) { g.setColor(Color.WHITE); g.fill(e); g.setColor(SP_BLUE); g.setStroke(new BasicStroke(1.6f)); g.draw(e); g.setStroke(new BasicStroke(1f)); }
+            else { g.setColor(SP_BLUE); g.fill(e); g.setColor(SP_EDGE); g.setStroke(new BasicStroke(0.9f)); g.draw(e); g.setStroke(new BasicStroke(1f)); } }
+        g.setClip(clip0); if (o.studyLabels) labels(c, d, X, Y, x1, new Color(40, 40, 40), o.repelFunnel, x0, y0, y1);
+        // axes: left and bottom line, tick labels without tick marks, bold titles
+        g.setColor(SP_AXIS); g.setStroke(new BasicStroke(1.4f)); c.line(x0, y0, x0, y1); c.line(x0, y1, x1, y1);
+        String[] yl = uniform(yt); g.setColor(Color.BLACK);
+        for (int k = 0; k < yt.length; k++) if (yt[k] >= vLo - 1e-9 && yt[k] <= vEnd + 1e-9) c.text(yl[k], x0 - 9, Y.applyAsDouble(yt[k]) + 4.5, 12.5f, 2, false);
+        for (double[] t : xticks(d, xl, xh, x1 - x0, 6, true)) c.text(Canvas.tick(t[1]), X.applyAsDouble(t[0]), y1 + 22, 12.5f, 1, false);
+        c.text(d.xlab, (x0 + x1) / 2.0, y1 + 56, 14f, 1, true);
+        g.setFont(Canvas.bold(14f)); { AffineTransform tr = g.getTransform(); g.rotate(-Math.PI / 2, 24, (y0 + y1) / 2.0); String yt0 = d.prec ? "Precision (1/SE)" : "Standard error"; double wd = g.getFontMetrics().stringWidth(yt0); g.drawString(yt0, (float) (24 - wd / 2), (float) ((y0 + y1) / 2.0)); g.setTransform(tr); }
+        // key at the right
+        double lx = x1 + 30, ly = y0 + 6; g.setStroke(new BasicStroke(1f));
+        for (int k = 0; k < leg.size(); k++) { List<String> ln = legLines.get(k); double cy = ly + 8; String kind = leg.get(k)[0];
+            switch (kind) {
+                case "dot": g.setColor(SP_BLUE); g.fill(new Ellipse2D.Double(lx + 4, cy - 4.5, 9, 9)); g.setColor(SP_EDGE); g.setStroke(new BasicStroke(0.9f)); g.draw(new Ellipse2D.Double(lx + 4, cy - 4.5, 9, 9)); break;
+                case "imp": g.setColor(Color.WHITE); g.fill(new Ellipse2D.Double(lx + 4, cy - 4.5, 9, 9)); g.setColor(SP_BLUE); g.setStroke(new BasicStroke(1.6f)); g.draw(new Ellipse2D.Double(lx + 4, cy - 4.5, 9, 9)); break;
+                case "ci": g.setColor(SP_LINE); g.setStroke(new BasicStroke(1.3f)); c.line(lx, cy, lx + 7, cy); break;
+                case "est": g.setColor(SP_LINE); g.setStroke(new BasicStroke(1.4f)); c.line(lx - 2, cy, lx + 17, cy); break;
+                case "adj": g.setColor(SP_ADJ); g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, new float[]{2f, 3f}, 0)); c.line(lx - 2, cy, lx + 17, cy); break;
+                default: { Color[] cols = {new Color(182, 182, 182), new Color(205, 205, 205), new Color(228, 228, 228), Color.WHITE}; g.setColor(cols[Integer.parseInt(kind.substring(1))]); g.fill(new Rectangle2D.Double(lx, cy - 6, 17, 12)); g.setColor(SP_GRID); g.setStroke(new BasicStroke(1f)); g.draw(new Rectangle2D.Double(lx, cy - 6, 17, 12)); } }
+            g.setStroke(new BasicStroke(1f)); g.setColor(Color.BLACK); for (int q = 0; q < ln.size(); q++) c.text(ln.get(q), lx + 26, ly + 12 + q * 17, 13f, 0, false);
+            ly += ln.size() * 17 + 7; }
         return c.img;
     }
 

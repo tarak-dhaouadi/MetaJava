@@ -1,5 +1,10 @@
 # Changelog
 
+### Added - "IBM SPSS style" for forest plots and funnel plots
+- Forest plots (main, subgroup, leave-one-out, cumulative): new theme *IBM SPSS style* - key at the top, monospaced table (ID, effect, lower, upper, p-value, weight, weight %), blue squares, maroon diamonds with I-beam, red dashed line at the overall effect with its value, grey no-effect line, and footer lines (Model / Heterogeneity / Homogeneity / Test of overall effect size). The options of the other styles apply (colour overrides, spacing, digits, axis limits and labels, heterogeneity and test lines, subgroup tests, prediction interval, method details, sorting).
+- Funnel plots (funnel, precision, trim-and-fill, trim-and-fill of precision): new theme *IBM SPSS style* - bold title, reversed standard-error axis with grey grid, blue points, dashed pseudo 95% limits, solid overall-effect line, key at right. Contour-enhanced bands, study labels (with label-overlap avoidance) and the back-transformed axis apply; imputed studies are open circles with a dotted second estimate line.
+- Tests (`SelfTest`): SPSS forest and funnel styles.
+
 ### Changed - bubble plot colours apply to the Default (meta) style as well
 - The six colour options of the regression plots (*Study symbol colour*, *Regression line colour*, *Confidence area colour*, *Confidence lines colour*, *Prediction area colour*, *Prediction line colour*) now apply to the Default (meta style) bubble plot, its legend included, as well as to the ggplot2 style and the adjusted plot; they are no longer greyed out in the Default style.
 - Every list starts with a new entry **Theme default** (the initial choice; its swatch shows the colour of the selected style): in the Default style it keeps the grey circles, black line and grey bands of meta, in the ggplot2 style and the adjusted plot the former defaults (blue, red, light grey, dark grey, light grey, grey). Any other colour replaces it in both styles. Projects saved earlier keep their chosen colours.
